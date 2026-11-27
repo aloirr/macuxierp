@@ -104,7 +104,7 @@ describe.skipIf(!PG_DISPONIVEL)('Integração FDV no portal /config pela API (T-
     expect((await pedir(semChave, 'GET', url(C.ler, SEM_CHAVE))).statusCode).toBe(200);
   });
 
-  it('POST /credencial/testar sem credencial: 409 (MXI01, "Cadastre a credencial do FDV antes")', async () => {
+  it('POST /credencial/testar sem credencial: 409 (MXI01, MENSAGEM_SEM_CREDENCIAL_FDV)', async () => {
     const r = await pedir(comChave, 'POST', url(C.testar, SEM_CHAVE), undefined, randomUUID());
     expect([r.statusCode, r.json().codigo, r.json().mensagem]).toEqual([409, 'CONFLITO', MENSAGEM_SEM_CREDENCIAL_FDV]);
   });

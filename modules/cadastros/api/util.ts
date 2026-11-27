@@ -45,3 +45,6 @@ export function dadosFiscaisDaFilial(f: { crt: FilialDados['crt']; industrial_ip
 } {
   return { crt: CRT[f.crt], industrial_ipi: f.industrial_ipi ?? false, regime_pis_cofins: f.regime_pis_cofins ?? null };
 }
+
+/** Código do PostgreSQL para "permission denied": o papel não lê a tabela (RN-CAD-16: contagem de clientes indisponível). */
+export const SEM_PERMISSAO_LEITURA = '42501';

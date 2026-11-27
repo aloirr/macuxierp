@@ -13,6 +13,7 @@ import { MOTIVO_PARCELAS_FORMA } from '../domain/condicao';
 import type {
   FilhoGravado, RepoChaves, TabelaChave, ItemPrecoGravado, RepoCarga, RepoSubstituicao, TabelaSubstituivel, TabelaFilha, ConsultaGravada, FiltroLista, MovimentoGravado, RepoFilho, RepoOficiais, RepoSimples, Repositorios, TipoConsulta,
 } from './portas';
+import { SEM_PERMISSAO_LEITURA } from './util';
 
 type Dict = Record<string, unknown>;
 /** Colunas da condição de pagamento (inclui a forma, D12): o repositório e a leitura da carga usam as mesmas. */
@@ -512,14 +513,16 @@ function cargaSql(tx: Transacao): RepoCarga {
       return l as unknown as CondicaoPagamento[];
     },
     async contarClientesPorPrazoMedio(de, ate) {
-      // o papel do worker pode não ter SELECT em cliente: SAVEPOINT próprio e devolve null (contagem indisponível) em vez de derrubar a rotina
+      // o papel pode não ter SELECT em cliente (SEM_PERMISSAO_LEITURA): SAVEPOINT próprio e devolve null (contagem indisponível) em vez de derrubar a rotina
       await tx.consultar('SAVEPOINT conta_clientes_prazo');
       try {
         const l = await executar<{ n: string }>(tx, 'SELECT count(*)::text AS n FROM cadastros.cliente WHERE deleted_at IS NULL AND prazo_medio_dias >= $1 AND ($2::int IS NULL OR prazo_medio_dias < $2)', [de, ate]);
         await tx.consultar('RELEASE SAVEPOINT conta_clientes_prazo');
         return Number(l[0]?.n ?? 0);
-      } catch {
+      } catch (e) {
         await tx.consultar('ROLLBACK TO SAVEPOINT conta_clientes_prazo');
+        // só a falta de permissão (SEM_PERMISSAO_LEITURA) é "contagem indisponível"; qualquer outro erro é inesperado e sobe (não vira null em silêncio)
+        if ((e as { code?: string }).code !== SEM_PERMISSAO_LEITURA) throw e;
         return null;
       }
     },

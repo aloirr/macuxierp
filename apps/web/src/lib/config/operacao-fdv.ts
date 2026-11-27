@@ -27,15 +27,18 @@ export interface VistaMonitor {
   ultimoSinal: string;
   /** "2 lotes · 340 linhas". */
   fila: string;
+  /** Código do Hub da última recusa do sinal (A2, v0.3.18); nulo sem código (a tela não mostra a linha). */
+  codigo: string | null;
 }
 
-export function vistaMonitor(m: MonitorConectorFdv, fuso: string): VistaMonitor {
+export function vistaMonitor(m: MonitorConectorFdv, fuso: string, ultimoCodigo?: string | null): VistaMonitor {
   return {
     identificador: m.identificador ?? '—',
     situacao: SITUACAO_CONECTOR[m.situacao],
     versao: m.versao ?? '—',
     ultimoSinal: m.ultimo_sinal_em ? formatarDataHora(m.ultimo_sinal_em, fuso) : '—',
     fila: `${plural(m.fila.lotes, 'lote', 'lotes')} · ${plural(m.fila.linhas, 'linha', 'linhas')}`,
+    codigo: ultimoCodigo ?? null,
   };
 }
 

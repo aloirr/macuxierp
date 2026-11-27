@@ -227,12 +227,12 @@ describe.skipIf(!PG_DISPONIVEL)('T-0057 T1 — /entrada/v1 → cadastros → dub
 
   describe('os 10 cadastros da F2 (ADR 0014 §2): lote delta → worker → resultado → cursor → cadastro → Hub', () => {
     /**
-     * Filial e produto já cadastrados pelo BKO (a entrada atualiza sem crt e sem ncm: D1/D2), e a forma de pagamento só confere o formato e
-     * conta como inalterada (não tem tabela própria; o prazo usa a forma da condição que o BKO criou: D3). Os outros 7 são novos.
+     * Filial e produto já cadastrados pelo BKO (a entrada atualiza sem crt e sem ncm: D1/D2). A forma de pagamento é gravada em
+     * `cadastros.entrada_forma` (0074, #793) e conta como nova. Os outros 7 também são novos.
      */
     // O endereço é uma linha do cliente (adaptarClienteEndereco): o de entrega novo conta como cliente atualizado.
     const ESPERADO: Partial<Record<(typeof ENTIDADES_F2)[number], 'atualizadas' | 'inalteradas'>> = {
-      filial: 'atualizadas', produto: 'atualizadas', forma_pagamento: 'inalteradas', cliente_endereco: 'atualizadas',
+      filial: 'atualizadas', produto: 'atualizadas', cliente_endereco: 'atualizadas',
     };
     beforeAll(async () => {
       await m.semearPeloBko(massa);
@@ -294,13 +294,19 @@ describe.skipIf(!PG_DISPONIVEL)('T-0057 T1 — /entrada/v1 → cadastros → dub
       expect(rows[0]).toEqual({ crt: '1', ncm: '22021000' });
     });
 
-    // v0.3.18, cadastros.entrada_forma: a forma nova, sem condição no ERP, ainda não tem onde ficar.
-    it.fails('D3: o 1º prazo de uma forma nova, sem condição no ERP, só pela entrada grava', async () => {
+    // D3 (v0.3.18): a forma nova, sem condição no ERP, fica em cadastros.entrada_forma (0074, #793) e o prazo seguinte a usa.
+    it('D3: o 1º prazo de uma forma nova, sem condição no ERP, só pela entrada grava', async () => {
+      const formaNova = { ...massa.registros.forma_pagamento[0]!, external_id: 'THA-FOR-NOVA-D3', codigo: 'BOLETO', nome: 'Boleto novo D3' };
+      const f = LoteAceito.parse((await m.enviarLote(m.credenciais.A, envelopeDelta('forma_pagamento', [formaNova], INICIO))).json());
+      await m.processarFila();
+      const rf = await lerLote(f.lote_id);
+      expect([rf.status, rf.contagens.novas], JSON.stringify(rf.erros)).toEqual(['concluido', 1]);
       const base = massa.registros.prazo_pagamento[0]!;
-      const prazo = { ...base, external_id: `${base.external_id}-D3`, forma_external_id: 'THA-FOR-NOVA-D3', codigo: 'N-D3' };
+      const prazo = { ...base, external_id: `${base.external_id}-D3`, forma_external_id: formaNova.external_id, codigo: 'N-D3' };
       const r = LoteAceito.parse((await m.enviarLote(m.credenciais.A, envelopeDelta('prazo_pagamento', [prazo], INICIO))).json());
       await m.processarFila();
-      expect([(await lerLote(r.lote_id)).status, (await lerLote(r.lote_id)).contagens.novas]).toEqual(['concluido', 1]);
+      const rp = await lerLote(r.lote_id);
+      expect([rp.status, rp.contagens.novas], JSON.stringify(rp.erros)).toEqual(['concluido', 1]);
     });
 
     it('D3 parcial (#768): com a forma já ligada a uma condição, o lote da forma e depois o 1º prazo novo dela gravam', async () => {
@@ -312,6 +318,22 @@ describe.skipIf(!PG_DISPONIVEL)('T-0057 T1 — /entrada/v1 → cadastros → dub
       const [rf, rp] = [await lerLote(f.lote_id), await lerLote(p.lote_id)];
       expect([rf.status, rf.contagens.com_erro], JSON.stringify(rf.erros)).toEqual(['concluido', 0]);
       expect([rp.status, rp.contagens.novas, rp.contagens.com_erro], JSON.stringify(rp.erros)).toEqual(['concluido', 1, 0]);
+    });
+
+    it('D3 (RN-CAD-09): forma com código desconhecido grava o tPag nulo em entrada_forma e não muda o tPag das condições irmãs', async () => {
+      const forma = massa.registros.forma_pagamento[0]!;
+      const irmas = () =>
+        m.api.b.admin.query('SELECT external_id, forma_tpag FROM cadastros.condicao_pagamento WHERE tenant_id = $1 AND forma_external_id = $2 ORDER BY external_id', [m.api.t.A, forma.external_id]);
+      const antes = (await irmas()).rows;
+      expect(antes.length, 'a massa tem condição irmã da forma').toBeGreaterThan(0);
+      const desconhecida = { ...forma, codigo: 'XYZ-DESCONHECIDA', alterado_em: new Date(INICIO.getTime() + 3_600_000).toISOString() };
+      const r = LoteAceito.parse((await m.enviarLote(m.credenciais.A, envelopeDelta('forma_pagamento', [desconhecida], INICIO))).json());
+      await m.processarFila();
+      const res = await lerLote(r.lote_id);
+      expect([res.status, res.contagens.com_erro], JSON.stringify(res.erros)).toEqual(['concluido', 0]);
+      const { rows } = await m.api.b.admin.query('SELECT tpag FROM cadastros.entrada_forma WHERE tenant_id = $1 AND external_id = $2 AND deleted_at IS NULL', [m.api.t.A, forma.external_id]);
+      expect(rows).toEqual([{ tpag: null }]);
+      expect((await irmas()).rows).toEqual(antes);
     });
 
     it('os 10 gravados saem ao dublê do Hub pelo espelho e pela agenda do integracao-fdv (o cadastro da entrada é o do BKO)', async () => {

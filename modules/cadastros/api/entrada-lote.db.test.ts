@@ -209,4 +209,28 @@ describe.skipIf(!PG_DISPONIVEL)('entrada de lotes (T-0057 C3 e C4, PostgreSQL re
     expect(await resultado(A, 'conector-1', velho)).toMatchObject({ status: 'falhou' });
     await processar(A, novo);
   }, 60_000);
+
+  it('RN-CAD-09 (0074, PostgreSQL real e RLS): forma nova sem condição vai para entrada_forma e o prazo seguinte a usa; tPag nulo recusa o prazo; o reenvio revive a apagada', async () => {
+    const T = A; // a credencial do conector é única no banco: o teste usa o tenant A (os external_id FP*/PZ* não colidem com os outros testes)
+    const T2 = B;
+    const forma = (n: number, extra: Record<string, unknown> = {}) => ({ external_id: `FP${n}`, alterado_em: `2026-11-26T1${n}:00:00.000Z`, ativo: true, codigo: 'BOLETO', nome: 'Boleto', ...extra });
+    const lote = async (entidade: string, registros: unknown[], chave: string) => {
+      const id = LoteAceito.parse((await chamar(T, 'conector-1', 'POST', '/lotes', { corpo: corpo(registros, { entidade }), chave })).resposta.corpo).lote_id;
+      await processar(T, id);
+      return resultado(T, 'conector-1', id);
+    };
+    expect(await lote('forma_pagamento', [forma(1), forma(2, { codigo: 'XYZ-DESCONHECIDA' })], 'chave-forma-001')).toMatchObject({ status: 'concluido', contagens: { novas: 2, atualizadas: 0, inalteradas: 0 } });
+    expect(await admin('SELECT external_id, tpag IS NULL AS sem_tpag FROM cadastros.entrada_forma WHERE tenant_id = $1 ORDER BY external_id', [T])).toEqual([
+      { external_id: 'FP1', sem_tpag: false }, { external_id: 'FP2', sem_tpag: true },
+    ]);
+    expect(await admin('SELECT 1 FROM cadastros.entrada_forma WHERE tenant_id = $1', [T2])).toEqual([]);
+    const prazo = (n: number, f: string) => ({ external_id: `PZ${n}`, alterado_em: '2026-11-26T20:00:00.000Z', ativo: true, forma_external_id: f, codigo: `P${n}`, parcelas_dias: '30/60' });
+    expect(await lote('prazo_pagamento', [prazo(1, 'FP1')], 'chave-forma-002')).toMatchObject({ status: 'concluido', contagens: { novas: 1, com_erro: 0 } });
+    expect((await admin('SELECT external_id, forma_external_id, forma_codigo FROM cadastros.condicao_pagamento WHERE tenant_id = $1', [T]))).toEqual([{ external_id: 'PZ1', forma_external_id: 'FP1', forma_codigo: 'BOLETO' }]);
+    // reenvio igual: inalterada; apagada e reenviada: revive
+    expect(await lote('forma_pagamento', [forma(1, { alterado_em: '2026-11-26T19:00:00.000Z' })], 'chave-forma-003')).toMatchObject({ contagens: { novas: 0, atualizadas: 0 } });
+    await admin("UPDATE cadastros.entrada_forma SET deleted_at = now() WHERE tenant_id = $1 AND external_id = 'FP2'", [T]);
+    expect(await lote('forma_pagamento', [forma(2, { alterado_em: '2026-11-26T21:00:00.000Z', codigo: 'XYZ-DESCONHECIDA' })], 'chave-forma-004')).toMatchObject({ contagens: { atualizadas: 1 } });
+    expect((await admin("SELECT deleted_at IS NULL AS viva FROM cadastros.entrada_forma WHERE tenant_id = $1 AND external_id = 'FP2'", [T]))[0]).toEqual({ viva: true });
+  }, 90_000);
 });

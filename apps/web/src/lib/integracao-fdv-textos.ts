@@ -3,10 +3,11 @@
  * Usado pelo status do BKO (leitura) e pela aba Integração do /config (superadmin).
  */
 import { ACOES_FDV_SO_DO_PORTAL, type AcaoSugeridaFdv, type MotivoFalhaEnvioFdv } from '@macuxierp/platform-sdk';
+import { MSG_SEM_LICENCA } from '@macuxierp/integracao-fdv/contracts';
 import { ROTULOS_FDV } from './config/operacao-fdv';
 
 /** Faixa da aba Integração do /config sem licença: mesmo texto da API (`MSG_SEM_LICENCA`, #758). O motivo da linha (`licenca_erp`) só diz o fato; a ação fica aqui. */
-export const TEXTO_SEM_LICENCA_FDV = 'Integração FDV sem licença nesta empresa. Ligue o módulo na aba Empresa.';
+export const TEXTO_SEM_LICENCA_FDV = MSG_SEM_LICENCA;
 
 export const TEXTO_MOTIVO_FDV: Readonly<Record<MotivoFalhaEnvioFdv, string>> = {
   credencial: 'O FDV recusou a chave do conector.',

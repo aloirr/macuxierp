@@ -10,7 +10,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ArquivoRecebido, CAMINHOS_CARGAS_PLATAFORMA, ErroApi, type ContextoPlataformaPorEtapa, type SituacaoCargasPlataforma, type Transacao } from '@macuxierp/platform-sdk';
 import type { BancoPg } from '@macuxierp/platform-sdk/pg';
-import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
+import { comoConfig, criarBancoEfemero, criarTenant, PG_DISPONIVEL, semearSessaoSuperadmin, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { criarAmbiente, sessaoDe } from './apoio-teste';
 import { criarPluginPlataformaCadastros } from './carga-portal-rotas';
@@ -24,33 +24,18 @@ const oficial = (nome: string, b: Buffer): Buffer | string =>
 const fixture = () => readdirSync(pasta).filter((f) => f.endsWith('.csv')).map((nome) => ({ nome, conteudo: oficial(nome, readFileSync(join(pasta, nome))) }));
 const FRASE = 'autorizo substituir tudo';
 const certificados = { filialTemA1Valido: async () => true };
-const SA = '5a000000-0000-4000-8000-000000000458';
-const SESSAO = '5e000000-0000-4000-8000-000000000458';
-const HASH = '$argon2id$v=19$m=65536,t=3,p=4$c2FsdGZpY3RpY2lv$aGFzaGZpY3RpY2lv';
 
 describe.skipIf(!PG_DISPONIVEL)('rotas da carga do portal no PostgreSQL real', () => {
   let efemero: BancoEfemero;
   let app: BancoPg;
+  let SA: string;
+  let SESSAO: string;
   const admin = async (sql: string, p: unknown[] = []): Promise<Record<string, any>[]> => (await efemero.admin.query(sql, p)).rows; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-  /** `ContextoPlataformaPorEtapa` de teste: uma transação de cada vez, a de plataforma com a sessão posta, a do tenant na RLS. */
+  /** `ContextoPlataformaPorEtapa` de teste: uma transação de cada vez, a de plataforma como macuxierp_config com a sessão (SDK), a do tenant na RLS. */
   const contexto = (): ContextoPlataformaPorEtapa => ({
     sessao: { superadmin_id: SA, sessao_id: SESSAO }, request_id: `req-${randomUUID()}`, agora: new Date('2026-11-23T15:00:00Z'),
-    async comPlataforma<R>(f: (tx: Transacao) => Promise<R>): Promise<R> {
-      const cli = await efemero.admin.connect();
-      try {
-        await cli.query('BEGIN');
-        await cli.query("SELECT set_config('macuxierp.sessao_superadmin', $1, true)", [SESSAO]);
-        const r = await f({ consultar: async <L>(sql: string, p: readonly unknown[] = []) => (await cli.query(sql, [...p])).rows as L[] });
-        await cli.query('COMMIT');
-        return r;
-      } catch (e) {
-        await cli.query('ROLLBACK');
-        throw e;
-      } finally {
-        cli.release();
-      }
-    },
+    comPlataforma: <R>(f: (tx: Transacao) => Promise<R>): Promise<R> => comoConfig(efemero.admin, SESSAO, (consultar) => f({ consultar: async <L>(sql: string, p: readonly unknown[] = []) => (await consultar(sql, p)) as L[] })),
     comTenant: (tenant, f) => app.comTenant(tenant, f),
   });
   const eventos: string[] = [];
@@ -79,8 +64,7 @@ describe.skipIf(!PG_DISPONIVEL)('rotas da carga do portal no PostgreSQL real', (
   beforeAll(async () => {
     efemero = await criarBancoEfemero();
     app = efemero.banco('macuxierp_app');
-    await admin(`INSERT INTO plataforma.superadmin (id, email, nome, senha_hash, deve_trocar_senha, ativo) VALUES ($1, 'sa0058@plataforma.teste', 'Superadmin Ficticio', $2, false, true)`, [SA, HASH]);
-    await admin(`INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_em, ultimo_uso_em) VALUES ($1, $2, encode(sha256(convert_to($3, 'UTF8')), 'hex'), now() + interval '8 hours', now())`, [SESSAO, SA, SESSAO]);
+    ({ superadmin_id: SA, sessao_id: SESSAO } = await semearSessaoSuperadmin(efemero.admin));
   }, 180_000);
   afterAll(async () => {
     await efemero?.remover();

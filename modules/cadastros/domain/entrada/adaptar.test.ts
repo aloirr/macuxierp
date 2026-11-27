@@ -2,7 +2,7 @@ import { type ClienteEnderecoHub, type ClienteHub, type FilialHub } from '@macux
 import { describe, expect, it, vi } from 'vitest';
 import type { EntidadeCarga } from '../../contracts';
 import { LAYOUT, mapearLinha } from '../carga';
-import { adaptarCliente, adaptarClienteEndereco, adaptarEstoque, adaptarFilial, adaptarForma, adaptarLote, adaptarPrazoPagamento, adaptarPreco, adaptarProduto, adaptarProdutoUnidade, adaptarVendedor, type ContextoAdaptacao } from './adaptar';
+import { adaptarCliente, adaptarClienteEndereco, adaptarEstoque, adaptarFilial, adaptarForma, adaptarLote, adaptarPrazoPagamento, adaptarPreco, adaptarProduto, adaptarProdutoUnidade, adaptarVendedor, tpagGuardadoDaForma, type ContextoAdaptacao } from './adaptar';
 
 vi.mock('../carga', async (original) => {
   const m = await original<typeof import('../carga')>();
@@ -132,5 +132,13 @@ describe('T-0057 D1/D2 (ADR 0014, emenda de 27/11): crt da filial e ncm do produ
     expect(r.linha.dados.crt).toBe('3');
     const p = ok(adaptarLote({ entidade: 'produto', modo: 'delta', registros: [{ external_id: 'P1', ativo: true, sku: 'S1', nome: 'Parafuso', unidade: 'UN', ncm: '73181500' }] }, ctx)).resultados[0] as { linha: { dados: { ncm?: string } } };
     expect(p.linha.dados.ncm).toBe('73181500');
+  });
+
+  it('RN-CAD-09: tpagGuardadoDaForma guarda o tPag do dicionário e, sem resolução (sentinela 99), devolve nulo para a forma e para as irmãs', () => {
+    const forma = (codigo: string) => adaptarForma({ external_id: 'FPX', ativo: true, codigo, nome: 'Forma' });
+    expect(tpagGuardadoDaForma(forma('BOLETO'))).toBe('15');
+    expect(tpagGuardadoDaForma(forma('boleto'))).toBe('15');
+    expect(tpagGuardadoDaForma(forma('CHEQUE'))).toBeNull();
+    expect(forma('CHEQUE').tpag).toBe('99'); // o adaptador mantém o sentinela; quem guarda usa a função
   });
 });

@@ -85,3 +85,11 @@ describe('operação da Integração FDV no /config (T-0086)', () => {
     expect(textoInativacaoFdv([{ entidade: 'produto', quantidade: 12 }])).toBe('Produtos: 12');
   });
 });
+
+describe('v0.3.18 A2: último código e próxima tentativa no Monitor', () => {
+  it('vista do Monitor leva o último código ou nulo', () => {
+    expect(vistaMonitor(mon(), 'America/Manaus', 'credencial_invalida').codigo).toBe('credencial_invalida');
+    expect(vistaMonitor(mon(), 'America/Manaus', null).codigo).toBeNull();
+    expect(vistaMonitor(mon(), 'America/Manaus').codigo).toBeNull();
+  });
+});

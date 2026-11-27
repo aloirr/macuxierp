@@ -2,7 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import type { CorpoLote, CursorHub, ModoLote } from '@macuxierp/platform-sdk/hub-v1';
 import { maisNovoQue, type ErroGuardado, type LoteGuardado } from '../domain';
-import type { LoteCriado, LotePendente, RepositorioEntrada, SinalGravado } from './entrada-sql';
+import type { FormaParaGravar, LoteCriado, LotePendente, RepositorioEntrada, SinalGravado } from './entrada-sql';
 
 export interface LoteMemoria {
   id: string;
@@ -28,6 +28,7 @@ export class EntradaMemoria implements RepositorioEntrada {
   readonly lotes: LoteMemoria[] = [];
   readonly cursores = new Map<string, { cursor: CursorHub; atualizado_em: Date; ultimo_lote_id: string }>();
   readonly sinais = new Map<string, SinalGravado & { em: Date }>();
+  readonly formas = new Map<string, FormaParaGravar>();
   /** Ordem em que o worker processou (ids dos lotes), para o teste da fila. */
   readonly processados: string[] = [];
   private relogio = 0;
@@ -57,6 +58,18 @@ export class EntradaMemoria implements RepositorioEntrada {
       cursor_alterado_em: l.cursor?.alterado_em ?? null, cursor_external_id: l.cursor?.external_id ?? null,
       recebido_em: l.criado_em.toISOString(), concluido_em: l.concluido_em?.toISOString() ?? null, erro_codigo: l.erro_codigo,
     };
+  }
+
+  async lerForma(externalId: string) {
+    const f = this.formas.get(externalId);
+    return f ? { codigo: f.codigo, nome: f.nome, tpag: f.tpag } : null;
+  }
+
+  async gravarForma(f: FormaParaGravar) {
+    const antes = this.formas.get(f.external_id);
+    this.formas.set(f.external_id, { ...f });
+    if (!antes) return 'nova' as const;
+    return antes.codigo === f.codigo && antes.nome === f.nome && antes.tpag === f.tpag && antes.ativo === f.ativo ? ('igual' as const) : ('alterada' as const);
   }
 
   async lerCursor(conectorId: string, entidade: string) {
