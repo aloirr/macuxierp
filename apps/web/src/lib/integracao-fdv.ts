@@ -16,7 +16,12 @@ interface CadastroFdvBase {
   ligada: boolean;
   ultimo_envio_em: string | null;
   falha: { motivo: MotivoFalhaEnvioFdv; acao: AcaoSugeridaFdv } | null;
+  /** Só nas pausas por credencial ou licença do FDV (sondagem de 30 min). */
+  proxima_tentativa_em?: string | null;
 }
+
+/** Linha "Próxima tentativa" das duas células (Falha e sob o nome); sem data, nada aparece. */
+const elementoProximaTentativa = (texto: string | null) => (texto ? createElement('span', { className: 'apoio bloco-proxima' }, texto) : null);
 
 /** Colunas e células iguais no BKO e no /config (RD-1138): rótulo, ligada, último envio e falha. */
 export interface LinhaBaseFdv {
@@ -25,7 +30,11 @@ export interface LinhaBaseFdv {
   ligada: boolean;
   ultimoEnvio: string;
   falha: { motivo: string; acao: string } | null;
+  /** "Próxima tentativa: 27/11/2026 11:30"; nulo quando a API não manda a data. */
+  proximaTentativa: string | null;
 }
+
+export const textoProximaTentativa = (instante: string, fuso: string): string => `Próxima tentativa: ${formatarDataHora(instante, fuso)}`;
 
 export function linhaBaseFdv(c: CadastroFdvBase, fuso: string, acao: (a: AcaoSugeridaFdv) => string): LinhaBaseFdv {
   return {
@@ -34,6 +43,7 @@ export function linhaBaseFdv(c: CadastroFdvBase, fuso: string, acao: (a: AcaoSug
     ligada: c.ligada,
     ultimoEnvio: c.ultimo_envio_em ? formatarDataHora(c.ultimo_envio_em, fuso) : '—',
     falha: c.falha ? { motivo: TEXTO_MOTIVO_FDV[c.falha.motivo], acao: acao(c.falha.acao) } : null,
+    proximaTentativa: c.proxima_tentativa_em ? textoProximaTentativa(c.proxima_tentativa_em, fuso) : null,
   };
 }
 
@@ -43,14 +53,14 @@ export function colunasStatusFdv<T extends LinhaBaseFdv>(opcoes: { falhaSobreNom
     {
       id: 'rotulo',
       titulo: 'Cadastro',
-      celula: (l) => (opcoes.falhaSobreNome && l.falha ? createElement('span', null, l.rotulo, createElement('span', { className: 'falha-sob-nome' }, `${l.falha.motivo} ${l.falha.acao}`.trim())) : l.rotulo),
+      celula: (l) => (opcoes.falhaSobreNome && l.falha ? createElement('span', null, l.rotulo, createElement('span', { className: 'falha-sob-nome' }, `${l.falha.motivo} ${l.falha.acao}`.trim(), elementoProximaTentativa(l.proximaTentativa))) : l.rotulo),
     },
     { id: 'situacao', titulo: 'Situação', tipo: 'status', celula: (l) => createElement('span', { className: l.ligada ? 'selo selo-ativo' : 'selo selo-inativo' }, l.ligada ? 'Ligado' : 'Desligado') },
     { id: 'ultimoEnvio', titulo: 'Último envio', tipo: 'data', celula: (l) => l.ultimoEnvio },
     {
       id: 'falha',
       titulo: 'Falha',
-      celula: (l) => (l.falha ? createElement('span', null, l.falha.acao ? `${l.falha.motivo} ` : l.falha.motivo, l.falha.acao ? createElement('span', { className: 'apoio' }, l.falha.acao) : null) : createElement('span', { className: 'apoio' }, '—')),
+      celula: (l) => (l.falha ? createElement('span', null, l.falha.acao ? `${l.falha.motivo} ` : l.falha.motivo, l.falha.acao ? createElement('span', { className: 'apoio' }, l.falha.acao) : null, elementoProximaTentativa(l.proximaTentativa)) : createElement('span', { className: 'apoio' }, '—')),
     },
   ];
 }

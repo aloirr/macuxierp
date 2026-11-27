@@ -98,3 +98,15 @@ describe('BKO: botão Log por cadastro (T-0086, D-4)', () => {
     expect(sem).not.toContain('>Log<');
   });
 });
+
+describe('v0.3.18 A2: próxima tentativa no BKO', () => {
+  const com = (proxima: string | null) =>
+    StatusIntegracaoFdvTenant.parse({ ...status, cadastros: cadastros.map((c) => (c.entidade === 'cliente' ? { ...c, proxima_tentativa_em: proxima } : c)) });
+  const render = (s: StatusIntegracaoFdvTenant) => renderToStaticMarkup(<VistaIntegracaoFdv vista={montarVistaStatus(s, 'America/Manaus')} />);
+  it('mostra a próxima tentativa só quando vier, e nenhum código técnico', () => {
+    expect(render(com('2026-11-27T15:30:00.000Z'))).toContain('Próxima tentativa');
+    const h = render(com(null));
+    expect(h).not.toContain('Próxima tentativa');
+    expect(h).not.toContain('<code>');
+  });
+});
