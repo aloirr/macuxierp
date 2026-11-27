@@ -142,6 +142,13 @@ jobs:
           tags: |
             ghcr.io/${{ needs.conferir.outputs.dono }}/macuxierp-web-prod:${{ needs.conferir.outputs.sha }}
             ghcr.io/${{ needs.conferir.outputs.dono }}/macuxierp-web-prod:${{ needs.conferir.outputs.versao }}
+          # v0.3.27: a chave das server actions do Next vai como secret do BuildKit (nunca build-arg nem env do job;
+          # vazio, o build segue: o Dockerfile usa required=false). O secret MACUXIERP_ACTIONS_KEY é criado pelo
+          # Alexandre. A chave fica no manifesto dentro da imagem: o pacote macuxierp-web-prod no GHCR tem de ser privado.
+          secrets: |
+            next_actions_key=${{ secrets.MACUXIERP_ACTIONS_KEY }}
+          build-args: |
+            MACUXI_BUILD_ID=${{ needs.conferir.outputs.sha }}
           # demo desligada (ADR 0051): sem o cache do BKO da demo; só o cache próprio da produção
           cache-from: type=gha,scope=macuxierp-web-prod
           cache-to: type=gha,scope=macuxierp-web-prod,mode=max
