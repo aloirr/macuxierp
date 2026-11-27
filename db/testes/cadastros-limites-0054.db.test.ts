@@ -18,7 +18,7 @@ import {
   rodarScript,
   verboso,
 } from './apoio.ts';
-import { fixtureEntrada, fixtureModulos, fixturePlataforma, novoTenant } from './fixture.ts';
+import { fixtureEntrada, fixtureEntradaForma, fixtureModulos, fixturePlataforma, novoTenant } from './fixture.ts';
 
 const MIGRACAO = '0054_cadastros_limites_hub.sql';
 const A = novoTenant('limites-0054');
@@ -43,6 +43,7 @@ const ALARGADAS: readonly (readonly [string, string, number])[] = [
     // 0071 (T-0057): as quatro da entrada nascem com 200, como o resto do cadastros
     'entrada_credencial',
     'entrada_cursor',
+    'entrada_forma', // 0074 (T-0057): nasce com 200
     'entrada_lote',
     'entrada_sinal',
     'estoque_movimento',
@@ -103,7 +104,7 @@ UPDATE cadastros.condicao_pagamento SET forma_external_id = repeat('f', 64), for
     );
     // A 0054 e a carga das tabelas oficiais (cest, ncm, municipio... ganham linhas para o teste de cada tabela).
     expect(migrar(banco.conexao, { oficiais: true })).toContain(MIGRACAO);
-    executar(banco.conexao, fixtureEntrada(A));
+    executar(banco.conexao, fixtureEntrada(A) + fixtureEntradaForma(A));
   }, 300_000);
 
   afterAll(() => {

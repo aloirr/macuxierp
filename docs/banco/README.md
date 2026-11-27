@@ -496,3 +496,6 @@ Os comandos do passo sem superusuário (em "Comandos") imitam o DBaaS num Postgr
 
 ## Worker grava o lote da /entrada/v1 nos cadastros (T-0057, migração 0072)
 O lote da entrada roda no `macuxierp_worker` pelo mesmo `gravarLinhas` da carga; sem INSERT e UPDATE nos cadastros a linha caía em 42501. Teste: `db/testes/grants-worker-entrada-0072.db.test.ts`.
+
+## Forma de pagamento da /entrada/v1 (T-0057, migração 0074)
+A `cadastros.entrada_forma` guarda a forma nova, ainda sem condição, para o prazo_pagamento que chega depois não ser recusado (único `(tenant_id, external_id)` do upsert). Teste: `db/testes/entrada-forma-0074.db.test.ts`.
