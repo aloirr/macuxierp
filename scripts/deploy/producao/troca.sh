@@ -2,6 +2,7 @@
 # Troca sem parada da api e do web (v0.3.23, decisão 48 A; ADR 0003, adendo 48 A). Carregado com source pelo implantar.sh,
 # depois do comum.sh (usa o dc() e a REDE_TUNEL) e de um log(). Testado com docker falso em scripts/deploy/troca.test.mjs.
 # O fluxo está no adendo 48 A da ADR 0003. Só mexe em contêiner cujo id veio do `dc ps -q <serviço>` do projeto macuxierp: nunca nome digitado, nunca o FDV.
+# A guarda do túnel (v0.3.26) lê os outros contêineres da rede do túnel (docker inspect), mas nunca mexe neles.
 
 TROCA_DRENO_S="${MACUXIERP_TROCA_DRENO_S:-10}"
 TROCA_ESPERA_S="${MACUXIERP_TROCA_ESPERA_S:-240}"
@@ -56,14 +57,101 @@ sair_do_tunel() { # id [dreno] → sai do túnel e drena (sleep)
   return 0
 }
 
-parar_replica() { # id → para (SIGTERM, até 30 s) e é removido
-  docker stop -t 30 "$1" >/dev/null 2>&1 || true
-  docker rm -f "$1" >/dev/null 2>&1 || true
+parar_replica() { # id → para (SIGTERM, até 30 s) e é removido; 1 = o rm falhou ou o contêiner ainda existe (v0.3.26)
+  local ok=0
+  docker stop -t 30 "$1" >/dev/null 2>&1 || echo "[implantar] aviso: docker stop da réplica $1 falhou; segue com o rm -f" >&2
+  docker rm -f "$1" >/dev/null 2>&1 || { echo "[implantar] docker rm -f da réplica $1 falhou" >&2; ok=1; }
+  if docker inspect -f '{{.Id}}' "$1" >/dev/null 2>&1; then
+    echo "[implantar] a réplica $1 ainda existe depois do stop e do rm: confira com dc ps (ela já saiu do túnel)" >&2
+    ok=1
+  fi
+  return "$ok"
 }
 
 remover_replica() { # id [dreno] → sai do túnel, drena, para e é removido
   sair_do_tunel "$1" "${2:-$TROCA_DRENO_S}"
   parar_replica "$1"
+}
+
+# ---------- guarda do alias no túnel (v0.3.26; ADR 0003, adendo 48 A, "Guarda do alias no túnel") ----------
+# Em 27/11 o login de produção deu "Failed to find Server Action": suspeita de um contêiner fora do projeto macuxierp com o
+# alias macuxierp-web na rede do túnel (compartilhada com o FDV). O DNS do Docker reparte as chamadas entre ele e a réplica
+# certa, e o dc ps -q nunca o enxerga. A guarda só lê (docker network inspect e docker inspect): nunca remove nada sozinha.
+TROCA_ALIASES="macuxierp-api macuxierp-web" # alias na rede do túnel = nome do serviço (compose.yml, networks.tunel.aliases)
+
+mesmo_id() { # id id → 0 = o mesmo contêiner (id curto ou completo)
+  [ -n "$1" ] && [ -n "$2" ] && { [[ "$1" == "$2"* ]] || [[ "$2" == "$1"* ]]; }
+}
+
+conteineres_do_tunel() { # → "id|nome|imagem|projeto|aliases na rede do túnel" de cada contêiner da rede; 1 = rede ilegível
+  local ids
+  ids="$(docker network inspect --format '{{range $id, $c := .Containers}}{{$id}} {{end}}' "$REDE_TUNEL" 2>/dev/null)" || return 1
+  [ -n "${ids// /}" ] || return 0
+  # shellcheck disable=SC2086 # ids da rede, um por palavra
+  docker inspect --format "{{.Id}}|{{.Name}}|{{.Config.Image}}|{{index .Config.Labels \"com.docker.compose.project\"}}|{{with index .NetworkSettings.Networks \"$REDE_TUNEL\"}}{{range .Aliases}}{{.}} {{end}}{{end}}" $ids 2>/dev/null || true
+}
+
+conferir_aliases_tunel() { # → 0 = cada alias do ERP no túnel está só nas réplicas do próprio serviço, uma por serviço no ar
+  local linhas alias proprios n_svc n_ok lid nome img proj als id dele falhou=0
+  if ! linhas="$(conteineres_do_tunel)"; then
+    echo "[implantar] guarda do túnel: não deu para ler a rede $REDE_TUNEL (docker network inspect)" >&2
+    return 1
+  fi
+  for alias in $TROCA_ALIASES; do
+    proprios="$(ids_do_servico "$alias")"
+    n_svc="$(printf '%s' "$proprios" | grep -c . || true)"
+    n_ok=0
+    while IFS='|' read -r lid nome img proj als; do
+      [ -n "$lid" ] || continue
+      nome="${nome#/}"
+      # o DNS do Docker responde pelo alias e também pelo nome do contêiner
+      case " $als " in *" $alias "*) ;; *) [ "$nome" = "$alias" ] || continue ;; esac
+      dele=1
+      for id in $proprios; do mesmo_id "$id" "$lid" && dele=0; done
+      if [ "$dele" -eq 0 ]; then
+        n_ok=$((n_ok + 1))
+        continue
+      fi
+      [ "$proj" = "<no value>" ] && proj=""
+      echo "[implantar] guarda do túnel: o contêiner $nome (imagem ${img:-?}, projeto ${proj:-sem projeto}) responde pelo alias $alias na rede $REDE_TUNEL e não é réplica do serviço $alias deste projeto; o DNS do Docker reparte as chamadas entre os dois" >&2
+      echo "[implantar] remédio (nada foi removido): docker network disconnect $REDE_TUNEL $nome && docker rm -f $nome, com o OK do Alexandre" >&2
+      falhou=1
+    done <<<"$linhas"
+    if [ "$n_svc" -gt 1 ] || [ "$n_ok" -ne "$n_svc" ]; then
+      echo "[implantar] guarda do túnel: $alias tem $n_svc réplica(s) no projeto e $n_ok delas com o alias na rede $REDE_TUNEL (esperado: no máximo 1, e a mesma no túnel)" >&2
+      falhou=1
+    fi
+  done
+  [ "$falhou" -eq 0 ] && log "guarda do túnel: os aliases $TROCA_ALIASES só nas réplicas do projeto, uma por serviço"
+  return "$falhou"
+}
+
+# ---------- réplica a mais no túnel se o script for interrompido no meio da troca (v0.3.26) ----------
+# TROCA_FASE: "nova" do scale 2 até a nova ser confirmada (sai a nova); "velha" daí até a velha ser removida (sai a velha).
+# Sem ERR: o implantar.sh chama a troca dentro de um if (set -e desligado ali); a saída do script passa pelo EXIT.
+TROCA_SVC=""
+TROCA_VELHO=""
+TROCA_FASE=""
+
+troca_socorro() { # chamado pelo trap: tira do túnel a réplica a mais, para não ficarem duas no alias; idempotente
+  local id alvo=""
+  case "$TROCA_FASE" in
+    nova) for id in $(ids_do_servico "$TROCA_SVC"); do [ "$id" = "$TROCA_VELHO" ] || alvo="$alvo $id"; done ;;
+    velha) alvo="$TROCA_VELHO" ;;
+    *) return 0 ;;
+  esac
+  TROCA_FASE=""
+  for id in $alvo; do
+    docker network disconnect "$REDE_TUNEL" "$id" >/dev/null 2>&1 || true
+    echo "[implantar] $TROCA_SVC: troca interrompida; a réplica $id saiu do túnel (sobram duas no projeto: confira com dc ps)" >&2
+  done
+  return 0
+}
+
+troca_armar_trap() { # compõe com o trap do laço (laco_iniciar): o socorro primeiro, depois o laço; o laco_parar desarma os dois
+  trap 'troca_socorro; laco_parar' EXIT
+  trap 'troca_socorro; laco_parar; exit 130' INT
+  trap 'troca_socorro; laco_parar; exit 143' TERM
 }
 
 # ---------- laço de curl pelo domínio durante a troca (v0.3.24; ADR 0003, adendo 48 A, "Laço durante a troca") ----------
@@ -270,15 +358,22 @@ trocar_servico() {
   local svc="$1" extra="${2:-}" velho novo="" id rc=0 inst_velha inst_nova
   velho="$(ids_do_servico "$svc")"
   if [ -z "$velho" ]; then
+    conferir_aliases_tunel || { echo "[implantar] $svc: a guarda do túnel falhou; nada subiu" >&2; return 1; }
     log "$svc: sem réplica no ar; sobe direto"
-    dc up -d --no-deps --wait --wait-timeout "$TROCA_ESPERA_S" "$svc"
+    dc up -d --no-deps --wait --wait-timeout "$TROCA_ESPERA_S" "$svc" || return 1
+    conferir_aliases_tunel
     return
   fi
   if [ "$(printf '%s\n' "$velho" | wc -l)" -ne 1 ]; then
     echo "[implantar] $svc com mais de uma réplica antes da troca (sobra de uma troca interrompida?): confira com dc ps" >&2
     return 1
   fi
+  conferir_aliases_tunel || { echo "[implantar] $svc: a guarda do túnel falhou antes da troca; nada foi trocado" >&2; return 1; }
   laco_iniciar || { laco_parar; echo "[implantar] $svc: o laço de conferência pelo domínio não subiu; nada foi trocado" >&2; return 1; }
+  TROCA_SVC="$svc"
+  TROCA_VELHO="$velho"
+  TROCA_FASE=nova
+  troca_armar_trap
   log "$svc: réplica nova ao lado da velha"
   dc up -d --no-deps --no-recreate --scale "$svc=2" "$svc" >/dev/null || true
   for id in $(ids_do_servico "$svc"); do
@@ -286,11 +381,14 @@ trocar_servico() {
   done
   if [ -z "$novo" ] || ! saudavel "$novo" || { [ -n "$extra" ] && ! "$extra" "$novo"; }; then
     echo "[implantar] $svc: a réplica nova não ficou saudável; ela sai e a velha continua no ar" >&2
-    [ -n "$novo" ] && remover_replica "$novo" 0
+    [ -n "$novo" ] && { remover_replica "$novo" 0 || true; }
+    TROCA_FASE=""
     dc up -d --no-deps --no-recreate --scale "$svc=1" "$svc" >/dev/null 2>&1 || true
     laco_encerrar || true
+    conferir_aliases_tunel || true
     return 1
   fi
+  TROCA_FASE=velha
   inst_velha="$(instancia_do_conteiner "$svc" "$velho")"
   inst_nova="$(instancia_do_conteiner "$svc" "$novo")"
   if [ -n "$inst_velha" ]; then
@@ -311,10 +409,15 @@ trocar_servico() {
     echo "[implantar] $svc: a conferência pelo domínio viu a réplica velha ou resposta sem o cabeçalho depois do disconnect: volta atrás" >&2
     rc=1
   fi
-  parar_replica "$velho"
+  parar_replica "$velho" || rc=1
+  TROCA_FASE=""
   dc up -d --no-deps --no-recreate --scale "$svc=1" "$svc" >/dev/null || rc=1
   if ! laco_encerrar; then
     echo "[implantar] $svc: o laço pelo domínio falhou durante a troca (000 seguido ou código diferente de 200 e 000): volta atrás" >&2
+    rc=1
+  fi
+  if ! conferir_aliases_tunel; then
+    echo "[implantar] $svc: a guarda do túnel falhou depois da troca: volta atrás" >&2
     rc=1
   fi
   return "$rc"
