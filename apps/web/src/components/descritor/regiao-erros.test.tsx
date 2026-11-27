@@ -13,15 +13,16 @@ describe('RegiaoErros única por tela (MC-0015)', () => {
   it('formulário sem itens: uma região, sem role="alert" nos campos', () => {
     tela.v = { tipo: 'formulario', campos: [{ nome: 'a', rotulo: 'A', tipo: 'texto' }], enviar: 'Salvar', voltar: '/x', api: '/x', depois: () => '/x', validar: () => ({}) } as unknown as TelaFormulario;
     const h = renderToStaticMarkup(<FormularioGenerico rota="/x" opcoes={{}} produtos={[]} />);
-    expect(h.match(/aria-live="polite"/g)).toHaveLength(1);
-    expect(h).not.toContain('role="alert"');
+    // a região do ResultadoAcao (36 A) é outra: vive sempre vazia, só anuncia o retorno do botão
+    expect(h.match(/<p role="status" aria-live="polite"/g)).toHaveLength(1);
+    expect(h).not.toMatch(/role="alert"[^>]*>[^<]/);
   });
   it('com itens: só a região do FormularioItens', async () => {
     const { NOVO_PEDIDO } = await vi.importActual<typeof import('@/lib/telas/pedido')>('@/lib/telas/pedido');
     tela.v = NOVO_PEDIDO;
     const h = renderToStaticMarkup(<FormularioGenerico rota="/pedido/pedidos/novo" opcoes={{}} produtos={[]} />);
     expect(h.match(/aria-live="polite"/g)?.length).toBeGreaterThanOrEqual(1);
-    expect(h.match(/role="status" aria-live="polite" style/g)).toHaveLength(1);
+    expect(h.match(/<p role="status" aria-live="polite" style/g)).toHaveLength(1);
   });
   it('pedido com erro só no cabeçalho: a região do FormularioItens acende', async () => {
     const { NOVO_PEDIDO } = await vi.importActual<typeof import('@/lib/telas/pedido')>('@/lib/telas/pedido');
@@ -35,20 +36,30 @@ describe('RegiaoErros única por tela (MC-0015)', () => {
     const { NOVO_PEDIDO } = await vi.importActual<typeof import('@/lib/telas/pedido')>('@/lib/telas/pedido');
     tela.v = NOVO_PEDIDO;
     const h = renderToStaticMarkup(<FormularioGenerico rota="/pedido/pedidos/novo" opcoes={{}} produtos={[]} errosIniciais={{ 'itens.0.quantidade': 'Quantidade inválida.' }} />);
-    expect(h.match(/role="status" aria-live="polite"/g)).toHaveLength(1);
+    expect(h.match(/<p role="status" aria-live="polite"/g)).toHaveLength(1);
     expect(h.match(/<p role="status" aria-live="polite"[^>]*>([^<]*)<\/p>/)?.[1]).toContain('erro');
   });
   it('erro no cabeçalho e em itens: continua uma região só', async () => {
     const { NOVO_PEDIDO } = await vi.importActual<typeof import('@/lib/telas/pedido')>('@/lib/telas/pedido');
     tela.v = NOVO_PEDIDO;
     const h = renderToStaticMarkup(<FormularioGenerico rota="/pedido/pedidos/novo" opcoes={{}} produtos={[]} errosIniciais={{ cliente_id: 'Informe o cliente.', 'itens.0.quantidade': 'Quantidade inválida.' }} />);
-    expect(h.match(/role="status" aria-live="polite"/g)).toHaveLength(1);
+    expect(h.match(/<p role="status" aria-live="polite"/g)).toHaveLength(1);
   });
   it('tela sem itens com erro: a região é a do Formulario, uma só', () => {
     tela.v = { tipo: 'formulario', campos: [{ nome: 'a', rotulo: 'A', tipo: 'texto' }], enviar: 'Salvar', voltar: '/x', api: '/x', depois: () => '/x', validar: () => ({}) } as unknown as TelaFormulario;
     const h = renderToStaticMarkup(<FormularioGenerico rota="/x" opcoes={{}} produtos={[]} errosIniciais={{ a: 'Inválido.' }} />);
-    expect(h.match(/role="status" aria-live="polite"/g)).toHaveLength(1);
+    expect(h.match(/<p role="status" aria-live="polite"/g)).toHaveLength(1);
     expect(h.match(/<p role="status" aria-live="polite"[^>]*>([^<]*)<\/p>/)?.[1]).toContain('erro');
+  });
+  it('36 A: o retorno do envio fica logo depois da fila do botão (região do ResultadoAcao), não no topo', () => {
+    tela.v = { tipo: 'formulario', campos: [{ nome: 'a', rotulo: 'A', tipo: 'texto' }], enviar: 'Salvar', voltar: '/x', api: '/x', depois: () => '/x', validar: () => ({}) } as unknown as TelaFormulario;
+    const h = renderToStaticMarkup(<FormularioGenerico rota="/x" opcoes={{}} produtos={[]} />);
+    const botao = h.indexOf('>Salvar</button>');
+    expect(botao).toBeGreaterThan(0);
+    expect(h.indexOf('data-resultado-acao', botao)).toBeGreaterThan(botao);
+    expect(h.indexOf('data-resultado-acao', botao)).toBeLessThan(h.indexOf('</form>'));
+    expect(h.slice(0, botao)).not.toContain('data-resultado-acao');
+    expect(h).not.toContain('class="erro"');
   });
   it('textarea com erro ganha aria-invalid e aria-describedby, como o input', () => {
     tela.v = { tipo: 'formulario', campos: [{ nome: 'obs', rotulo: 'Obs', tipo: 'area' }], enviar: 'Salvar', voltar: '/x', api: '/x', depois: () => '/x', validar: () => ({}) } as unknown as TelaFormulario;

@@ -5,10 +5,13 @@
 import { ACOES_FDV_SO_DO_PORTAL, type AcaoSugeridaFdv, type MotivoFalhaEnvioFdv } from '@macuxierp/platform-sdk';
 import { ROTULOS_FDV } from './config/operacao-fdv';
 
+/** Faixa da aba Integração do /config sem licença: mesmo texto da API (`MSG_SEM_LICENCA`, #758). O motivo da linha (`licenca_erp`) só diz o fato; a ação fica aqui. */
+export const TEXTO_SEM_LICENCA_FDV = 'Integração FDV sem licença nesta empresa. Ligue o módulo na aba Empresa.';
+
 export const TEXTO_MOTIVO_FDV: Readonly<Record<MotivoFalhaEnvioFdv, string>> = {
   credencial: 'O FDV recusou a chave do conector.',
   licenca_fdv: 'A licença do FDV não permite o envio.',
-  licenca_erp: 'A licença da Integração FDV está vencida ou desligada.',
+  licenca_erp: 'Sem licença da Integração FDV.',
   versao: 'O FDV não aceita mais esta versão do conector.',
   envelope: 'O FDV recusou o formato do envio.',
   idempotencia: 'O FDV recusou um envio repetido.',

@@ -32,13 +32,24 @@ describe('bloco Integração via API (T-0057 A1)', () => {
   it('com chave: ficha com prefixo, código somente leitura, Trocar e Revogar; nunca a chave inteira', () => {
     const h = bloco(leitura());
     expect(h).toContain('AbCdEfGh…');
-    expect(h).toContain('Chave criada em');
+    expect(h).toContain('<dt>Chave</dt>');
+    expect(h).toContain('<dt>Criada em</dt>');
+    expect(h).not.toContain('Prefixo da chave');
+    expect(h).not.toContain('Chave criada em');
     expect(h).toContain('ainda sem sinal');
     expect(h).toContain('Não muda com a troca da chave.');
     expect(h).toMatch(/readOnly=""|readonly=""/i);
     expect(h).toContain('>Trocar chave</button>');
     expect(h).toContain('>Revogar chave</button>');
     expect(h).not.toContain('role="dialog"');
+  });
+  it('36 A: o resultado fica logo depois da fila de botões e não sobra mensagem no topo', () => {
+    const h = bloco(leitura());
+    const fila = h.indexOf('>Revogar chave</button></div>');
+    expect(fila).toBeGreaterThan(0);
+    expect(h.indexOf('data-resultado-acao', fila)).toBe(h.indexOf('</div><div data-resultado-acao', fila) + '</div><div '.length);
+    expect(h.indexOf('<h2 id="h-entrada-api">')).toBeLessThan(h.indexOf('<dl'));
+    expect(h).not.toMatch(/class="(faixa-aviso|erro)"/);
   });
   it('sem a coluna via Conector, sem tabela de donos e sem a trava de 30%', () => {
     const h = bloco(leitura());

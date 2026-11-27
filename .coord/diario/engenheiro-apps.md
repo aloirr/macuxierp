@@ -57,3 +57,4 @@
 2026-11-26 — T-0110 — Log: seção Recebidos do FDV e saída da seção antiga de clientes recebidos
 2026-11-26 — T-0111 — logos do e-mail servidos como estáticos em /email/ (public/email) com teste de existência, assinatura PNG e ausência de middleware
 2026-11-26 — T-0057 A1 — bloco 'Integração via API' no /config (chave uma vez, trocar/revogar, lotes recebidos), lib pura e testes
+2026-11-27 — v0.3.18 — ResultadoAcao logo abaixo do botão em todas as telas do apps/web (36 A): /config, login, esqueci/troca de senha, formulário e ações do BKO; pendências do #758 (licença)
