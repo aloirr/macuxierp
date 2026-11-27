@@ -46,10 +46,8 @@
 #   só troca com --substituir; a que já tem A1 de teste fora do alerta de vencimento não ganha outro. Roda no contêiner
 #   `api` já de pé (docker compose exec; a chave do A1 só existe lá), pela entrada dist/a1-teste.mjs da imagem. Nenhuma
 #   senha, PFX ou CNPJ aparece: a saída leva só ids, estados e datas.
-# saude (D3, v0.3.18): só leitura, sem --operador nem --confirmar. Por empresa ativa (código UF + 4 dígitos, sem nome),
-#   numa transação READ ONLY: o último sinal aceito pelo Hub e o HTTP, os cadastros pausados (entidade:motivo), os lotes
-#   de envio aceitos e recusados em 24 h e as auditorias da completar_prazos_medios em 24 h. Roda o saude.mjs. É o que o
-#   producao-publicar imprime na issue depois do deploy.
+# saude (D3, v0.3.18): só leitura, sem --operador nem --confirmar; contagens por empresa ativa, sem nome (o que mostra:
+#   cabeçalho do saude.mjs). É o que o producao-publicar imprime na issue depois do deploy.
 #
 # Senha provisória (criar-empresa, criar-superadmin e superadmin --redefinir-senha): 16 caracteres do alfabeto da API,
 # com letra, número e caractere especial por construção (regra única de senha, T-0052), gerada AQUI a partir do
@@ -359,7 +357,7 @@ saude() {
   preparar saude.mjs
   ENVS=()
   conteiner saude.mjs
-  [ "$STATUS" -eq 0 ] || erro 1 "saude falhou (código $STATUS; veja a linha [saude] acima). Nada muda: a leitura é READ ONLY"
+  [ "$STATUS" -eq 0 ] || erro 1 "saude falhou (código $STATUS; veja a linha [saude] acima)"
 }
 
 ENVS=() SAIDA='' STATUS=0 ESTADO='' PASTA=''

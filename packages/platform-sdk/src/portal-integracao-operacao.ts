@@ -206,11 +206,10 @@ export const LogCadastroFdvTenant = LogCadastroFdvBase.extend({
   total_recebidos: Contagem.default(0),
 }).superRefine((l, ctx) => {
   if (l.erros.length > l.total_erros) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['erros'], message: 'Os itens não passam do total' });
-  const recebidos = l.recebidos;
-  if (recebidos.length > l.total_recebidos) {
+  if (l.recebidos.length > l.total_recebidos) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['recebidos'], message: 'Os recebidos não passam do total' });
   }
-  if (l.entidade !== 'cliente' && (recebidos.length > 0 || l.total_recebidos > 0)) {
+  if (l.entidade !== 'cliente' && (l.recebidos.length > 0 || l.total_recebidos > 0)) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['recebidos'], message: 'Recebidos só no Log de cliente' });
   }
 });
@@ -224,6 +223,8 @@ export const CAMINHOS_INTEGRACAO_FDV_TENANT = Object.freeze({
   logCsv: '/integracao-fdv/entidades/:entidade/log.csv',
   /** T-0059: a rota dos clientes recebidos do FDV (`PaginaClientesRecebidosFdv` de `cliente-fdv.ts`); a tela saiu na T-0110 e a rota segue. */
   clientesRecebidos: '/integracao-fdv/clientes-recebidos',
+  /** O CSV completo dos recebidos (decisão 21 A; RD-2346: a tela monta o link por aqui). */
+  clientesRecebidosCsv: '/integracao-fdv/clientes-recebidos/exportar',
 });
 
 // ---- Zerar por cadastro na aba Integração (R-20261124-170915-alexandre) ----

@@ -1,6 +1,7 @@
 /** Peças puras do portal `/config` na API (T-0050, ADR 0012 §4 e §6; cargas da T-0058): SQLSTATE → HTTP e limite de login por IP. */
 import { CODIGOS_ESTADO_MUDOU_ZERAR, ErroApi, MENSAGEM_SEM_CREDENCIAL_FDV, MENSAGENS_CARGA_PORTAL } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
+import { MSG_SEM_LICENCA } from '@macuxierp/integracao-fdv/contracts';
 import { erroDaPlataforma } from './erros';
 import { chaveEmpresaEmail, EMPRESA_PLATAFORMA, LimitePorChave, novosLimitesEsqueci } from './limite-ip';
 
@@ -44,16 +45,22 @@ describe('erroDaPlataforma (ADR 0012 §4)', () => {
 
   it.each([
     ['empresa_inativa', 'A empresa precisa estar ativa.'],
-    ['modulo_desligado', 'Integração FDV sem licença nesta empresa. Ligue o módulo na aba Empresa.'],
+    ['modulo_desligado', MSG_SEM_LICENCA],
   ])('MXI04 (0039) com DETAIL %s vira 422 RN-CORE-02 com o motivo em detalhes.codigo e o texto do motivo (RD-2324)', (detail, message) => {
     const e = erroDaPlataforma(Object.assign(pg('MXI04'), { detail }));
     expect(e).toBeInstanceOf(ErroApi);
     expect(e).toMatchObject({ status: 422, codigo: 'RN-CORE-02', message, detalhes: { codigo: detail } });
   });
 
+  it('RD-2340: o texto do MXI04 sem licença é o do catálogo da integração (MSG_SEM_LICENCA), sem cópia na API', async () => {
+    const { readFileSync } = await import('node:fs');
+    expect(erroDaPlataforma(Object.assign(pg('MXI04'), { detail: 'modulo_desligado' }))).toMatchObject({ message: MSG_SEM_LICENCA });
+    expect(readFileSync(new URL('./erros.ts', import.meta.url), 'utf8')).not.toContain('Integração FDV sem licença');
+  });
+
   it('MXI04 com DETAIL fora da lista não ecoa o texto do banco', () => {
     const e = erroDaPlataforma(Object.assign(pg('MXI04'), { detail: 'cliente Fulano de Tal' })) as ErroApi;
-    expect(e).toMatchObject({ status: 422, codigo: 'RN-CORE-02', message: 'Integração FDV sem licença nesta empresa. Ligue o módulo na aba Empresa.' });
+    expect(e).toMatchObject({ status: 422, codigo: 'RN-CORE-02', message: MSG_SEM_LICENCA });
     expect(e.detalhes).toBeUndefined();
     expect(JSON.stringify({ m: e.message, d: e.detalhes })).not.toContain('Fulano');
   });

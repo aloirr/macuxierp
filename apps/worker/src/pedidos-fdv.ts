@@ -25,7 +25,7 @@
 import { criarConsultaParaPedido, criarCriadorClienteFdv, criarResolvedorChaveErp, repositoriosSql } from '@macuxierp/cadastros/api';
 import { criarConsultaVendedorFdv, type Alertar, type DepsAgendasClientesFdv, type DepsAgendasPedidosFdv, type RecebedorPedidoFdv, type ResolvedorChaveErp } from '@macuxierp/integracao-fdv/api';
 import { criarRecebedorFdv, dependenciasDeProducao, type LogPedido } from '@macuxierp/pedido/api';
-import { chaveLigadoDesligado, type DestinoAuditoria, type EstadoChaveFdv, type FonteLicencas, type Outbox, type Relogio } from '@macuxierp/platform-sdk';
+import { chaveLigadoDesligado, type DestinoAuditoria, type EstadoChaveFdv, type FonteLicencas, type Outbox, type Relogio, type LogAgenda } from '@macuxierp/platform-sdk';
 import { AuditoriaPg, LicencasPg, OutboxPg } from '@macuxierp/platform-sdk/pg';
 
 /**
@@ -69,10 +69,8 @@ export function montarRecebedorPedidoFdv(d: DependenciasRecebedorWorker): Recebe
   });
 }
 
-/** Log mínimo do alerta (o pino satisfaz). */
-export interface LogAlerta {
-  warn(dados: Record<string, unknown>, mensagem: string): void;
-}
+/** A parte do log que o alerta usa: o `LogAgenda` do SDK (fonte única do formato de log do worker, achado do corretor na v0.3.18). */
+export type LogAlerta = Pick<LogAgenda, 'warn'>;
 
 const CHAVE_SEGURA = /^[a-z][a-z0-9_]{0,39}$/;
 /** Código, uuid ou número: nada de espaço, `@` ou texto livre (nome, documento, motivo). */
