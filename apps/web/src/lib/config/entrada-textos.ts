@@ -11,7 +11,11 @@ export const ERRO_CODIGO_VAZIO = 'Informe o código do conector.';
 export const ERRO_CODIGO_REGRA = 'Use só letras, números, ponto, hífen e sublinhado, até 100 caracteres.';
 export const ERRO_CODIGO_EM_USO = 'Este código já está em uso. Escolha outro.';
 
-export const SEM_CHAVE = 'Nenhuma chave gerada. Informe o código e gere a chave.';
+/** Rótulos das ações da chave: uma fonte só para os botões e os diálogos. */
+export const ROTULOS_ENTRADA = { gerar: 'Gerar chave', trocar: 'Trocar chave', revogar: 'Revogar chave' } as const;
+export const RETORNO_REVOGADA = 'Chave revogada.';
+
+export const SEM_CHAVE ='Nenhuma chave gerada. Informe o código e gere a chave.';
 export const SEM_SINAL = 'ainda sem sinal';
 
 export const ERRO_PEPPER_AUSENTE = 'O servidor ainda não está preparado para gerar chaves. Avise o responsável pelo servidor.';

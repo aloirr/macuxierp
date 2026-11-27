@@ -2,7 +2,7 @@ import { ConectorIdEntrada, type LoteEntradaResumo, type PortalEntradaLeitura } 
 import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
 import { ROTULO_ENTIDADE } from '@macuxierp/integracao-fdv/web';
 import type { Resultado } from './executar';
-import { ERRO_CODIGO_REGRA, ERRO_CODIGO_VAZIO, ERRO_GERAR_INCERTO } from './entrada-textos';
+import { ERRO_CODIGO_REGRA, ERRO_CODIGO_VAZIO, ERRO_GERAR_INCERTO, ROTULOS_ENTRADA, SEM_SINAL } from './entrada-textos';
 import type { Tom } from './operacao-fdv';
 
 /**
@@ -10,7 +10,7 @@ import type { Tom } from './operacao-fdv';
  * chave. A chave só existe no estado do diálogo (`EstadoChave`): sem URL, armazenamento nem log.
  */
 
-export type ResultadoCodigo = { ok: true; valor: string } | { ok: false; erro: string };
+type ResultadoCodigo = { ok: true; valor: string } | { ok: false; erro: string };
 
 /** Valida o código do conector com o mesmo schema do SDK (`ConectorIdEntrada`) e a mensagem fixa do desenho. */
 export function validarConectorId(texto: string): ResultadoCodigo {
@@ -24,7 +24,7 @@ const FUSO_MANAUS = 'America/Manaus';
 /** Data e hora no fuso do tenant; "(Manaus)" só quando o fuso é Manaus (README A). */
 export const dataHoraTenant = (iso: string, fuso: string): string => `${formatarDataHora(iso, fuso)}${fuso === FUSO_MANAUS ? ' (Manaus)' : ''}`;
 
-export interface FichaChave {
+interface FichaChave {
   conectorId: string;
   /** 8 caracteres e "…" (nunca a chave inteira). */
   prefixo: string;
@@ -32,7 +32,7 @@ export interface FichaChave {
   ultimoSinal: string;
   criadaEm: string;
 }
-export interface VistaEntrada {
+interface VistaEntrada {
   /** A credencial não revogada mais recente; `null` quando não há chave. */
   vigente: FichaChave | null;
   /** Código para o campo: o da chave vigente ou, sem ela, o da última credencial (revogada). */
@@ -53,7 +53,7 @@ export function vistaEntrada(l: PortalEntradaLeitura | null, fuso: string): Vist
       conectorId: c.conector_id,
       prefixo: `${c.prefixo}…`,
       versao: sinal?.versao_conector ?? '—',
-      ultimoSinal: sinal ? dataHoraTenant(sinal.em, fuso) : 'ainda sem sinal',
+      ultimoSinal: sinal ? dataHoraTenant(sinal.em, fuso) : SEM_SINAL,
       criadaEm: dataHoraTenant(c.criada_em, fuso),
     },
     codigoSugerido: (c ?? ultima)?.conector_id ?? '',
@@ -62,9 +62,9 @@ export function vistaEntrada(l: PortalEntradaLeitura | null, fuso: string): Vist
 }
 
 /** "Gerar chave" sem chave (sem confirmação) e "Trocar chave" com chave (com confirmação). Depois de falha incerta, volta a "Gerar chave". */
-export function botaoDaChave(temChave: boolean, aposFalhaIncerta: boolean): { rotulo: 'Gerar chave' | 'Trocar chave'; pedeConfirmacao: boolean } {
+export function botaoDaChave(temChave: boolean, aposFalhaIncerta: boolean): { rotulo: string; pedeConfirmacao: boolean } {
   const trocar = temChave && !aposFalhaIncerta;
-  return { rotulo: trocar ? 'Trocar chave' : 'Gerar chave', pedeConfirmacao: trocar };
+  return { rotulo: trocar ? ROTULOS_ENTRADA.trocar : ROTULOS_ENTRADA.gerar, pedeConfirmacao: trocar };
 }
 
 /** A geração não é idempotente: só a falha de rede (texto incerto) deixa dúvida sobre qual chave vale. */

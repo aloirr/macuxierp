@@ -3,7 +3,7 @@ import type { PortalEntradaLeitura } from '@macuxierp/platform-sdk';
 import { Chip, Dialogo, DialogoMotivo, TabelaDensa, type ColunaTabela } from '@macuxierp/ui';
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useReducer, useRef, useState, useTransition } from 'react';
-import { botaoDaChave, ehGeracaoIncerta, estadoDaChave, reduzirChave, validarConectorId, vistaEntrada, type EstadoChave, type LinhaLote } from '@/lib/config/entrada';
+import { botaoDaChave, ehGeracaoIncerta, estadoDaChave, reduzirChave, validarConectorId, vistaEntrada, type AcaoChave, type EstadoChave, type LinhaLote } from '@/lib/config/entrada';
 import * as T from '@/lib/config/entrada-textos';
 import { gerarChaveEntradaAcao, revogarChaveEntradaAcao } from '../acoes-entrada';
 
@@ -53,7 +53,7 @@ export function BlocoEntradaApi({ empresaId, dados, fuso }: { empresaId: string;
     setMensagem(null);
     iniciar(async () => {
       const r = await revogarChaveEntradaAcao(empresaId, v.vigente?.conectorId ?? '');
-      setMensagem(r.ok ? { ok: true, texto: 'Chave revogada.' } : { ok: false, texto: r.erro });
+      setMensagem(r.ok ? { ok: true, texto: T.RETORNO_REVOGADA } : { ok: false, texto: r.erro });
       if (r.ok) router.refresh();
     });
   };
@@ -73,7 +73,7 @@ export function BlocoEntradaApi({ empresaId, dados, fuso }: { empresaId: string;
         ) : (
           <p className="apoio">{T.SEM_CHAVE}</p>
         )}
-        <form aria-label="Chave da integração via API" onSubmit={(ev) => { ev.preventDefault(); if (botao.pedeConfirmacao) setPedirTroca(true); else gerar(); }}>
+        <form onSubmit={(ev) => { ev.preventDefault(); if (botao.pedeConfirmacao) setPedirTroca(true); else gerar(); }}>
           <label className="campo">
             <span>Código do conector</span>
             <input
@@ -92,7 +92,7 @@ export function BlocoEntradaApi({ empresaId, dados, fuso }: { empresaId: string;
           {erroCodigo && <p id={`${idCodigo}-erro`} className="erro-campo" role="alert">{erroCodigo}</p>}
           <div className="barra-acoes">
             <button type="submit" className="mx-botao" disabled={pendente}>{botao.rotulo}</button>
-            {v.vigente && <button type="button" className="mx-botao-secundario" disabled={pendente} onClick={() => setPedirRevogar(true)}>Revogar chave</button>}
+            {v.vigente && <button type="button" className="mx-botao-secundario" disabled={pendente} onClick={() => setPedirRevogar(true)}>{T.ROTULOS_ENTRADA.revogar}</button>}
           </div>
         </form>
       </section>
@@ -102,10 +102,10 @@ export function BlocoEntradaApi({ empresaId, dados, fuso }: { empresaId: string;
       </section>
       {chave.chave && <DialogoChave estado={chave} aoAcionar={despachar} />}
       {pedirTroca && (
-        <DialogoMotivo titulo={T.TITULO_TROCAR} aviso={T.AVISO_TROCAR} semTexto destrutivo rotuloConfirmar="Trocar chave" rotuloFechar="Cancelar" aoConfirmar={gerar} aoCancelar={() => setPedirTroca(false)} />
+        <DialogoMotivo titulo={T.TITULO_TROCAR} aviso={T.AVISO_TROCAR} semTexto destrutivo rotuloConfirmar={T.ROTULOS_ENTRADA.trocar} aoConfirmar={gerar} aoCancelar={() => setPedirTroca(false)} />
       )}
       {pedirRevogar && (
-        <DialogoMotivo titulo={T.TITULO_REVOGAR} aviso={T.AVISO_REVOGAR} semTexto destrutivo rotuloConfirmar="Revogar chave" rotuloFechar="Cancelar" aoConfirmar={revogar} aoCancelar={() => setPedirRevogar(false)} />
+        <DialogoMotivo titulo={T.TITULO_REVOGAR} aviso={T.AVISO_REVOGAR} semTexto destrutivo rotuloConfirmar={T.ROTULOS_ENTRADA.revogar} aoConfirmar={revogar} aoCancelar={() => setPedirRevogar(false)} />
       )}
     </>
   );
@@ -122,7 +122,7 @@ export function ListaLotes({ lotes }: { lotes: LinhaLote[] }) {
   ];
   return (
     <div className="tabela-rolavel com-sinal-rolagem legenda-so-leitor">
-      <TabelaDensa colunas={colunas} linhas={lotes} chaveLinha={(l) => l.id} textoVazio={T.SEM_LOTES} legenda="Lotes recebidos do cliente pela integração via API" />
+      <TabelaDensa colunas={colunas} linhas={lotes} chaveLinha={(l) => l.id} textoVazio={T.SEM_LOTES} legenda={T.TITULO_LOTES_ENTRADA} />
     </div>
   );
 }
@@ -131,7 +131,7 @@ export function ListaLotes({ lotes }: { lotes: LinhaLote[] }) {
  * Chave mostrada uma vez (README B). Foco inicial no Copiar; Esc e fundo chamam o mesmo `aoFechar`, que, sem Copiar, abre a
  * confirmação "Fechar sem copiar a chave?" (WCAG 2.1.2: Esc nunca fica preso, mas a chave não se perde sem aviso).
  */
-export function DialogoChave({ estado, aoAcionar }: { estado: EstadoChave; aoAcionar: (a: Parameters<typeof reduzirChave>[1]) => void }) {
+export function DialogoChave({ estado, aoAcionar }: { estado: EstadoChave; aoAcionar: (a: AcaoChave) => void }) {
   const copiar = useRef<HTMLButtonElement>(null);
   const confirmando = estado.confirmandoFechar;
   useEffect(() => {
