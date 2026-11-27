@@ -8,7 +8,6 @@ import {
   CADASTRO_ZERAR_POR_ENTIDADE_FDV, plural,
   type EntidadeEnvioFdv, type InativacaoZerarFdv, type LogCadastroFdvPlataforma, type MonitorConectorFdv, type SituacaoConectorFdv, type TomEnvioFdv,
 } from '@macuxierp/platform-sdk';
-import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
 import { ERRO_CAMPOS, FALHA } from '../textos';
 
 /** Retorno de falha sem texto da API: formulário pede para conferir os campos; as demais ações, para tentar de novo. */
@@ -24,27 +23,8 @@ const SITUACAO_CONECTOR: Readonly<Record<SituacaoConectorFdv, { texto: string; t
   desativado: { texto: 'Desativado', tom: 'neutro' },
 };
 
-export interface VistaMonitor {
-  identificador: string;
-  situacao: { texto: string; tom: Tom };
-  versao: string;
-  ultimoSinal: string;
-  /** "2 lotes · 340 linhas". */
-  fila: string;
-  /** Código do Hub da última recusa do sinal (A2, v0.3.18); nulo sem código (a tela não mostra a linha). */
-  codigo: string | null;
-}
-
-export function vistaMonitor(m: MonitorConectorFdv, fuso: string, ultimoCodigo?: string | null): VistaMonitor {
-  return {
-    identificador: m.identificador ?? '—',
-    situacao: SITUACAO_CONECTOR[m.situacao],
-    versao: m.versao ?? '—',
-    ultimoSinal: m.ultimo_sinal_em ? formatarDataHora(m.ultimo_sinal_em, fuso) : '—',
-    fila: `${plural(m.fila.lotes, 'lote', 'lotes')} · ${plural(m.fila.linhas, 'linha', 'linhas')}`,
-    codigo: ultimoCodigo ?? null,
-  };
-}
+/** Situação do conector com texto e tom (o Monitor vira a Situação da ligação do FDV, v0.3.24). */
+export const situacaoDoConector = (s: SituacaoConectorFdv): { texto: string; tom: Tom } => SITUACAO_CONECTOR[s];
 
 /** "Atualizado às 14:39" (hh:mm no fuso da empresa), a partir do `lido_em` da API. */
 export function textoAtualizado(lidoEm: string, fuso: string): string {
@@ -79,7 +59,7 @@ export const ROTULOS_FDV = { salvarChave: 'Salvar chave', trocarChave: 'Trocar c
 
 /** Retornos das ações da aba Integração (36 A, RD-2315..2337): curtos, sem repetir o rótulo do botão. */
 export const RETORNOS_FDV = {
-  testeIniciado: 'Teste iniciado. Veja "Último sinal" no Monitor.',
+  testeIniciado: 'Teste iniciado.', // RD-1110: a Situação da ligação já mostra o resultado
   chaveSalva: 'Chave salva.',
   envioLiberado: 'Envio liberado.',
   naoEstavaParado: 'Este cadastro não estava parado.',

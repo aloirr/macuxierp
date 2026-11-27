@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Alerta de saúde da produção do Macuxi ERP (T-0024, ADR 0003; molde do alerta do FDV). Lê o /v1/saude da API do ERP pelo
-# loopback da VM (127.0.0.1:8200; a 8100 é do FDV) e avisa quando o estado MUDA.
+# Alerta de saúde da produção do Macuxi ERP (T-0024, ADR 0003; molde do alerta do FDV). Lê o /v1/saude da API do ERP de
+# dentro do contêiner da api (docker exec; sem porta no host desde a v0.3.23, adendo 48 A) e avisa quando o estado MUDA.
 #
 # A /v1/saude do ERP devolve {status, versao, banco} (apps/api/src/app.ts):
 #   - 200 com "banco":"ok"            → estado "ok";
@@ -15,12 +15,24 @@
 # Teste manual: /opt/macuxierp/alerta-saude.sh --mostrar   (imprime o estado e o corpo, sem avisar)
 set -u
 
-URL="${MACUXIERP_SAUDE_URL:-http://127.0.0.1:8200/v1/saude}"
+URL="${MACUXIERP_SAUDE_URL:-}"
 ESTADO_ARQ="${MACUXIERP_ALERTA_ESTADO:-/opt/macuxierp/.alerta.estado}"
 ENV_ARQ="${MACUXIERP_ALERTA_ENV:-/opt/macuxierp/alerta.env}"
 
-# sem -f: o 503 do banco fora também traz o corpo
-resposta="$(curl -sS -m 10 -w '\n%{http_code}' "$URL" 2>/dev/null)"
+# Cópia do saude_api do troca.sh (este script roda sozinho na VM): as duas mudam juntas.
+saude_de_dentro() { # corpo + "\n<código>" do /v1/saude, pela 1ª réplica da api do projeto macuxierp (nunca o FDV)
+  local id
+  id="$(docker ps -q --filter label=com.docker.compose.project=macuxierp --filter label=com.docker.compose.service=macuxierp-api 2>/dev/null | head -n 1)"
+  [ -n "$id" ] || return 0
+  timeout 15 docker exec "$id" node -e "fetch('http://127.0.0.1:8100/v1/saude').then(async(r)=>process.stdout.write((await r.text())+'\\n'+r.status),()=>process.stdout.write('\\n000'))" 2>/dev/null
+}
+# sem -f: o 503 do banco fora também traz o corpo. MACUXIERP_SAUDE_URL (testes, manutenção) troca o docker exec por um curl.
+if [ -n "$URL" ]; then
+  resposta="$(curl -sS -m 10 -w '\n%{http_code}' "$URL" 2>/dev/null)"
+else
+  URL="o contêiner macuxierp-api (docker exec)"
+  resposta="$(saude_de_dentro)"
+fi
 codigo="$(printf '%s' "$resposta" | tail -n 1)"
 corpo="$(printf '%s' "$resposta" | sed '$d')"
 if [ -z "$corpo" ] || [ "$codigo" = 000 ]; then

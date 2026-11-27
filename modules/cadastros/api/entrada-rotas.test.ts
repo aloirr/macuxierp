@@ -3,7 +3,7 @@
  * conector, a licença do módulo e a transação do tenant são do plugin da apps/api (entrada.test.ts); aqui vale o que é do módulo.
  */
 import {
-  CABECALHO_IDEMPOTENCIA_ENTRADA, CAMINHOS_ENTRADA, ErroApi, TRABALHO_ENTRADA_LOTE, type ContextoEntrada, type PedidoTrabalho, type RotaEntrada,
+  CABECALHO_IDEMPOTENCIA_ENTRADA, CAMINHOS_ENTRADA, ErroApi, PREFIXO_ENTRADA, TRABALHO_ENTRADA_LOTE, type ContextoEntrada, type PedidoTrabalho, type RotaEntrada,
 } from '@macuxierp/platform-sdk';
 import { CursorEntidade, LoteAceito, LoteResultado, RespostaSinal } from '@macuxierp/platform-sdk/hub-v1';
 import { describe, expect, it } from 'vitest';
@@ -56,7 +56,7 @@ describe('T-0057 C4: rotas da /entrada/v1', () => {
       const r = await t.chamar('POST', CAMINHOS_ENTRADA.lotes, { corpo: corpoLote({ linhas_invalidas: [{ external_id: 'V9', codigo: 'formato_invalido', mensagem: 'x' }], linhas_invalidas_omitidas: 3 }) });
       expect(r.status).toBe(202);
       const aceito = LoteAceito.parse(r.corpo);
-      expect(aceito).toMatchObject({ status: 'recebido', entidade: 'vendedor', modo: 'delta', recebidos: 6, consulta: `/entrada/v1/lotes/${aceito.lote_id}` });
+      expect(aceito).toMatchObject({ status: 'recebido', entidade: 'vendedor', modo: 'delta', recebidos: 6, consulta: `${PREFIXO_ENTRADA}/lotes/${aceito.lote_id}` });
       expect(r.corpo).not.toHaveProperty('estado');
       expect(t.trabalhos).toEqual([{ tipo: TRABALHO_ENTRADA_LOTE, tenant_id: TENANT, payload: { lote_id: aceito.lote_id }, external_id: aceito.lote_id }]);
       expect(t.entrada.lotes[0]).toMatchObject({ estado: 'recebido', conector_id: 'conector-1', idempotency_key: KEY, credencial_id: 'cred-1' });

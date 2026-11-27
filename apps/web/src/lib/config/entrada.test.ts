@@ -2,7 +2,7 @@ import { PortalEntradaLeitura } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { ErroPlataforma, ConfigIndisponivel, mensagemDoErro } from './erros';
 import { ERRO_CODIGO_EM_USO, ERRO_CODIGO_REGRA, ERRO_CODIGO_VAZIO, ERRO_GERAR_INCERTO, ERRO_PEPPER_AUSENTE, ERRO_REVOGAR } from './entrada-textos';
-import { botaoDaChave, chaveNaoCopiada, dataHoraTenant, ehGeracaoIncerta, estadoDaChave, linhasLotes, reduzirChave, validarConectorId, vistaEntrada } from './entrada';
+import { botaoDaChave, chaveNaoCopiada, codigoSugerido, ehGeracaoIncerta, estadoDaChave, reduzirChave, validarConectorId } from './entrada';
 
 const PREFIXO = 'AbCdEfGh';
 const CHAVE = 'A'.repeat(43);
@@ -27,43 +27,11 @@ describe('código do conector', () => {
   });
 });
 
-describe('data e hora no fuso do tenant', () => {
-  it('"(Manaus)" só quando o fuso é Manaus', () => {
-    expect(dataHoraTenant('2026-11-26T16:30:00.000Z', 'America/Manaus')).toBe('26/11/2026 12:30 (Manaus)');
-    expect(dataHoraTenant('2026-11-26T16:30:00.000Z', 'America/Sao_Paulo')).toBe('26/11/2026 13:30');
-  });
-});
-
-describe('vista do bloco', () => {
-  it('sem leitura (falha ao carregar): sem chave, sem lotes e código vazio', () => {
-    const v = vistaEntrada(null, 'America/Manaus');
-    expect(v).toMatchObject({ vigente: null, codigoSugerido: '', lotes: [] });
-  });
-  it('com chave vigente: ficha com prefixo, versão, último sinal e criação', () => {
-    const v = vistaEntrada(leitura(), 'America/Manaus');
-    expect(v.vigente).toEqual({ conectorId: 'erp-cliente', prefixo: `${PREFIXO}…`, versao: '1.2.0', ultimoSinal: '26/11/2026 12:30 (Manaus)', criadaEm: '26/11/2026 11:00 (Manaus)' });
-    expect(v.codigoSugerido).toBe('erp-cliente');
-  });
-  it('sinal de outro conector ou ausente: "ainda sem sinal" e versão "—"', () => {
-    const outro = vistaEntrada(leitura({ ultimo_sinal: { conector_id: 'outro', em: '2026-11-26T16:30:00.000Z', versao_conector: '1.2.0' } }), 'America/Manaus');
-    expect(outro.vigente).toMatchObject({ ultimoSinal: 'ainda sem sinal', versao: '—' });
-    expect(vistaEntrada(leitura({ ultimo_sinal: null }), 'America/Manaus').vigente).toMatchObject({ ultimoSinal: 'ainda sem sinal', versao: '—' });
-  });
-  it('chave revogada não é vigente, mas o código dela vira sugestão', () => {
-    const rev = leitura({ credenciais: [{ conector_id: 'velho', prefixo: PREFIXO, criada_em: '2026-11-20T15:00:00.000Z', revogada_em: '2026-11-21T15:00:00.000Z' }] });
-    const v = vistaEntrada(rev, 'America/Manaus');
-    expect(v.vigente).toBeNull();
-    expect(v.codigoSugerido).toBe('velho');
-  });
-  it('várias credenciais: vale a vigente mais recente', () => {
-    const l = leitura({
-      credenciais: [
-        { conector_id: 'a', prefixo: PREFIXO, criada_em: '2026-11-01T15:00:00.000Z', revogada_em: null },
-        { conector_id: 'b', prefixo: 'ZyXwVuTs', criada_em: '2026-11-10T15:00:00.000Z', revogada_em: null },
-        { conector_id: 'c', prefixo: PREFIXO, criada_em: '2026-11-25T15:00:00.000Z', revogada_em: '2026-11-26T15:00:00.000Z' },
-      ],
-    });
-    expect(vistaEntrada(l, 'America/Manaus').vigente?.conectorId).toBe('b');
+describe('código sugerido no campo (sem chave viva)', () => {
+  it('sem leitura: vazio; com credencial, mesmo revogada, o código da mais recente', () => {
+    expect(codigoSugerido(null)).toBe('');
+    expect(codigoSugerido(leitura())).toBe('erp-cliente');
+    expect(codigoSugerido(leitura({ credenciais: [{ conector_id: 'velho', prefixo: PREFIXO, criada_em: '2026-11-20T15:00:00.000Z', revogada_em: '2026-11-21T15:00:00.000Z' }] }))).toBe('velho');
   });
 });
 
@@ -75,25 +43,6 @@ describe('botão da chave', () => {
   it('depois de falha incerta o botão volta a "Gerar chave", sem confirmação', () => {
     expect(botaoDaChave(true, true)).toEqual({ rotulo: 'Gerar chave', pedeConfirmacao: false });
   });
-});
-
-describe('lista de lotes', () => {
-  it('uma linha por lote, cadastro em português, contagens e situação em texto', () => {
-    const [l] = linhasLotes(leitura().lotes, 'America/Manaus');
-    expect(l).toMatchObject({ id: L1, cadastro: 'Produtos', recebidoEm: '26/11/2026 10:00 (Manaus)', recebidos: 40, comErro: 2, situacao: { texto: 'Concluído com erros', tom: 'aviso' } });
-  });
-  it('todas as situações têm texto e tom', () => {
-    const base = leitura().lotes[0]!;
-    const tons = (['recebido', 'processando', 'concluido', 'concluido_com_erros', 'falhou'] as const).map((status) => linhasLotes([{ ...base, status }], 'America/Manaus')[0]!.situacao);
-    expect(tons).toEqual([
-      { texto: 'Recebido', tom: 'neutro' },
-      { texto: 'Em processamento', tom: 'neutro' },
-      { texto: 'Concluído', tom: 'sucesso' },
-      { texto: 'Concluído com erros', tom: 'aviso' },
-      { texto: 'Falhou', tom: 'erro' },
-    ]);
-  });
-  it('sem lotes: lista vazia', () => expect(linhasLotes([], 'America/Manaus')).toEqual([]));
 });
 
 describe('mapeamento de erros da API de entrada', () => {
