@@ -138,7 +138,7 @@ describe('T-0057 E2: /entrada/v1 com autenticação de máquina', () => {
     const { app, porta } = await montar({ pepper: null });
     const r = await app.inject({ method: 'POST', url: '/entrada/v1/lotes', headers: cab('thathyany-erp', CHAVE), payload: { entidade: 'produto' } });
     expect(r.statusCode).toBe(503);
-    expect(r.json()).toMatchObject({ codigo: 'INDISPONIVEL' });
+    expect(r.json()).toMatchObject({ codigo: 'INDISPONIVEL', request_id: r.headers['x-request-id'] });
     expect(porta.buscas).toBe(0);
     expect(lerPepperEntrada({})).toBeNull();
     expect(lerPepperEntrada({ MACUXIERP_PEPPER_ENTRADA: 'ab'.repeat(31) })).toBeNull();
@@ -150,6 +150,7 @@ describe('T-0057 E2: /entrada/v1 com autenticação de máquina', () => {
     const r = await app.inject({ method: 'POST', url: '/entrada/v1/lotes', headers: cab('thathyany-erp', CHAVE), payload: { entidade: 'produto' } });
     expect(r.statusCode).toBe(403);
     expect(r.json()).toMatchObject({ codigo: 'MODULO_INATIVO' });
+    expect(r.json()).not.toHaveProperty('request_id'); // só os 5xx levam o request_id no corpo
   });
 
   it('a rota só enfileira trabalho do cadastros: tipo de outro módulo é erro interno, sem gravar', async () => {
