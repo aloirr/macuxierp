@@ -8,8 +8,12 @@ import { chamar, idEmpresa, recusar, validado } from './api';
  */
 const rota = (modelo: string, id: string) => modelo.replace(':id', idEmpresa(id));
 
+/**
+ * GET em literal (igual ao `CAMINHOS_ENTRADA_PLATAFORMA.ler`, conferido no teste) para a fumaça das telas (T-0065) achar
+ * a rota sozinha; o POST e o DELETE seguem pelo contrato.
+ */
 export async function lerEntrada(token: string, id: string): Promise<PortalEntradaLeitura> {
-  return validado(await chamar('GET', rota(CAMINHOS_ENTRADA_PLATAFORMA.ler, id), { token }), PortalEntradaLeitura);
+  return validado(await chamar('GET', `/empresas/${idEmpresa(id)}/entrada`, { token }), PortalEntradaLeitura);
 }
 
 /** Cria ou troca a chave do conector. */

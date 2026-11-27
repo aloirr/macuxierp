@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CAMINHOS_ENTRADA_PLATAFORMA } from '@macuxierp/platform-sdk';
 import { ConfigIndisponivel, ErroPlataforma } from './erros';
 import { criarCredencialEntrada, lerEntrada, revogarCredencialEntrada } from './entrada-api';
 
@@ -24,6 +25,8 @@ describe('cliente da entrada no portal (fetch simulado)', () => {
     resposta = () => json({ credenciais: [], ultimo_sinal: null, lotes: [] });
     expect(await lerEntrada('tok', ID)).toEqual({ credenciais: [], ultimo_sinal: null, lotes: [] });
     expect(chamadas[0]?.url).toContain(`/v1/plataforma/empresas/${ID}/entrada`);
+    // o literal do GET é o mesmo caminho do contrato
+    expect(chamadas[0]?.url.endsWith(`/v1/plataforma${CAMINHOS_ENTRADA_PLATAFORMA.ler.replace(':id', ID)}`)).toBe(true);
     expect(chamadas[0]?.init.method).toBe('GET');
     expect(chamadas[0]?.init.headers.cookie).toBe('macuxierp_config=tok');
   });
