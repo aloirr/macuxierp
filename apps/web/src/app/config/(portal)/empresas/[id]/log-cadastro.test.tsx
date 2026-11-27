@@ -72,6 +72,13 @@ describe('botão Log do /config (T-0086)', () => {
     expect(h).toContain('Nenhum envio ainda.');
     expect(h).toContain('Nenhum erro aberto.');
   });
+  it('RD-2320/2333: "Mais N…" sem mandar ao BKO e sem repetir "não estão listados"', () => {
+    const h = renderToStaticMarkup(<CorpoLog log={log({ erros: [], total_erros: 3 })} fuso="America/Manaus" entidade="cliente" />);
+    expect(h).toContain('Mais 3 erros não aparecem aqui.');
+    expect(h).not.toContain('Veja todos');
+    expect(h).not.toContain('não estão listados');
+    expect(h).not.toContain('Nenhum erro aberto.');
+  });
   it('rodapé: link do BKO só com o caminho e "Baixar erros (.csv)" só com erros listados', () => {
     const com = renderToStaticMarkup(<RodapeLog log={log()} entidade="cliente" aoFechar={() => undefined} />);
     expect(com).toContain('href="/integracao-fdv/integracao-fdv"');

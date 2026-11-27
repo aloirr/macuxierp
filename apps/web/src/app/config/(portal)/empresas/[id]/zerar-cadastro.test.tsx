@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import { AVISO_ZERAR_INATIVA_FDV, ZeragemPlataformaResposta } from '@macuxierp/platform-sdk';
+import { ZeragemPlataformaResposta } from '@macuxierp/platform-sdk';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }), redirect: vi.fn() }));
 
@@ -25,8 +25,8 @@ describe('Zerar por cadastro na aba Integração (T-0086)', () => {
   it('avisa que apaga, que também inativa no FDV, pede a frase literal e começa desligado', () => {
     const h = zerar('produto', previa());
     expect(h).toContain(AVISO_ZERAR);
-    expect(h).toContain(AVISO_ZERAR_INATIVA_FDV);
-    expect(h).toContain('Os registros também serão inativados no Macuxi FDV.');
+    expect(h).toContain('Também inativa no Macuxi FDV.');
+    expect(h).not.toContain('serão inativados');
     expect(h).toContain('autorizo zerar os dados');
     expect(h).toContain('Zerar Produtos?');
     expect(h).toMatch(/<button[^>]*disabled=""[^>]*>Zerar<\/button>/);
@@ -48,9 +48,10 @@ describe('Zerar por cadastro na aba Integração (T-0086)', () => {
     expect(zerar('produto', previa({ inativacao_fdv: undefined }))).not.toContain('data-testid="inativacao-fdv"');
   });
   it('forma e prazo zeram o mesmo cadastro; cliente e endereço também: a tela diz isso', () => {
-    expect(zerar('forma_pagamento', previa())).toContain('Zerar formas de pagamento zera também os prazos');
-    expect(zerar('cliente_endereco', previa())).toContain('Zerar endereços zera também os clientes');
-    expect(zerar('produto', previa())).not.toContain('zera também');
+    expect(zerar('forma_pagamento', previa())).toContain('Zera também as condições de pagamento.');
+    expect(zerar('cliente_endereco', previa())).toContain('Zera também os clientes e os contatos.');
+    expect(zerar('forma_pagamento', previa())).not.toContain('mesmo cadastro'); // RD-2328: sem explicação interna
+    expect(zerar('produto', previa())).not.toContain('Zera também');
   });
   it('só o lote em andamento bloqueia; sem bloqueio a tela não avisa nada', () => {
     const sem = zerar('produto', previa({ bloqueios: [] }));

@@ -5,6 +5,7 @@
 import type { SeloVista } from '../descritor/tipos';
 
 export const TEXTO_SEM_PERMISSAO = 'Seu perfil não pode ver esta tela.';
+export const TEXTO_INDISPONIVEL = 'Não foi possível carregar agora. Tente de novo em instantes.';
 
 export const TOM = { ok: 'ok', alerta: 'aviso', erro: 'erro', neutro: 'neutro' } as const;
 

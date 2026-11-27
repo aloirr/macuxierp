@@ -1,5 +1,5 @@
 import { CODIGO_TROCAR_SENHA, formatarDataHora, formatarDocumento, type EmpresaPlataforma } from '@macuxierp/platform-sdk';
-import { ConfigSemPermissao, EMPRESA_NAO_ENCONTRADA, ErroPlataforma, SEM_PERMISSAO } from './erros';
+import { ConfigIndisponivel, ConfigNaoAutenticado, ConfigSemPermissao, EMPRESA_NAO_ENCONTRADA, ErroPlataforma, SEM_PERMISSAO } from './erros';
 
 export const AUSENTE = '—';
 export const ou = (v: string | null | undefined) => (v && v.trim() ? v : AUSENTE);
@@ -35,12 +35,23 @@ export function dadosDaEmpresa(e: EmpresaPlataforma, ficha?: FichaLugar | null):
   ];
 }
 
-export type DestinoErroEmpresa = { tipo: 'senha' } | { tipo: 'tela'; texto: string; naoAchou: boolean };
+export type DestinoErroEmpresa = { tipo: 'senha' } | { tipo: 'tela'; texto: string; naoAchou: boolean; requestId?: string };
 
 /** O que a ficha da empresa faz com o erro da leitura (fora o 401, que encerra a sessão): 403 TROCAR_SENHA vai à troca; sem permissão e 404 têm texto próprio. */
 export function destinoErroEmpresa(e: unknown): DestinoErroEmpresa {
   if (e instanceof ErroPlataforma && e.codigo === CODIGO_TROCAR_SENHA) return { tipo: 'senha' };
   if (e instanceof ConfigSemPermissao) return { tipo: 'tela', texto: SEM_PERMISSAO, naoAchou: false };
   if (e instanceof ErroPlataforma && e.status === 404) return { tipo: 'tela', texto: EMPRESA_NAO_ENCONTRADA, naoAchou: true };
-  return { tipo: 'tela', texto: 'Não foi possível carregar. Tente de novo.', naoAchou: false };
+  const requestId = e instanceof ConfigIndisponivel ? e.requestId : undefined;
+  return { tipo: 'tela', texto: 'Não foi possível carregar a empresa.', naoAchou: false, ...(requestId ? { requestId } : {}) };
+}
+
+/** Leitura de apoio da aba: sessão vencida é sinalizada; qualquer outra falha vira `valor: null` com o `requestId` da PRÓPRIA leitura. */
+export async function lerApoio<T>(ler: () => Promise<T>): Promise<{ valor: T | null; requestId?: string; naoAutenticado?: boolean }> {
+  try {
+    return { valor: await ler() };
+  } catch (e) {
+    if (e instanceof ConfigNaoAutenticado) return { valor: null, naoAutenticado: true };
+    return { valor: null, ...(e instanceof ConfigIndisponivel && e.requestId ? { requestId: e.requestId } : {}) };
+  }
 }

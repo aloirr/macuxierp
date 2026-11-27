@@ -19,7 +19,8 @@ describe('Zerar Pedidos não faturados (T-0093)', () => {
   it('a prévia mostra o que apaga e "Mantidos: N" com uma linha por motivo (nota e título)', () => {
     const h = tela(previa());
     expect(h).toContain('Zerar pedidos não faturados?');
-    expect(h).toContain('Zerar pedidos</button>');
+    expect(h).toMatch(/<button[^>]*>Zerar<\/button>/); // o botão do título já diz "pedidos"
+    expect(h).not.toContain('Zerar pedidos</button>');
     expect(h).toContain('Vai apagar 7 pedidos.');
     expect(h).toContain('Mantidos: 4');
     expect(h).toContain('3 pedidos com nota.');
@@ -30,19 +31,22 @@ describe('Zerar Pedidos não faturados (T-0093)', () => {
     expect(tela(previa())).toContain('4 vieram do Macuxi FDV e só voltam se o FDV reenviar.');
     expect(tela(previa({ apagados_fdv: 1 }))).toContain('1 veio do Macuxi FDV e só volta se o FDV reenviar.');
     expect(tela(previa({ apagados_fdv: 0 }))).not.toContain('Macuxi FDV');
-    expect(tela(previa())).toContain('Pedidos faturados e notas não são apagados.');
+  });
+  it('RD-2332: "Pedidos faturados e notas não são apagados." só quando não há mantidos (senão o Mantidos já diz)', () => {
+    expect(tela(previa())).not.toContain('Pedidos faturados e notas não são apagados.');
+    expect(tela(previa({ mantidos: [] }))).toContain('Pedidos faturados e notas não são apagados.');
   });
   it('sem mantidos não mostra a linha; sem o que apagar diz isso uma vez só', () => {
     const h = tela(previa({ mantidos: [], apagados: [{ tabela: 'pedido', quantidade: 0 }], apagados_fdv: 0 }));
     expect(h).not.toContain('Mantidos');
-    expect(h.split('sem nota e sem título').length - 1).toBe(1);
-    expect(h).toContain('Não há pedidos sem nota e sem título para apagar.');
+    expect(h.split('não faturados para apagar').length - 1).toBe(1);
+    expect(h).toContain('Não há pedidos não faturados para apagar.');
   });
   it('com N = 0: sem frase e sem botão de perigo, só o texto e "Fechar"', () => {
     const h = tela(previa({ mantidos: [{ motivo: 'nota', quantidade: 2 }], apagados: [{ tabela: 'pedido', quantidade: 0 }], apagados_fdv: 0 }));
-    expect(h).toContain('Não há pedidos sem nota e sem título para apagar.');
+    expect(h).toContain('Não há pedidos não faturados para apagar.');
     expect(h).toContain('>Fechar</button>');
-    expect(h).not.toContain('Zerar pedidos</button>');
+    expect(h).not.toMatch(/>Zerar<\/button>/);
     expect(h).not.toContain('data-destrutivo');
     expect(h).not.toContain('autorizo zerar');
     expect(h).not.toContain('Cancelar');

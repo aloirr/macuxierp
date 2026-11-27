@@ -65,7 +65,24 @@ export const rotuloDoCodigoErro = (codigo: string): string => legivel(codigo);
 export const rotuloDoCampoErro = (campo: string | null): string => (campo === null ? '—' : legivel(campo));
 
 export const textoReprocessarOk = (falhas: number, pendentes: number): string =>
-  falhas + pendentes === 0 ? 'Nada a reprocessar neste cadastro.' : `Reprocessar pedido: ${plural(falhas, 'falha', 'falhas')} e ${plural(pendentes, 'pendente', 'pendentes')}.`;
+  falhas + pendentes === 0 ? 'Nada a reprocessar.' : `Reprocessando ${plural(falhas, 'falha', 'falhas')} e ${plural(pendentes, 'pendente', 'pendentes')}.`;
+
+/** Nomes dos botões da aba Integração que outros textos citam (uma fonte só, RD-X7). */
+export const ROTULOS_FDV = { salvarChave: 'Salvar chave', trocarChave: 'Trocar chave', tentarDeNovo: 'Tentar de novo' } as const;
+
+/** Retornos das ações da aba Integração (36 A, RD-2315..2337): curtos, sem repetir o rótulo do botão. */
+export const RETORNOS_FDV = {
+  testeIniciado: 'Teste iniciado. Veja "Último sinal" no Monitor.',
+  chaveSalva: 'Chave salva.',
+  envioLiberado: 'Envio liberado.',
+  naoEstavaParado: 'Este cadastro não estava parado.',
+  limiteSalvo: 'Registros por lote salvos.',
+  ligado: 'Cadastro ligado.',
+  desligado: 'Cadastro desligado.',
+} as const;
+
+/** Aviso do Zerar quando o cadastro também é inativado no FDV (RD-2328: sem explicação interna). */
+export const TEXTO_INATIVA_NO_FDV = 'Também inativa no Macuxi FDV.';
 
 /** O Log do /config só leva o caminho da tela do BKO (a resposta não traz link): "Abrir no BKO da empresa". */
 export const CAMINHO_BKO_INTEGRACAO_FDV: string = (PAGINAS_INTEGRACAO_FDV.find((p) => p.tipo === 'monitor') ?? PAGINAS_INTEGRACAO_FDV[0])!.rota;
@@ -88,10 +105,10 @@ export const errosNaoListados = (log: Pick<LogCadastroFdvPlataforma, 'erros' | '
 export const cadastroDoZerar = (e: EntidadeEnvioFdv) => CADASTRO_ZERAR_POR_ENTIDADE_FDV[e];
 
 const JUNTOS: Partial<Record<EntidadeEnvioFdv, string>> = {
-  forma_pagamento: 'Zerar formas de pagamento zera também os prazos: os dois usam o mesmo cadastro.',
-  prazo_pagamento: 'Zerar prazos zera também as formas de pagamento: os dois usam o mesmo cadastro.',
-  cliente: 'Zerar clientes zera também os endereços e os contatos.',
-  cliente_endereco: 'Zerar endereços zera também os clientes, com contatos: usam o mesmo cadastro.',
+  forma_pagamento: 'Zera também as condições de pagamento.',
+  prazo_pagamento: 'Zera também as formas de pagamento.',
+  cliente: 'Zera também os endereços e os contatos.',
+  cliente_endereco: 'Zera também os clientes e os contatos.',
 };
 export const textoZerarJuntos = (e: EntidadeEnvioFdv): string | null => JUNTOS[e] ?? null;
 

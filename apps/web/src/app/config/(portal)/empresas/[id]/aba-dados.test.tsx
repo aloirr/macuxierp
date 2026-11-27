@@ -53,9 +53,11 @@ describe('aba Dados (T-0058, T-0086)', () => {
     expect(origemDaCarga({ ultima: '23/11/2026 14:39 · 1 registro' })).toBe('CSV');
     expect(origemDaCarga({ ultima: null })).toBeNull();
   });
-  it('sem dados da API: erro com "Tentar de novo" para a aba Dados', () => {
+  it('sem dados da API: erro com o link "Recarregar" para a aba Dados (RD-2317)', () => {
     const h = aba(null);
     expect(h).toContain('Não foi possível carregar os dados');
+    expect(h).toContain('>Recarregar</a>');
+    expect(h).not.toContain('Tentar de novo');
     expect(h).toContain('?aba=dados');
   });
 });

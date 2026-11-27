@@ -14,8 +14,6 @@ const MOTIVO: Record<(typeof MOTIVOS_MANTER_PEDIDO)[number], string> = { nota: '
 
 const FRASE_PREVIA_PEDIDOS = 'Pedidos faturados e notas não são apagados.';
 
-export const TEXTO_ANTES_DE_ZERAR_PEDIDOS ='Antes de zerar, exporte pelo BKO da empresa.';
-
 /** "Mantidos: 5" (a soma) e uma linha por motivo: "3 pedidos com nota." Sem mantidos = null. */
 export const textosMantidosPedidos = (mantidos: readonly Mantido[]) =>
   textosMantidosCom(mantidos, (m) => `${plural(m.quantidade, 'pedido', 'pedidos')} ${MOTIVO[m.motivo]}.`);
@@ -29,17 +27,19 @@ export const semPedidoParaApagar = (r: ZeragemPedidosResposta): boolean => qtdPe
 /** "Vai apagar N pedidos." e, quando há do FDV, quantos só voltam pelo reenvio feito no FDV (RN-PED-01). */
 export function textoApagarPedidos(r: ZeragemPedidosResposta): string {
   const n = qtdPedidos(r);
-  if (n === 0) return 'Não há pedidos sem nota e sem título para apagar.';
+  if (n === 0) return 'Não há pedidos não faturados para apagar.';
   const f = r.apagados_fdv;
   const fdv = f > 0 ? ` ${f} ${f === 1 ? 'veio do Macuxi FDV e só volta' : 'vieram do Macuxi FDV e só voltam'} se o FDV reenviar.` : '';
-  return `Vai apagar ${plural(n, 'pedido', 'pedidos')}.${fdv} ${FRASE_PREVIA_PEDIDOS}`;
+  // RD-2332: com "Mantidos: N" na tela a frase dos faturados é redundante.
+  const faturados = somaMantidos(r.mantidos) === 0 ? ` ${FRASE_PREVIA_PEDIDOS}` : '';
+  return `Vai apagar ${plural(n, 'pedido', 'pedidos')}.${fdv}${faturados}`;
 }
 
 export type ResultadoZerarPedidos = { apagados: number; mantidos: number };
 
-/** "Pedidos zerados: 3. Mantidos: 2 (com nota ou título)." */
+/** "Pedidos zerados: 3. Mantidos: 2." */
 export function textoPedidosZerados({ apagados, mantidos }: ResultadoZerarPedidos): string {
-  return `Pedidos zerados: ${apagados}.${mantidos > 0 ? ` Mantidos: ${mantidos} (com nota ou título).` : ''}`;
+  return `Pedidos zerados: ${apagados}.${mantidos > 0 ? ` Mantidos: ${mantidos}.` : ''}`;
 }
 
 export function pedirPreviaZerarPedidos(empresaId: string, enviar: Enviar = fetch, signal?: AbortSignal): Promise<Retorno<ZeragemPedidosResposta>> {

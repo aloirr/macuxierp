@@ -33,10 +33,11 @@ describe('BKO: status da Integração FDV (T-0056), só leitura', () => {
     expect(h).not.toMatch(/<button|<form|<input|<select/);
     for (const t of ['Salvar', 'Testar conexão', 'Tentar de novo', 'Reenviar tudo', 'password']) expect(h, t).not.toContain(t);
   });
-  it('Ligada e Desligada por cadastro, com o último envio no fuso da empresa (10:05 em Manaus)', () => {
+  it('Ligado e Desligado por cadastro, com o último envio no fuso da empresa (10:05 em Manaus)', () => {
     const h = html();
-    expect(h).toContain('Ligada');
-    expect(h).toContain('Desligada');
+    expect(h).toContain('>Ligado<');
+    expect(h).toContain('>Desligado<');
+    expect(h).not.toContain('Ligada');
     expect(h).toContain('Produtos');
     expect(h).toMatch(/22\/11\/2026,? 10:05/);
   });
@@ -44,7 +45,7 @@ describe('BKO: status da Integração FDV (T-0056), só leitura', () => {
     const h = html();
     expect(h).toContain('Há registros com erro neste cadastro.');
     expect(h).toContain('Corrija os registros com erro no cadastro de origem.');
-    expect(h).toContain('O FDV recusou a credencial do conector.');
+    expect(h).toContain('O FDV recusou a chave do conector.');
     expect(h).toContain('Fale com a Macuxi.');
     expect(h.match(/class="falha-sob-nome"/g)).toHaveLength(2); // linha sob o nome, só em tela estreita (CSS)
     expect(h).not.toContain('cadastro(s)');
@@ -56,14 +57,14 @@ describe('BKO: status da Integração FDV (T-0056), só leitura', () => {
     const h = html();
     expect(h).not.toContain('Conector erp-1');
     expect(h).not.toContain('abcd1234');
-    expect(h).not.toContain('chave');
+    expect(h).not.toContain('<dt>Chave</dt>'); // a frase "O FDV recusou a chave do conector." é só o motivo da falha
     expect(h).toContain('Conexão com o FDV:</strong> último sinal');
     expect(textoAlertaFalha(1)).toBe('1 cadastro não chegou ao FDV. Veja o motivo na tabela.');
   });
   it('sem credencial: tudo desligado e aviso para falar com a Macuxi', () => {
     const vazio = StatusIntegracaoFdvTenant.parse({ conector_id: null, ambiente: null, chave_prefixo: null, ultimo_sinal: null, cadastros: cadastros.map((c) => ({ ...c, ligada: false, falha: null })) });
     const h = renderToStaticMarkup(<VistaIntegracaoFdv vista={montarVistaStatus(vazio, 'America/Manaus')} />);
-    expect(h).not.toContain('>Ligada<');
+    expect(h).not.toContain('>Ligado<');
     expect(h).toContain('sem conector configurado');
   });
 });

@@ -50,7 +50,7 @@ export function AbaDados({ empresaId, dados, fuso, integracao = null }: { empres
     return (
       <>
         <p className="erro" role="alert">Não foi possível carregar os dados.</p>
-        <a className="mx-botao-secundario" href={`/config/empresas/${encodeURIComponent(empresaId)}?aba=dados`}>Tentar de novo</a>
+        <a className="mx-botao-secundario" href={`/config/empresas/${encodeURIComponent(empresaId)}?aba=dados`}>Recarregar</a>
       </>
     );
   }

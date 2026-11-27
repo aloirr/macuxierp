@@ -1,5 +1,5 @@
 import {
-  CADASTROS_CARGA_PORTAL, CAMPO_ARQUIVO_CARGA_PORTAL, CAMPO_FRASE_CARGA_PORTAL, GravarCargaPlataformaResposta, MAX_BYTES_ARQUIVO_CARGA_PORTAL, LIMITE_INATIVACAO_FDV_PCT, ValidarCargaPlataformaResposta, ZeragemPlataformaResposta, MENSAGEM_MANTIDOS_ZERAR, MOTIVOS_USO, type CadastroZerarPortal,
+  CADASTROS_CARGA_PORTAL, CAMPO_ARQUIVO_CARGA_PORTAL, CAMPO_FRASE_CARGA_PORTAL, GravarCargaPlataformaResposta, MAX_BYTES_ARQUIVO_CARGA_PORTAL, LIMITE_INATIVACAO_FDV_PCT, ValidarCargaPlataformaResposta, ZeragemPlataformaResposta, MOTIVOS_USO, type CadastroZerarPortal,
   plural, rotuloCadastroCarga, type CadastroCargaPortal, type EfeitoSubstituir, type LinhaErroValidacao, type ModoGravarCarga, type SituacaoCarga, type SituacaoCargasPlataforma,
 } from '@macuxierp/platform-sdk';
 import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
@@ -199,7 +199,7 @@ const TEXTO_ANULADO: Record<ZeragemPlataformaResposta['anulados'][number]['colun
 export const textosAnulados = (anulados: ZeragemPlataformaResposta['anulados']): string[] =>
   anulados.filter((a) => a.quantidade > 0).map((a) => `${a.quantidade} ${TEXTO_ANULADO[a.coluna][a.quantidade === 1 ? 0 : 1]}`);
 
-export const BLOQUEIO_LOTE = 'Há uma carga em andamento. Espere terminar para zerar.';
+export const BLOQUEIO_LOTE = 'Este cadastro está enviando agora. Espere terminar.';
 /** Motivos legíveis dos bloqueios (`cadastro` + `motivo`, da prévia ou do 422 em strings 'cadastro:motivo'), sem repetir. */
 export function textosBloqueios(bloqueios: readonly { cadastro: string; motivo: string }[]): string[] {
   const out = new Set<string>();
@@ -229,8 +229,8 @@ export function textoSemChave(n: number): string {
   return `${plural(n, 'registro foi', 'registros foram')} ao FDV sem código de origem. Depois de zerar e carregar de novo, o FDV vai inativar ${n === 1 ? 'o antigo e criar o novo' : 'os antigos e criar novos'}.`;
 }
 
-export const TEXTO_ANTES_DE_ZERAR = 'Antes de zerar, exporte pelo BKO da empresa (Cadastros > Exportar).';
+/** Uma frase só para o Zerar do cadastro e o dos pedidos (RD-2331). */
+export const TEXTO_ANTES_DE_ZERAR = 'Antes de zerar, exporte pelo BKO da empresa.';
 export const AVISO_ZERAR = 'Apaga os registros e não tem volta.';
-export const TEXTO_ZERADO = 'Dados zerados.';
-/** "Dados zerados." ou, com mantidos, "Dados zerados. Mantidos: N (em uso em pedido, título ou nota, ou filial com dado fiscal)." */
-export const textoZerado = (mantidos: number): string => (mantidos > 0 ? `${TEXTO_ZERADO} ${MENSAGEM_MANTIDOS_ZERAR(mantidos)}.` : TEXTO_ZERADO);
+/** "Zerado: Produtos." ou, com mantidos, "Zerado: Produtos. Mantidos: 5." (RD-2328: sem explicação interna). */
+export const textoZerado = (cadastro: string, mantidos: number): string => `Zerado: ${cadastro}.${mantidos > 0 ? ` Mantidos: ${mantidos}.` : ''}`;

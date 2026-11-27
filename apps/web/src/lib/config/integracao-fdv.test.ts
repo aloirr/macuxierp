@@ -8,5 +8,6 @@ describe('campo "Registros por lote"', () => {
     expect(validarLimiteLote(' 250 ')).toEqual({ ok: true, valor: 250 });
     expect(validarLimiteLote(String(LIMITE_REGISTROS_LOTE_FDV))).toEqual({ ok: true, valor: 5000 });
     for (const t of ['0', '5001', '-1', '1,5', 'abc', '']) expect(validarLimiteLote(t).ok).toBe(false);
+    expect(validarLimiteLote('0')).toEqual({ ok: false, erro: 'Informe um número de 1 a 5.000.' }); // RD-2326: um erro só
   });
 });

@@ -11,7 +11,7 @@ import { textoZerado } from '@/lib/config/cargas';
 import type { Resultado } from '@/lib/config/executar';
 import { configurarFdvAcao, lerMonitorFdvAcao, reprocessarFdvAcao, retomarFdvAcao, salvarCredencialFdvAcao, testarConexaoFdvAcao } from '../acoes-integracao-fdv';
 import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
-import { maisRecente, textoAtualizado, textoReprocessarOk, vistaMonitor } from '@/lib/config/operacao-fdv';
+import { RETORNOS_FDV, ROTULOS_FDV, maisRecente, textoAtualizado, textoReprocessarOk, vistaMonitor } from '@/lib/config/operacao-fdv';
 import { LogCadastro } from './log-cadastro';
 import { ZerarCadastro } from './zerar-cadastro';
 import { ZerarPedidos } from './zerar-pedidos';
@@ -40,6 +40,8 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
   const [log, setLog] = useState<LinhaCadastroFdv | null>(null);
   const [zerar, setZerar] = useState<LinhaCadastroFdv | null>(null);
   const [zerarPedidos, setZerarPedidos] = useState(false);
+  const [trocarChave, setTrocarChave] = useState(false);
+  const formChave = useRef<HTMLFormElement | null>(null);
   const monitor = maisRecente(monitorInicial, lido);
   const chaves = useRef(new ChavesIdempotencia());
   const linhas = linhasCadastros(dados, fuso);
@@ -60,16 +62,22 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
     iniciar(async () => {
       const r = await salvarCredencialFdvAcao(empresaId, { conector_id: String(d.get('conector_id') ?? ''), chave: String(d.get('chave') ?? ''), ambiente: String(d.get('ambiente') ?? '') });
       if (r.ok) f.reset(); // a chave sai do campo na hora
-      concluir(null, r, 'Credencial salva.');
+      concluir(null, r, RETORNOS_FDV.chaveSalva);
     });
+  };
+  /** Salvar a 1ª chave grava direto; trocar a que existe pede confirmação (a chave antiga para na hora). A chave segue só no campo: o formulário é guardado, não o valor. */
+  const enviarChave = (f: HTMLFormElement) => {
+    if (semCredencial) return salvarCredencial(f);
+    formChave.current = f;
+    setTrocarChave(true);
   };
   const salvarLimite = (f: HTMLFormElement) => {
     const v = validarLimiteLote(String(new FormData(f).get('limite_registros_lote') ?? ''));
     if (!v.ok) return setCampos({ limite_registros_lote: v.erro });
     const chave = `lim:${dados.entidades_habilitadas.join(',')}:${v.valor}`;
-    iniciar(async () => concluir(chave, await configurarFdvAcao(empresaId, { entidades_habilitadas: dados.entidades_habilitadas, limite_registros_lote: v.valor }, chaveDe(chave)), 'Configuração salva.'));
+    iniciar(async () => concluir(chave, await configurarFdvAcao(empresaId, { entidades_habilitadas: dados.entidades_habilitadas, limite_registros_lote: v.valor }, chaveDe(chave)), RETORNOS_FDV.limiteSalvo));
   };
-  const testar = () => iniciar(async () => concluir('testar', await testarConexaoFdvAcao(empresaId, chaveDe('testar')), 'Teste pedido. A resposta do FDV aparece em "Último sinal" em instantes.'));
+  const testar = () => iniciar(async () => concluir('testar', await testarConexaoFdvAcao(empresaId, chaveDe('testar')), RETORNOS_FDV.testeIniciado));
   /** Reprocessar (só falhas e pendentes): sem confirmação, não apaga nada. 409 com lote em voo vira a mensagem da API. */
   const reprocessar = (l: LinhaCadastroFdv) => {
     const id = `reproc:${l.entidade}`;
@@ -92,11 +100,11 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
     iniciar(async () => {
       if (p.tipo === 'retomar') {
         const r = await retomarFdvAcao(empresaId, e, chaveDe(`retomar:${e}`));
-        return concluir(`retomar:${e}`, r, r.ok && !r.valor.retomada ? 'Este cadastro não estava pausado.' : 'Pedido para tentar de novo registrado.');
+        return concluir(`retomar:${e}`, r, r.ok && !r.valor.retomada ? RETORNOS_FDV.naoEstavaParado : RETORNOS_FDV.envioLiberado);
       }
       const ligar = p.tipo === 'ligar';
       const nova = habilitadasApos(dados.entidades_habilitadas, e, ligar);
-      return concluir(`cfg:${e}:${nova.join(',')}`, await configurarFdvAcao(empresaId, { entidades_habilitadas: nova, limite_registros_lote: dados.limite_registros_lote ?? LIMITE_INICIAL_FDV }, chaveDe(`cfg:${e}:${nova.join(',')}`)), ligar ? 'Cadastro ligado.' : 'Cadastro desligado.');
+      return concluir(`cfg:${e}:${nova.join(',')}`, await configurarFdvAcao(empresaId, { entidades_habilitadas: nova, limite_registros_lote: dados.limite_registros_lote ?? LIMITE_INICIAL_FDV }, chaveDe(`cfg:${e}:${nova.join(',')}`)), ligar ? RETORNOS_FDV.ligado : RETORNOS_FDV.desligado);
     });
   };
 
@@ -126,7 +134,7 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
     <div className="integracao-colunas">
       {/* Cenário B (depois): colunas "Integração via Conector" e "Integração via API" entram aqui, ao lado deste grupo. */}
       <div aria-label="Macuxi FDV" role="group">
-        {!dados.modulo_licenciado && <p className="faixa-aviso" role="status">O módulo Integração FDV não está licenciado nesta empresa. Ligue-o na aba Empresa para configurar.</p>}
+        {!dados.modulo_licenciado && <p className="faixa-aviso" role="status">Integração FDV sem licença nesta empresa. Ligue o módulo na aba Empresa.</p>}
         {mensagem && <p className={mensagem.ok ? 'faixa-aviso' : 'erro'} role={mensagem.ok ? 'status' : 'alert'}>{mensagem.texto}</p>}
       <section className="bloco" aria-labelledby="h-monitor">
         <div className="cabeca-cargas cabeca-monitor">
@@ -136,7 +144,7 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
             <button type="button" className="mx-botao-secundario" disabled={bloqueado} onClick={atualizar}>Atualizar</button>
           </span>
         </div>
-        {monitor ? <BlocoMonitor monitor={monitor} fuso={fuso} /> : <p className="apoio" data-testid="monitor-indisponivel">Monitor indisponível agora. Use Atualizar.</p>}
+        {monitor ? <BlocoMonitor monitor={monitor} fuso={fuso} /> : <p className="apoio" data-testid="monitor-indisponivel">Monitor indisponível agora.</p>}
       </section>
       <section className="bloco" aria-labelledby="h-cred">
         <h2 id="h-cred">Conexão com o Macuxi FDV</h2>
@@ -144,12 +152,11 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
           <dl className="ficha">
             <div><dt>Chave</dt><dd>{dados.chave_prefixo}…</dd></div>
             <div><dt>Criada em</dt><dd>{dados.criada_em ? formatarDataHora(dados.criada_em, fuso) : '—'}</dd></div>
-            <div><dt>Último uso</dt><dd>{dados.ultimo_uso_em ? formatarDataHora(dados.ultimo_uso_em, fuso) : '—'}</dd></div>
           </dl>
         ) : (
-          <p className="apoio">Nenhuma credencial cadastrada. Informe o código e a chave do conector abaixo.</p>
+          <p className="apoio">Nenhuma chave salva. Informe o código e a chave do conector.</p>
         )}
-        <form aria-label="Conexão com o Macuxi FDV" onSubmit={(ev) => { ev.preventDefault(); salvarCredencial(ev.currentTarget); }}>
+        <form aria-label="Conexão com o Macuxi FDV" onSubmit={(ev) => { ev.preventDefault(); enviarChave(ev.currentTarget); }}>
           <label className="campo"><span>Código do conector</span><input name="conector_id" defaultValue={dados.conector_id ?? ''} maxLength={64} autoComplete="off" required /></label>
           {campos.conector_id && <p className="erro-campo" role="alert">{campos.conector_id}</p>}
           <label className="campo"><span>Nova chave do conector</span><input name="chave" type="password" autoComplete="new-password" spellCheck={false} maxLength={512} required /></label>
@@ -157,7 +164,7 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
           <label className="campo"><span>Ambiente</span><select name="ambiente" defaultValue={dados.ambiente ?? 'teste'}>{AMBIENTES_FDV.map(([v, r]) => <option key={v} value={v}>{r}</option>)}</select></label>
           {campos.ambiente && <p className="erro-campo" role="alert">{campos.ambiente}</p>}
           <div className="barra-acoes">
-            <button className="mx-botao" type="submit" disabled={bloqueado}>{semCredencial ? 'Salvar credencial' : 'Trocar credencial'}</button>
+            <button className="mx-botao" type="submit" disabled={bloqueado}>{semCredencial ? ROTULOS_FDV.salvarChave : ROTULOS_FDV.trocarChave}</button>
             <button className="mx-botao-secundario" type="button" disabled={bloqueado || semCredencial} onClick={testar}>Testar conexão</button>
           </div>
         </form>
@@ -185,7 +192,7 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
           aoFechar={() => setZerar(null)}
           aoZerar={(mantidos) => {
             setZerar(null);
-            setMensagem({ ok: true, texto: `${textoZerado(mantidos)}` });
+            setMensagem({ ok: true, texto: textoZerado(zerar.rotulo, mantidos) });
             router.refresh();
           }}
         />
@@ -201,19 +208,42 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
           }}
         />
       )}
+      {trocarChave && (
+        <DialogoTrocarChave
+          aoConfirmar={() => {
+            setTrocarChave(false);
+            if (formChave.current) salvarCredencial(formChave.current);
+          }}
+          aoCancelar={() => setTrocarChave(false)}
+        />
+      )}
       {pedido && (
         <DialogoMotivo
-          titulo={pedido.tipo === 'ligar' ? `Ligar ${pedido.linha.rotulo}?` : pedido.tipo === 'desligar' ? `Desligar ${pedido.linha.rotulo}?` : `Tentar de novo ${pedido.linha.rotulo}?`}
+          titulo={pedido.tipo === 'ligar' ? `Ligar ${pedido.linha.rotulo}?` : pedido.tipo === 'desligar' ? `Desligar ${pedido.linha.rotulo}?` : `${ROTULOS_FDV.tentarDeNovo} o envio de ${pedido.linha.rotulo}?`}
           aviso={pedido.tipo === 'retomar' ? undefined : avisoLigar(pedido.tipo === 'ligar')}
           semTexto
-          rotuloConfirmar={pedido.tipo === 'ligar' ? 'Ligar' : pedido.tipo === 'desligar' ? 'Desligar' : 'Tentar de novo'}
-          rotuloFechar="Cancelar"
+          rotuloConfirmar={pedido.tipo === 'ligar' ? 'Ligar' : pedido.tipo === 'desligar' ? 'Desligar' : ROTULOS_FDV.tentarDeNovo}
           destrutivo={pedido.tipo === 'desligar'}
           aoConfirmar={() => confirmar(pedido)}
           aoCancelar={() => setPedido(null)}
         />
       )}
     </div>
+  );
+}
+
+/** Confirmação de "Trocar chave" (mesmo padrão do cenário B, `docs/design/entrada-cenario-b/README.md`, seção A): a chave atual para na hora. */
+export function DialogoTrocarChave({ aoConfirmar, aoCancelar }: { aoConfirmar: () => void; aoCancelar: () => void }) {
+  return (
+    <DialogoMotivo
+      titulo="Trocar a chave do conector do FDV?"
+      aviso="A chave atual para de funcionar agora. Quem usa a chave antiga fica sem enviar até receber a nova."
+      semTexto
+      destrutivo
+      rotuloConfirmar={ROTULOS_FDV.trocarChave}
+      aoConfirmar={aoConfirmar}
+      aoCancelar={aoCancelar}
+    />
   );
 }
 
