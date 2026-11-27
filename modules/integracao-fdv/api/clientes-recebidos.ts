@@ -3,7 +3,7 @@
  * recentes primeiro. Só colunas nomeadas, nunca o `payload` (o papel do app nem o enxerga) e sempre com `tenant_id`. O
  * documento sai só mascarado; a linha expurgada (RN-INF-06) sai com o texto fixo "—" (`linhaDaRotaClienteRecebido`).
  */
-import { PaginaClientesRecebidosFdv, type ClienteRecebidoFdv, type SituacaoClienteRecebidoFdv, type Transacao } from '@macuxierp/platform-sdk';
+import { lerAteOTeto, PaginaClientesRecebidosFdv, type ClienteRecebidoFdv, type SituacaoClienteRecebidoFdv, type Transacao } from '@macuxierp/platform-sdk';
 import { linhaDaRotaClienteRecebido, type LinhaClienteRecebido } from '../domain';
 
 interface FiltroClientesRecebidos {
@@ -73,17 +73,11 @@ export async function lerRecebidosParaExportar(
 ): Promise<RecebidosParaExportar> {
   const teto = f.teto ?? MAXIMO_LINHAS_CSV;
   const pagina = f.pagina ?? PAGINA_RECEBIDOS_CSV;
-  const itens: ClienteRecebidoFdv[] = [];
-  let cursor: string | undefined;
-  for (;;) {
-    const linhas = await lerLinhasClientesRecebidos(tx, tenantId, { situacao: f.situacao, cursor, limite: pagina });
-    const daPagina = linhas.slice(0, pagina);
-    for (const l of daPagina) {
-      if (itens.length >= teto) return { itens, cortado: true };
-      itens.push(linhaDaRotaClienteRecebido(l));
-    }
-    if (linhas.length <= pagina) return { itens, cortado: false };
-    if (itens.length >= teto) return { itens, cortado: true };
-    cursor = daPagina.at(-1)!.id;
-  }
+  return lerAteOTeto({
+    ler: (p) => lerLinhasClientesRecebidos(tx, tenantId, { situacao: f.situacao, cursor: p.cursor, limite: p.limite }),
+    cursorDe: (l) => l.id,
+    mapear: linhaDaRotaClienteRecebido,
+    teto,
+    pagina,
+  });
 }

@@ -4,6 +4,7 @@
  */
 import { CAMINHOS_INTEGRACAO_FDV_PLATAFORMA, MENSAGEM_SEM_CREDENCIAL_FDV, ENTIDADES_ENVIO_FDV, decifrarCampo, type ContextoPlataforma, type PluginPlataforma, type Transacao } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
+import { MSG_SEM_LICENCA } from '../contracts';
 import { criarPluginPlataformaIntegracaoFdv, type EstadoPortal, type InsumosLogPortal, type InsumosMonitorPortal, type RepositorioPortalIntegracaoFdv } from './plataforma';
 
 const TENANT = '11111111-1111-4111-8111-111111111111';
@@ -108,7 +109,7 @@ describe('plugin de plataforma da Integração FDV (T-0056)', () => {
       chamar(p, 'POST', C.cargaCompleta, { params: { entidade: 'filial' } }),
       chamar(p, 'POST', C.retomar, { params: { entidade: 'filial' } }),
     ];
-    for (const t of tentativas) await expect(t).rejects.toMatchObject({ status: 422, codigo: 'RN-CORE-02', message: 'Integração FDV sem licença nesta empresa. Ligue o módulo na aba Empresa.', detalhes: { codigo: 'modulo_desligado' } });
+    for (const t of tentativas) await expect(t).rejects.toMatchObject({ status: 422, codigo: 'RN-CORE-02', message: MSG_SEM_LICENCA, detalhes: { codigo: 'modulo_desligado' } });
     expect(d.escritas()).toHaveLength(0);
   });
 

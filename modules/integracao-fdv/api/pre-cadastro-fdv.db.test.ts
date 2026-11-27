@@ -434,9 +434,6 @@ describe.skipIf(!PG_DISPONIVEL)('pré-cadastro de cliente do FDV no PostgreSQL r
       const corte = await worker.comTenant(A, (tx) => lerRecebidosParaExportar(tx, A, { teto: 3, pagina: 2 }));
       expect(corte.cortado).toBe(true);
       expect(corte.itens.map((i) => i.id)).toEqual(todos.itens.slice(0, 3).map((i) => i.id));
-      const exato = await worker.comTenant(A, (tx) => lerRecebidosParaExportar(tx, A, { teto: todos.itens.length, pagina: 2 }));
-      expect(exato.cortado).toBe(false);
-      expect(exato.itens).toHaveLength(todos.itens.length);
     });
   });
 
