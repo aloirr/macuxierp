@@ -1,6 +1,6 @@
-# Config "menos é mais": simulação final na v4 aprovada (decisão 40)
+# Config "menos é mais": simulação APROVADA (decisões 40, 44 A, 45 e 46 A)
 
-A base é a v4 do Gerente Sênior: `aloirr/macuxierp-recados`, pasta `recados/anexos/R-20261127-180115-config-v4/`, commit 981da89. `gerar.py` vem do `gen4.py` dela e gera os HTML (`python3 gerar.py`). Os PNG mostram 390, 1366 e 1920 nas telas principais e 1366 e 1920 nos diálogos e na lista. Só dados **fictícios**. O PR do `packages/ui` e do `apps/web` sai na v0.3.28, depois do "aprovado".
+A base é a v4 do Gerente Sênior: `aloirr/macuxierp-recados`, pasta `recados/anexos/R-20261127-180115-config-v4/`, commit 981da89. `gerar.py` vem do `gen4.py` dela e gera os HTML (`python3 gerar.py`). Os PNG mostram 390, 1366 e 1920 nas telas principais e 1366 e 1920 na lista e na confirmação digitada. Só dados **fictícios**. O PR do `packages/ui` e do `apps/web` sai na v0.3.28, depois do "aprovado".
 
 ## O que mudou em relação à v4
 1. Hex trocados pelos **tokens do `packages/ui`**, nos casos em que a cor é a mesma ou quase igual:
@@ -15,7 +15,7 @@ A base é a v4 do Gerente Sênior: `aloirr/macuxierp-recados`, pasta `recados/an
 3. Tamanhos 11,5 e 12,5 viram 12 e 13, que estão na escala da marca. Rótulo em `rotuloDestaque` (azul-noite), pela regra de hierarquia de 27/11.
 4. Correções pedidas:
    - (a) e-mail e telefone do Contato mascarados, com o link "mostrar";
-   - (b) Usuários com a situação "Inativo" e a confirmação de excluir, que bloqueia o último administrador ativo e só mostra "Fechar";
+   - (b) Usuários com a situação "Inativo". Na linha do último administrador ativo não há "Excluir": entra a etiqueta "último administrador" ao lado do perfil (decisão 46 A). Sem diálogo de bloqueio;
    - (c) "Substituir…" em vermelho;
    - (d) em 390, a barra fixa (sticky no fim do fluxo) não cobre o conteúdo. Os blocos ficam em 1 coluna, as tabelas mostram as colunas essenciais e os links de linha ficam empilhados.
 5. Novos:
@@ -34,8 +34,8 @@ A base é a v4 do Gerente Sênior: `aloirr/macuxierp-recados`, pasta `recados/an
 - `espaco` 12, também o gap da grade;
 - `cantoCartao` 8;
 - `alturaLinhaTabela` 36 e `alturaCabecalhoTabela` 34;
-- **`corCabecalhoTabela` #E6EBF3**, da v4: o design-de-marca não aprova como token, porque fica quase igual à `nevoa` e não existe no FDV. Quem decide é o Alexandre;
-- `corLinhaAlternada` #FBFAF8, da v4.
+- cabeçalho de tabela em `nevoa` #ECEEF1, com negrito e linha azul-noite de 2 px (decisão 44 A; o #E6EBF3 sai);
+- `corLinhaAlternada` #FBFAF8 (decisão 44 A).
 
 ## Regra dos botões (CLAUDE.md, regra 12)
 - Uma barra no rodapé de cada bloco: ações à esquerda e destrutivas à direita, em vermelho. As destrutivas pedem confirmação e só o superadmin vê.
@@ -52,7 +52,4 @@ A base é a v4 do Gerente Sênior: `aloirr/macuxierp-recados`, pasta `recados/an
   - diálogo bloqueado: "Não dá para excluir…";
   - confirmação digitada mais curta;
   - "Detalhes" inteiro em 390.
-- Ficam para o Alexandre:
-  - #E6EBF3 × `nevoa` (decisão 43);
-  - #FBFAF8;
-  - tirar o "Excluir" da linha do último administrador ativo, em vez de explicar no diálogo (sugestão do corretor).
+- Decisões do Alexandre, por volta das 18h33: 44 A (`nevoa` no cabeçalho e zebra #FBFAF8), 45 (simulação 25cf42c aprovada, com os tamanhos da marca) e 46 A (sem Excluir no último administrador, com a etiqueta).

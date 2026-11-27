@@ -1,7 +1,7 @@
 CSS="""
 :root{--azul:var(--mx-cor-azul-noite);--fundo:var(--mx-cor-perola);--borda:var(--mx-cor-borda-tabela);--texto:var(--mx-cor-grafite);--sub:var(--mx-cor-texto-secundario);
 --ok:var(--mx-cor-ativo-fundo);--okt:var(--mx-cor-ativo-texto);--al:var(--mx-cor-aviso-fundo);--alt:var(--mx-cor-aviso-texto);--erro:var(--mx-cor-erro-texto);--linha:var(--mx-cor-nevoa);
---cab:#E6EBF3;--alterna:#FBFAF8;
+--cab:var(--mx-cor-nevoa);--alterna:#FBFAF8;
 --campo:34px;--gap:12px;--pad:16px;--raio:8px;--f:var(--mx-tamanho-pequeno);--rot:var(--mx-tamanho-micro);--btn:var(--mx-tamanho-pequeno)}
 *{box-sizing:border-box}body{margin:0;font:var(--f)/1.35 var(--mx-fonte-texto);color:var(--texto);background:var(--fundo)}
 .topo{display:flex;align-items:center;gap:16px;background:var(--mx-cor-grafite);color:#fff;padding:0 24px;height:48px}.topo b{font-size:15px}.topo .mn{opacity:.75;font-size:var(--btn)}
@@ -59,7 +59,9 @@ M=lambda v: f'<div class="ro" style="font-weight:400">{v} <a href="#" style="col
 cont='<div class="g">'+F('s12','E-mail',M('co****@exemplo.com'))+F('s12','Telefone (DDD + número)',M('(92) ****-0000'))+'</div>'
 mods='<div class="mods">'+''.join(f'<label><input type="checkbox" checked> {m}</label>' for m in ['Cadastros','Pedidos','Faturamento','Fiscal','Integração FDV'])+'</div>'
 us=[('Ana Exemplo','an****@exemplo.com','Administrador BKO','Ativo','27/11 16:42'),('Bruno Exemplo','br****@exemplo.com','Faturista','Ativo','27/11 15:10'),('Carla Exemplo','ca****@exemplo.com','Fiscal','Ativo','26/11 18:03'),('Diego Exemplo','di****@exemplo.com','Vendas (leitura)','Convite enviado','—'),('Elisa Exemplo','el****@exemplo.com','Fiscal','Inativo','02/10 11:40')]
-lin=[f'<tr><td><b>{a}</b></td><td>{b}</td><td>{c}</td><td><span class="selo {"" if d=="Ativo" else ("cz" if d=="Inativo" else "al")}">{d}</span></td><td>{e}</td><td class="ac"><a href="#">Editar</a><a href="#">Redefinir senha</a><a class="r" href="#">Excluir</a></td></tr>' for a,b,c,d,e in us]
+ult=lambda c: f'{c} <span class="selo cz" style="margin-left:6px">último administrador</span>' if c=='Administrador BKO' else c
+exc=lambda c: '' if c=='Administrador BKO' else '<a class="r" href="#">Excluir</a>'
+lin=[f'<tr><td><b>{a}</b></td><td>{b}</td><td>{ult(c)}</td><td><span class="selo {"" if d=="Ativo" else ("cz" if d=="Inativo" else "al")}">{d}</span></td><td>{e}</td><td class="ac"><a href="#">Editar</a><a href="#">Redefinir senha</a>{exc(c)}</td></tr>' for a,b,c,d,e in us]
 busca='<input placeholder="Buscar nome ou e-mail" style="height:var(--campo);border:1px solid var(--borda);border-radius:6px;padding:0 10px;width:220px;font:var(--btn) var(--mx-fonte-texto)">'
 corpo=sec('s12','Identificação',ident)+sec('s12','Endereço',end)+sec('s6','Atividades (CNAE)',cnae)+sec('s3','Contato',cont)+sec('s3','Módulos',mods)+sec('s12','Usuários',tabela(['Nome','E-mail','Perfil','Situação','Último acesso',''],lin)+'<div class="barra pe"><button class="btn p">+ Adicionar usuário</button></div>',busca,True,'· 5')
 EMP=('Empresa','<span class="selo">✓ Igual à Receita · consultada 27/11 10:10</span>','<button class="btn">Atualizar pela Receita</button>','Empresa',corpo)
@@ -82,7 +84,6 @@ open('integracoes.html','w').write(pagina(*INT))
 def dialogo(base,html):
     b=pagina(*base)
     return b.replace('</body>','<div class="cortina"></div><div class="dlg" role="dialog">'+html+'</div></body>')
-open('empresa-excluir-usuario.html','w').write(dialogo(EMP,'<h2>Não dá para excluir Ana Exemplo</h2><div class="fx">É a única administradora ativa. Dê o perfil Administrador a outro usuário antes.</div><div class="barra"><button class="btn">Fechar</button></div>'))
 open('integracoes-confirmacao-digitada.html','w').write(dialogo(INT,'<h2>Zerar pedidos não faturados?</h2><div class="fx">Apaga 37 pedidos. Não tem volta.</div><div class="f"><label>Digite AM0000 para confirmar</label><input value="AM00"></div><div class="barra"><button class="btn">Cancelar</button><span style="margin-left:auto"></span><button class="btn r cheio" disabled>Zerar pedidos</button></div>'))
 EM=[('EMPRESA EXEMPLO COMÉRCIO LTDA','AM0000','00.000.000/0001-00','Ativa','Cadastros · Pedidos · Faturamento · Fiscal · Integração FDV','<span class="selo al">Com recusas</span>','22/11/2026'),('DISTRIBUIDORA FICTÍCIA DO NORTE LTDA','AM0001','00.000.000/0002-80','Ativa','Cadastros · Pedidos · Integração FDV','<span class="selo">Ligada</span>','12/11/2026'),('ATACADO TESTE DO RIO LTDA','AM0002','00.000.000/0003-61','Ativa','Cadastros · Pedidos','—','21/10/2026'),('MERCANTIL EXEMPLO ME','AM0003','00.000.000/0004-42','Suspensa','Cadastros','—','30/09/2026')]
 le=[f'<tr><td><b>{a}</b></td><td>{b}</td><td>{c}</td><td><span class="selo {"" if d=="Ativa" else "cz"}">{d}</span></td><td>{e}</td><td>{f}</td><td>{g}</td><td class="ac"><a href="#">Abrir</a></td></tr>' for a,b,c,d,e,f,g in EM]
