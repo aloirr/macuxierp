@@ -125,3 +125,12 @@ describe('T-0057 C2: adaptadores do hub-v1 só convertem a forma (a regra é do 
     }
   });
 });
+
+describe('T-0057 D1/D2 (ADR 0014, emenda de 27/11): crt da filial e ncm do produto vêm da entrada', () => {
+  it('ADR 0014: crt e ncm presentes chegam a linha.dados', () => {
+    const r = ok(adaptarLote({ entidade: 'filial', modo: 'delta', registros: [{ ...filial, crt: '3' }] }, ctx)).resultados[0] as { linha: { dados: { crt?: string } } };
+    expect(r.linha.dados.crt).toBe('3');
+    const p = ok(adaptarLote({ entidade: 'produto', modo: 'delta', registros: [{ external_id: 'P1', ativo: true, sku: 'S1', nome: 'Parafuso', unidade: 'UN', ncm: '73181500' }] }, ctx)).resultados[0] as { linha: { dados: { ncm?: string } } };
+    expect(p.linha.dados.ncm).toBe('73181500');
+  });
+});
