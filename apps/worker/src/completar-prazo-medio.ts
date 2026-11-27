@@ -37,7 +37,8 @@ export function criarRotinaCompletarPrazoMedio(d: DependenciasCompletarPrazoMedi
     id: ROTINA_COMPLETAR_PRAZO_MEDIO,
     horaUtc: d.horaUtc ?? 0,
     async executar(agora) {
-      const completar = completarPrazosMedios({ repositorios: repositoriosSql, outbox, auditoria, relogio: { agora: () => agora } });
+      // log: o aviso do 42501 do módulo (RN-CAD-16), só tenant_id, condicao_id e codigo
+      const completar = completarPrazosMedios({ repositorios: repositoriosSql, outbox, auditoria, relogio: { agora: () => agora }, log: d.log });
       let completadas = 0;
       const r = await paraCadaTenant(d.banco, d.tenantsAtivos ?? ((tx) => fonteTenantsSql.ativos(tx)), ROTINA_COMPLETAR_PRAZO_MEDIO, d.log, async (tx, tenant_id) => {
         const n = (await completar(tx, tenant_id)).completadas;
