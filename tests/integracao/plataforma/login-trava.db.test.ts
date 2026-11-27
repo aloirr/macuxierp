@@ -16,7 +16,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { CABECALHO_IP_CLIENTE, CABECALHO_PROVA_BFF, COOKIE_CONFIG, type Relogio } from '../../../packages/platform-sdk/src/index';
 import { criarBancoEfemero, PG_DISPONIVEL, type BancoEfemero } from '../../../packages/platform-sdk/src/pg-testes';
 import { appPgDeTeste, destinoDeLogs } from '../../../apps/api/src/apoio-teste';
-import { atalhosPortal, CSRF, esperarContaBloqueada, esperarRecusaUnica, inserirSuperadmin, SENHA_SA, type AppPortal, type RespostaPortal } from '../../apoio/portal-pg';
+import { esperarContaBloqueada, esperarRecusaUnica } from '../../apoio/portal-pg-expect';
+import { atalhosPortal, CSRF, inserirSuperadmin, SENHA_SA, type AppPortal, type RespostaPortal } from '../../apoio/portal-pg';
 
 const EMAIL_TRAVA = 'sa-e6-trava@exemplo.invalid';
 const EMAIL_LOG = 'sa-e6-log@exemplo.invalid';

@@ -27,7 +27,8 @@ import { appPgDeTeste, destinoDeLogs } from '../../../apps/api/src/apoio-teste';
 import { envPsqlAdmin } from '../../../apps/api/src/apoio-operador-teste';
 import { ARGON2_PADRAO, conferirSenha } from '../../../apps/api/src/auth/senha';
 import { criarPsqlPassagem, rodarOperador, type VmOperador } from '../../apoio/operador-falso';
-import { atalhosPortal, esperarContaBloqueada, esperarRecusaUnica, type AppPortal } from '../../apoio/portal-pg';
+import { atalhosPortal, type AppPortal } from '../../apoio/portal-pg';
+import { esperarContaBloqueada, esperarRecusaUnica } from '../../apoio/portal-pg-expect';
 
 const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const OPERADOR_SH = resolve(RAIZ, 'scripts', 'deploy', 'producao', 'operador.sh');
