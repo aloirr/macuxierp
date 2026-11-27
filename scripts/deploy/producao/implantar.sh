@@ -11,10 +11,12 @@
 #
 # Ordem: TRAVA DA VM (a mesma do FDV, /var/lock/macuxi-producao-vm.lock; ADR 0003, item 2) → conferência dos arquivos de
 # /opt/macuxierp → versão em uso guardada (imagens.env + compose.yml → *.anterior) → compose novo e imagens.env → pull →
-# banco.sh (banco, migrações, senhas e conferência dos papéis) → up -d --wait → conferência local (/v1/saude em
-# 127.0.0.1:8200 com banco ok e a versão nova; /login em 127.0.0.1:3200) → limpeza das imagens SÓ do ERP.
+# banco.sh (banco, migrações, senhas e conferência dos papéis) → troca sem parada da api e do web (troca.sh: a réplica nova
+# ao lado da velha, saúde, a velha sai do túnel e drena; ADR 0003, adendo 48 A) → worker → conferência de dentro dos
+# contêineres (/v1/saude com banco ok e a versão nova; /login) → limpeza das imagens SÓ do ERP.
 # Saída 0 = publicado. Falha ANTES do up (trava, arquivos, pull, banco): nada da aplicação mudou; saída 1 (2 = argumento).
-# Falha DEPOIS do up: VOLTA ATRÁS para a versão anterior (imagens e compose), confere de novo e sai com 3. Migração aplicada
+# Falha DEPOIS do up: VOLTA ATRÁS para a versão anterior (imagens e compose; pelo mesmo caminho sem parada), confere de
+# novo e sai com 3. Se a réplica nova não fica saudável, ela sai e a velha nem deixou o túnel. Migração aplicada
 # não é desfeita (aditivas: a versão anterior roda sobre o esquema novo). Sem versão anterior (1º deploy): saída 1.
 # Só mexe no projeto Compose macuxierp: nunca "docker compose down", nunca contêiner, rede ou imagem do FDV.
 # Nenhum segredo é impresso: os .env só são lidos pelo compose; a chave do A1 é conferida sem eco. Sem set -x.
@@ -154,30 +156,41 @@ ghcr_tentar "pull das imagens na VM" dc --profile ferramentas pull --quiet || an
 log "banco: criação, migrações, senhas e conferência dos papéis"
 MACUXIERP_DIR="$PASTA" bash "$ORIGEM/banco.sh" || antes_do_up "banco.sh falhou"
 
-# ---------- conferência ----------
-conferir() { # 0 = api com banco ok e a versão esperada, e o BKO respondendo o /login
-  local corpo="" i
+# ---------- troca sem parada (ADR 0003, adendo 48 A) e conferência ----------
+# shellcheck source-path=SCRIPTDIR source=troca.sh
+source "$ORIGEM/troca.sh"
+VERSAO_ALVO=""
+api_da_versao_alvo() { api_na_versao "$1" "$VERSAO_ALVO"; }
+
+conferir() { # 0 = cada api com banco ok e a versão esperada, e cada web respondendo o /login (de dentro do contêiner)
+  local i
   for i in $(seq 1 45); do
-    corpo="$(curl -fsS -m 5 http://127.0.0.1:8200/v1/saude 2>/dev/null || true)"
-    if printf '%s' "$corpo" | grep -q '"banco":"ok"' && printf '%s' "$corpo" | grep -q "\"versao\":\"$1\""; then
-      log "api: /v1/saude ok (banco ok, versão $1)"
-      break
-    fi
+    todas_ok macuxierp-api api_na_versao "$1" && { log "api: /v1/saude ok (banco ok, versão $1)"; break; }
     [ "$i" = 45 ] && { echo "[implantar] /v1/saude sem banco ok ou sem a versão $1 em 90 s" >&2; return 1; }
     sleep 2
   done
   for i in $(seq 1 30); do
-    curl -fsS -m 5 -o /dev/null http://127.0.0.1:3200/login && { log "web: /login ok"; return 0; }
+    todas_ok macuxierp-web web_responde && { log "web: /login ok"; return 0; }
     sleep 2
   done
-  echo "[implantar] BKO /login não respondeu em 127.0.0.1:3200" >&2
+  echo "[implantar] BKO /login não respondeu" >&2
   return 1
 }
 
+subir() { # versão → 0 = no ar. Com versão anterior e memória, troca sem parada; senão, recria (janela de 502).
+  VERSAO_ALVO="$1"
+  if [ "$TEM_ANTERIOR" = 1 ] && memoria_para_troca; then
+    trocar_servico macuxierp-api api_da_versao_alvo || return 1
+    trocar_servico macuxierp-web || return 1
+  elif [ "$TEM_ANTERIOR" = 1 ]; then
+    echo "::warning::memória livre da VM abaixo de ${TROCA_MIN_MIB} MiB: publicação recriando os contêineres (janela de 502 de ~30 s)"
+  fi
+  # o resto (worker; e tudo, no 1º deploy ou sem memória para a troca) como antes; api e web já trocados não são recriados
+  dc up -d --remove-orphans --wait --wait-timeout 240
+}
+
 log "subindo os serviços"
-subiu=0
-dc up -d --remove-orphans --wait --wait-timeout 240 && subiu=1
-if [ "$subiu" = 1 ] && conferir "$VERSAO"; then
+if subir "$VERSAO" && conferir "$VERSAO"; then
   :
 else
   echo "[implantar] a versão $VERSAO não passou na conferência" >&2
@@ -189,7 +202,7 @@ else
   restaurar_arquivos
   versao_ant="$(valor_env imagens.env MACUXIERP_VERSAO)"
   echo "::error::voltando atrás para $versao_ant"
-  dc up -d --remove-orphans --wait --wait-timeout 240 || true
+  subir "$versao_ant" || true
   if conferir "$versao_ant"; then
     echo "::error::produção do ERP de volta em $versao_ant (a $VERSAO falhou na conferência)"
   else

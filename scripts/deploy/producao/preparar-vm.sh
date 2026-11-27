@@ -101,7 +101,7 @@ fi
 mudou=0
 gravar_unidade /etc/systemd/system/macuxierp-alerta.service "# Gerado por scripts/deploy/producao/preparar-vm.sh do Macuxi ERP (T-0024). Não edite à mão.
 [Unit]
-Description=Macuxi ERP producao: alerta de saude (/v1/saude em 127.0.0.1:8200)
+Description=Macuxi ERP producao: alerta de saude (/v1/saude de dentro do conteiner da api)
 ConditionPathExists=$PASTA/alerta-saude.sh
 
 [Service]

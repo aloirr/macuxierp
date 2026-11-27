@@ -99,8 +99,7 @@ services:
       # pool: api 10 + worker 5 = 15 conexões no DBaaS, somadas às do FDV
       MACUXIERP_PG_POOL: '10'
       NODE_OPTIONS: --max-old-space-size=384
-    ports:
-      - '127.0.0.1:8200:8100'
+    # sem porta no host (ADR 0003, adendo 48 A): duas réplicas durante a troca; conferência e alerta por docker exec
     networks:
       padrao: {}
       tunel:
@@ -170,8 +169,6 @@ services:
     depends_on:
       macuxierp-api:
         condition: service_healthy
-    ports:
-      - '127.0.0.1:3200:3100'
     networks:
       padrao: {}
       tunel:

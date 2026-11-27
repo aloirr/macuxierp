@@ -118,6 +118,9 @@ F2 pode começar assim que a F1 fechar `cadastros`; F3 depende de F2 (o canal co
 - F4 pelo critério novo (20 notas no simulador): 23/11, 12h00.
 - Homologação real (T-0046): depende do credenciamento da thathyany na SEFAZ-AM e do A1 dela. Sem data até isso existir.
 
+## Backlog
+O backlog fica em [docs/backlog.md](../backlog.md), sem data até o Alexandre priorizar.
+
 ## Histórico da previsão
 - 21/11/2026 — versão 1 (F0, gerente-projetos).
 - 20/11/2026, 23h30 — versão 1 mantida. Motivo: piloto thathyany e ADR 0002 opção A (seção "Empresa piloto").
