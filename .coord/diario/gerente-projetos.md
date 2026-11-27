@@ -21,3 +21,4 @@
 2026-11-27 — v0.3.23 — liberar verde (run 46033555461, issue #846, SHA 2400a57); v0.3.24 reaberta em 6 frentes
 2026-11-27 — v0.3.23 — no ar às 13h32 (48 A: MemAvailable ok; laço do /login pendente); v0.3.24 com 13 PRs no main
 - 27/11 15h13 v0.3.24 fechada: #863, #864 e #865 no main; SHA final df7f92a. Suíte completa verde no a9a54fa; e2e do portal-integracao 7/0 depois do #865 (o defeito era do teste, por causa do #840); prints sem 🔴. SHA enviado à PO para o liberar; a am2808 ficou com o Alexandre.
+- 27/11 16h10 Decisão 28 do Alexandre (R-20261127-160939, opção a): PR de governança com o "autorizo o merge do PR #N no commit <sha>" do Alexandre vai, com o número e o SHA, à sessão do Gerente Sênior (session_0157qAhmkbXYR2DG4y3Wj3RG). Ele faz o merge squash nesse head com o CI verde e devolve o SHA. O autorizo continua sendo só do Alexandre.
