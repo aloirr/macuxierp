@@ -26,6 +26,7 @@
   --mx-cor-inativo-fundo: var(--mx-cor-nevoa);
   --mx-cor-linha-suave: var(--mx-cor-nevoa);
   --mx-cor-grafico-serie-cinza: var(--mx-cor-texto-secundario);
+  --mx-cor-rotulo-destaque: var(--mx-cor-azul-noite);
   --mx-fonte-texto: system-ui, "Segoe UI", Roboto, -apple-system, sans-serif;
   --mx-fonte-codigo: ui-monospace, "Cascadia Mono", "Roboto Mono", monospace;
   --mx-fonte-numeros: tabular-nums;
@@ -41,6 +42,7 @@
   --mx-tamanho-rotulo-menu: var(--mx-tamanho-micro);
   --mx-tamanho-titulo-grupo: var(--mx-tamanho-micro);
   --mx-tamanho-selo: var(--mx-tamanho-micro);
+  --mx-tamanho-rotulo-dado: var(--mx-tamanho-pequeno);
   --mx-peso-normal: 400;
   --mx-peso-medio: 500;
   --mx-peso-cabecalho-tabela: 600;
@@ -49,5 +51,7 @@
   --mx-peso-numero-card: 600;
   --mx-peso-aba-ativa: 600;
   --mx-peso-rotulo-pequeno: 600;
+  --mx-peso-rotulo-dado: 600;
   --mx-peso-titulo: 700;
+  --mx-grade-cartao-minimo: 280px;
 }

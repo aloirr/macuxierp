@@ -102,7 +102,7 @@ export function TabelaDensa<T>(props: TabelaDensaProps<T>) {
                   <button
                     type="button"
                     onClick={() => ordenar(c)}
-                    style={{ ...texto('pequeno', 'cabecalho-tabela'), textAlign: 'inherit', background: 'none', border: 0, padding: 0, margin: 0, cursor: 'pointer' }}
+                    style={{ ...texto('pequeno', 'cabecalho-tabela'), color: 'inherit', textAlign: 'inherit', background: 'none', border: 0, padding: 0, margin: 0, cursor: 'pointer' }}
                   >
                     {c.titulo}
                     {ativa ? (ordem?.direcao === 'asc' ? ' ▲' : ' ▼') : ''}

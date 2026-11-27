@@ -50,6 +50,8 @@ export const aliasCores = {
   inativoFundo: 'nevoa',
   linhaSuave: 'nevoa',
   graficoSerieCinza: 'textoSecundario',
+  /** Rótulo de dado, cabeçalho de tabela e título de bloco (regra das telas horizontais, R-20261127-110345; docs/design/telas-horizontais.md). */
+  rotuloDestaque: 'azulNoite',
 } as const satisfies Record<string, Cor>;
 
 export const fontes = {
@@ -81,6 +83,8 @@ export const papeis = {
   /** @deprecated Use rotuloMenu. Alias por uma versão (sai depois que o shell trocar `--mx-tamanho-titulo-grupo` em globals.css). */
   tituloGrupo: 'micro',
   selo: 'micro',
+  /** Rótulo de dado (dt, rótulo de campo só leitura): caixa-alta pequena, com `pesos.rotuloDado` e `rotuloDestaque`. O valor reaproveita base/normal/grafite e o título de bloco, `tituloCartao`. */
+  rotuloDado: 'pequeno',
 } as const satisfies Record<string, keyof typeof escala>;
 
 /** §5.2: 400, 500, 600 e 700 por papel. Nada em 800/900. */
@@ -94,7 +98,25 @@ export const pesos = {
   numeroCard: 600,
   abaAtiva: 600,
   rotuloPequeno: 600,
+  /** Rótulo de dado (caixa-alta pequena, `rotuloDestaque`): visivelmente diferente do valor (400). */
+  rotuloDado: 600,
   titulo: 700,
+} as const;
+
+/**
+ * Pontos de quebra, em px (largura da janela; regra das telas horizontais, docs/design/telas-horizontais.md).
+ * Media query não lê variável CSS: as telas usam estes números literais em `@media (min-width: …)`.
+ */
+export const quebras = {
+  celular: 390,
+  tablet: 768,
+  notebook: 1280,
+  monitor: 1440,
+} as const;
+
+/** Grade de blocos, em px: largura mínima de um cartão (colunas por quebra e vão de 16 px em docs/design/telas-horizontais.md). */
+export const grade = {
+  cartaoMinimo: 280,
 } as const;
 
 const kebab = (s: string) => s.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
@@ -108,6 +130,7 @@ export function variaveisCss(): Record<string, string> {
   for (const [k, x] of Object.entries(escala)) v[`--mx-tamanho-${kebab(k)}`] = `${x}px`;
   for (const [k, x] of Object.entries(papeis)) v[`--mx-tamanho-${kebab(k)}`] = `var(--mx-tamanho-${x})`;
   for (const [k, x] of Object.entries(pesos)) v[`--mx-peso-${kebab(k)}`] = String(x);
+  for (const [k, x] of Object.entries(grade)) v[`--mx-grade-${kebab(k)}`] = `${x}px`;
   return v;
 }
 

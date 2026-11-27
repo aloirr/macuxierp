@@ -1,9 +1,9 @@
 import type { CSSProperties } from 'react';
-import type { Cor, escala, papeis, pesos } from './tokens.js';
+import type { Cor, aliasCores, escala, papeis, pesos } from './tokens.js';
 import { cores } from './tokens.js';
 
 /** Cor do token da marca como `var()`; nunca literal (T-0028). */
-export const cor = (nome: Cor | 'ativoTexto' | 'inativoFundo' | 'linhaSuave'): string =>
+export const cor = (nome: Cor | keyof typeof aliasCores): string =>
   `var(--mx-cor-${nome.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)})`;
 
 /** Espaçamentos em múltiplos de 4px (a marca ainda não tem tokens de espaço; ver RD no doc de design). */
@@ -195,7 +195,8 @@ export const avisoErrosCampos = 'Há campos com erro. Confira as mensagens abaix
 /** Estilo único das duas tabelas (MC-0013). */
 export const tabela = {
   raiz: { ...texto('pequeno'), width: '100%', borderCollapse: 'collapse', background: cor('branco') } as CSSProperties,
-  cabecalho: { ...texto('pequeno', 'cabecalho-tabela'), textAlign: 'left', padding: `${espaco.xs}px ${espaco.md}px`, borderBottom: `1px solid ${cor('bordaTabela')}`, background: cor('nevoa') } as CSSProperties,
+  /** Cabeçalho na cor de destaque (regra de hierarquia, docs/design/telas-horizontais.md). */
+  cabecalho: { ...texto('pequeno', 'cabecalho-tabela'), color: cor('rotuloDestaque'), textAlign: 'left', padding: `${espaco.xs}px ${espaco.md}px`, borderBottom: `1px solid ${cor('bordaTabela')}`, background: cor('nevoa') } as CSSProperties,
   celula: { padding: `${espaco.xs}px ${espaco.md}px`, borderBottom: `1px solid ${cor('bordaTabela')}`, verticalAlign: 'top' } as CSSProperties,
   /** Célula numérica ou de dinheiro: sem quebra de linha (o `th` continua só com `numerico`). */
   celulaNumerica: { ...numerico, whiteSpace: 'nowrap' } as CSSProperties,
