@@ -178,7 +178,7 @@ jobs:
     permissions:
       contents: read
       packages: read
-      # só para comentar a falha da fumaça na issue "Aprovar deploy <tag>" (T-0065 b)
+      # só para comentar na issue "Aprovar deploy <tag>": a falha da fumaça (T-0065 b) e a saúde por empresa (v0.3.21)
       issues: write
     env:
       VERSAO: ${{ needs.conferir.outputs.versao }}
@@ -190,13 +190,15 @@ jobs:
           ref: ${{ needs.conferir.outputs.sha }}
           persist-credentials: false
           # modo cone: os arquivos da raiz (compose.yml, .nvmrc) vêm sempre junto com a pasta listada; a fumaça (T-0065 b)
-          # lê o script, a lista de rotas e o título/rótulo da trava (scripts/ci/producao-trava.mjs) do mesmo SHA da tag
+          # lê o script, a lista de rotas e o título/rótulo da trava (scripts/ci/producao-trava.mjs) do mesmo SHA da tag; os logos
+          # do e-mail (conferir-logos.mjs) saem do modelo em packages/platform-sdk/src
           sparse-checkout: |
             scripts/deploy/producao
             .github/producao
             .github/scripts
             scripts/ci
             tests/integracao/rotas
+            packages/platform-sdk/src
 
       - name: implantação do ERP pronta
         run: |
@@ -401,6 +403,35 @@ jobs:
             cat "$FUMACA_RELATORIO"; } > "$RUNNER_TEMP/fumaca-comentario.md"
           gh issue comment "$numero" -R "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/fumaca-comentario.md"
           echo "comentado na issue #$numero"
+
+      # Logos do e-mail (v0.3.21): cada logo que o modelo do e-mail cita responde 200 com image/png pelo domínio. Um 404
+      # vira o "?" no topo do Gmail (v0.3.16 a v0.3.19: a imagem do BKO não levava o apps/web/public).
+      - name: logos do e-mail pelo domínio (200 e image/png)
+        timeout-minutes: 3
+        run: node scripts/deploy/producao/conferir-logos.mjs
+
+      # Saúde por empresa (D3, v0.3.18; saude.mjs): só contagens por código da empresa, numa transação READ ONLY. Informativo:
+      # a falha avisa e não derruba a publicação. Vai ao resumo do job e à issue "Aprovar deploy <tag>".
+      - name: saúde por empresa (operador.sh saude; informativo)
+        if: ${{ success() }}
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          USUARIO: ${{ secrets.PROD_USER }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          ssh -l "$USUARIO" prod 'bash ~/macuxierp-deploy/operador.sh saude' | tee "$RUNNER_TEMP/saude.txt" \
+            || { echo "::warning::operador.sh saude falhou (informativo; a publicação segue)"; exit 0; }
+          { echo "### Saúde por empresa ($VERSAO)"; echo; echo '```'; cat "$RUNNER_TEMP/saude.txt"; echo '```'; } > "$RUNNER_TEMP/saude.md"
+          cat "$RUNNER_TEMP/saude.md" >> "$GITHUB_STEP_SUMMARY"
+          export TITULO ROTULO
+          TITULO="$(node --input-type=module -e "const m = await import('./scripts/ci/producao-trava.mjs'); console.log(m.tituloDaIssue(process.env.VERSAO))")"
+          ROTULO="$(node --input-type=module -e "const m = await import('./scripts/ci/producao-trava.mjs'); console.log(m.ROTULO_TRAVA)")"
+          numero="$(gh issue list -R "$GITHUB_REPOSITORY" --label "$ROTULO" --state all --limit 200 --json number,title \
+            --jq '.[] | select(.title == env.TITULO) | .number' | head -n 1)"
+          [ -n "$numero" ] || { echo "::warning::issue \"$TITULO\" não encontrada: a saúde está no resumo do job"; exit 0; }
+          gh issue comment "$numero" -R "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/saude.md"
 
       - name: limpar a chave do runner
         if: ${{ always() }}
