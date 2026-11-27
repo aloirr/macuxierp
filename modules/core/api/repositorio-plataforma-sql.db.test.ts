@@ -266,6 +266,9 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
         expect(a).not.toContain('contato.ficticio');
         expect(a).not.toContain('EMPRESA FICTICIA FICHA');
         expect((await salvar()).corpo.estado).toBe('sem_mudanca');
+        const renomear = rota(id, semPrefixo(ROTAS_FICHA.salvar), {}, true, { metodo: 'PUT', corpo: { ...edicao, razao_social: 'EMPRESA RENOMEADA LTDA' } }) as Promise<{ corpo: { estado: string; campos_alterados?: string[] } }>;
+        expect((await renomear).corpo).toMatchObject({ estado: 'ok', campos_alterados: ['razao_social'] });
+        expect((await b.admin.query('SELECT razao_social FROM core.empresa WHERE tenant_id = $1', [id])).rows[0].razao_social).toBe('EMPRESA RENOMEADA LTDA');
       });
 
       it('a troca grava o CNPJ, publica um core.empresa.cnpj_alterado@1 válido e audita sem nenhum CNPJ', async () => {

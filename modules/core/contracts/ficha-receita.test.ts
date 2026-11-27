@@ -32,6 +32,9 @@ describe('RN-CORE-16: contrato da ficha editável', () => {
     expect(EdicaoFicha.parse(edicao).ie).toBeUndefined();
     expect(EdicaoFicha.safeParse({ ...edicao, ie: '1'.repeat(15) }).success).toBe(false);
     expect(EdicaoFicha.safeParse({ ...edicao, ie: 'ABC123' }).success).toBe(false);
+    // A 0077 aceita de 2 a 14 dígitos: 1 dígito é recusado já no contrato.
+    expect(EdicaoFicha.safeParse({ ...edicao, ie: '1' }).success).toBe(false);
+    expect(EdicaoFicha.parse({ ...edicao, ie: '12' }).ie).toBe('12');
   });
   it('RN-CORE-16: evento core.empresa.cnpj_alterado@1 não leva CNPJ antigo e exige CNPJ novo válido', () => {
     expect(EVENTO_CNPJ_ALTERADO).toBe('core.empresa.cnpj_alterado@1');

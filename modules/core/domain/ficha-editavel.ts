@@ -67,7 +67,7 @@ export function camposDiferentes(salva: FichaComparavel, outra: FichaComparavel)
  * RN-CORE-16 (Salvar): compara a edição com a ficha salva e monta a ficha para gravar (`empresa_salvar_ficha`).
  * Textos saem normalizados (espaços, UF maiúscula). `fonte` é decidida aqui: 'manual' na edição; em `origem` 'receita' mantém a
  * fonte e usa o instante da consulta que a prévia trouxe. E-mail e telefone só entram na ficha se vieram na edição.
- * `campos_alterados` vazio = nada a gravar nem a auditar ('sem_mudanca').
+ * `campos_alterados` é só prévia (a ficha salva é mascarada e sem a razão social): quem decide é a empresa_salvar_ficha.
  */
 export function aplicarEdicao(salva: FichaComparavel, edicao: EdicaoFicha, agora: Date): { ficha: FichaReceitaPlana; campos_alterados: string[] } {
   const { origem, consultado_em, email, telefone, ...resto } = edicao;

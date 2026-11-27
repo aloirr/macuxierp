@@ -113,10 +113,12 @@ function repoMemoria(inicial: Partial<EmpresaPlataforma> = {}, op: OpcoesFicha =
 
 function montar(inicial?: Partial<EmpresaPlataforma>, op: OpcoesFicha = {}) {
   const m = repoMemoria({ cnpj: CNPJ, ...inicial }, op);
+  const avisos: { dados: Record<string, unknown>; mensagem: string }[] = [];
   const plugin = criarPluginPlataformaCore({
     repo: m.repo,
     consultaReceita: op.consulta,
     consultaNfeProducao: op.nfeProducao,
+    log: { warn: (dados, mensagem) => { avisos.push({ dados, mensagem }); } },
     manifestos: MANIFESTOS_TESTE,
     hashSenha: async (s) => `$argon2id$teste$${s.length}`,
     aleatorios: (n) => Uint8Array.from({ length: n }, (_, i) => (i * 37 + 11) % 256),
@@ -150,7 +152,7 @@ function montar(inicial?: Partial<EmpresaPlataforma>, op: OpcoesFicha = {}) {
     try { await p; } catch (e) { if (e instanceof ErroApi) return e; throw e; }
     throw new Error('esperava ErroApi');
   };
-  return { ...m, plugin, chamar, erro, auditadas, etapas, txPlataforma, txTenant };
+  return { ...m, plugin, chamar, erro, auditadas, avisos, etapas, txPlataforma, txTenant };
 }
 
 const LIGADOS_ATE_PEDIDO = [
@@ -200,7 +202,11 @@ describe('T-0050: plugin de plataforma do core (ADR 0012)', () => {
     expect((await ler(montar(undefined, { nfeProducao: { temNfeAutorizadaEmProducao: async () => true } }))).corpo).toMatchObject({ permitida: false, motivo: 'nfe_autorizada_producao' });
     const indisp = { permitida: false, motivo: 'consulta_indisponivel', mensagem: 'Não foi possível verificar as notas agora; tente de novo' };
     expect((await ler(montar())).corpo).toEqual(indisp);
-    expect((await ler(montar(undefined, { nfeProducao: { temNfeAutorizadaEmProducao: async () => { throw new Error('x'); } } }))).corpo).toEqual(indisp);
+    const falha = montar(undefined, { nfeProducao: { temNfeAutorizadaEmProducao: async () => { throw new Error('senha=segredo 11222333000181'); } } });
+    expect((await ler(falha)).corpo).toEqual(indisp);
+    // A falha não some: vai ao log, só com o tipo do erro (nunca a mensagem, que pode trazer dado).
+    expect(falha.avisos).toEqual([{ dados: { modulo: 'core', request_id: 'req-1', erro: 'Error' }, mensagem: expect.stringContaining('NF-e') }]);
+    expect(JSON.stringify(falha.avisos)).not.toMatch(/segredo|11222333000181/);
   });
 
   it('cria a empresa (201) e recusa slug repetido (409)', async () => {
@@ -462,14 +468,14 @@ describe('RN-CORE-16: Ficha da Receita editável (v0.3.24)', () => {
       const r = (await t.chamar('PUT', '/empresas/:id/ficha', { corpo: { ...EDICAO, bairro: 'Aleixo' } })) as { corpo: { estado: string } };
       expect(t.salvas).toHaveLength(1);
       expect(r.corpo.estado).toBe('sem_mudanca');
+      expect(t.auditadas).toEqual([]);
     });
 
-    it('RN-CORE-16: sem mudança nenhuma não grava nem audita', async () => {
-      const t = montar(undefined, { ficha: FICHA_SALVA });
-      const r = (await t.chamar('PUT', '/empresas/:id/ficha', { corpo: EDICAO })) as { corpo: { estado: string } };
-      expect(r.corpo.estado).toBe('sem_mudanca');
-      expect(t.salvas).toEqual([]);
-      expect(t.auditadas).toEqual([]);
+    it('RN-CORE-16: só a razão social muda: a ficha lida não mostra, mas a rota grava pelo banco', async () => {
+      const t = montar(undefined, { ficha: FICHA_SALVA, alteradosDoBanco: ['razao_social'] });
+      const r = (await t.chamar('PUT', '/empresas/:id/ficha', { corpo: { ...EDICAO, razao_social: 'EMPRESA RENOMEADA LTDA' } })) as { corpo: { estado: string; campos_alterados: string[] } };
+      expect(r.corpo).toMatchObject({ estado: 'ok', campos_alterados: ['razao_social'] });
+      expect(t.salvas[0]?.ficha.razao_social).toBe('EMPRESA RENOMEADA LTDA');
     });
 
     it('RN-CORE-16: o que vai para a auditoria são só nomes e contagem, nunca valores', async () => {
@@ -522,7 +528,7 @@ describe('RN-CORE-16: Ficha da Receita editável (v0.3.24)', () => {
       const r = (await t.chamar('POST', '/empresas/:id/cnpj', { corpo })) as { corpo: unknown };
       expect(r.corpo).toEqual({ estado: 'ok', cnpj: NOVO_CNPJ });
       expect(t.cnpjs).toEqual([NOVO_CNPJ]);
-      expect(t.etapas).toEqual(['plataforma', `tenant:${EMPRESA}`, 'plataforma']);
+      expect(t.etapas).toEqual(['plataforma', 'plataforma']);
     });
 
     it('RN-CORE-16: bloqueia com NF-e autorizada em produção e não troca', async () => {

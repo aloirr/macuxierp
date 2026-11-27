@@ -111,8 +111,8 @@ export interface ConsultaReceita {
 }
 
 /**
- * RN-CORE-16: porta do faturamento (a apps/api liga uma na outra; o core não importa o módulo). Roda na transação do
- * tenant (RLS): responde se a empresa tem NF-e autorizada em PRODUÇÃO (homologação não conta).
+ * RN-CORE-16: porta do faturamento (a apps/api liga uma na outra; o core não importa o módulo). Abre a própria transação
+ * do tenant (RLS); quem chama não abre outra. Responde se a empresa tem NF-e autorizada em PRODUÇÃO (homologação não conta).
  */
 export interface ConsultaNfeProducao {
   temNfeAutorizadaEmProducao(tenantId: string): Promise<boolean>;
@@ -124,6 +124,8 @@ export interface DependenciasPlataformaCore {
   consultaReceita?: ConsultaReceita;
   /** RN-CORE-16. Mesmo padrão da `consultaReceita`: porta ausente = 503 de configuração (falha fechada: o CNPJ não troca). */
   consultaNfeProducao?: ConsultaNfeProducao;
+  /** Log da apps/api (só `warn`, sem dado pessoal): falha da consulta de NF-e na situação da troca de CNPJ. */
+  log?: { warn(dados: Record<string, unknown>, mensagem: string): void };
   /** Os `depende` dos manifestos reais (a apps/api passa `manifestos`); o core não importa outro módulo. */
   manifestos: readonly DependenciasModulo[];
   hashSenha(senha: string): Promise<string>;
@@ -318,16 +320,14 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
         const atual = await repo.lerEmpresaComFicha(c.tx, id);
         if (!atual) throw erros.naoEncontrado('Empresa');
         if (!atual.ficha) throw erros.conflito(MENSAGEM_SEM_CNPJ);
-        const { ficha, campos_alterados } = aplicarEdicao(atual.ficha, corpo, c.agora);
-        const salva = atual.ficha;
-        const semMudanca = async () => {
-          const sem: ResultadoSalvarFicha = { estado: 'sem_mudanca', ficha: await repo.descreverFicha(c.tx, salva) };
-          return semCache(sem);
-        };
-        // Resposta cedo, sem ir ao banco (o domínio é só prévia); a decisão final dos alterados é do banco.
-        if (campos_alterados.length === 0) return semMudanca();
+        const { ficha } = aplicarEdicao(atual.ficha, corpo, c.agora);
+        // Sempre vai ao banco: a ficha lida é mascarada e sem a razão social, então só a empresa_salvar_ficha compara com a
+        // ficha completa (razão social, contato novo com a mesma máscara). Sem alterados, ela não grava nem audita.
         const r = await repo.salvarFicha(c.tx, { id, ficha, request_id: c.request_id });
-        if (r.alterados.length === 0) return semMudanca();
+        if (r.alterados.length === 0) {
+          const sem: ResultadoSalvarFicha = { estado: 'sem_mudanca', ficha: await repo.descreverFicha(c.tx, atual.ficha) };
+          return semCache(sem);
+        }
         if (!r.ficha) throw erros.conflito(MENSAGEM_SEM_CNPJ);
         const ok: ResultadoSalvarFicha = { estado: 'ok', campos_alterados: r.alterados, ficha: r.ficha };
         return semCache(ok);
@@ -376,7 +376,13 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
         if (!atual.cnpj) throw erros.conflito(MENSAGEM_SEM_CNPJ);
         const porta = deps.consultaNfeProducao;
         let temNfe: boolean | null = null;
-        if (porta) temNfe = await c.comTenant(id, () => porta.temNfeAutorizadaEmProducao(id)).catch(() => null);
+        // Falha = indisponível; o log leva só o tipo do erro.
+        if (porta) {
+          temNfe = await porta.temNfeAutorizadaEmProducao(id).catch((e: unknown) => {
+            deps.log?.warn({ modulo: 'core', request_id: c.request_id, erro: e instanceof Error ? e.name : 'desconhecido' }, 'consulta de NF-e em produção falhou; troca de CNPJ indisponível');
+            return null;
+          });
+        }
         return semCache(situacaoTrocaCnpj(temNfe));
       },
     }),
@@ -399,7 +405,7 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
           const alvo = cnpjParaConferirUso(atual.cnpj, corpo.cnpj_novo);
           return { atualCnpj: atual.cnpj, nfe: porta, emUso: alvo ? await repo.cnpjEmUso(tx, { id, cnpj: alvo }) : false };
         });
-        const temNfe = await c.comTenant(id, () => lido.nfe.temNfeAutorizadaEmProducao(id));
+        const temNfe = await lido.nfe.temNfeAutorizadaEmProducao(id);
         const r = avaliarTrocaCnpj({
           atual: lido.atualCnpj,
           novo: corpo.cnpj_novo,
