@@ -30,3 +30,4 @@
 2026-11-24 — T-0085 — 365/24 só na entrada; entidade/evento @1 (condição e cliente) aceitam legado 999 dias/36 parcelas
 2026-11-24 — T-0097 — fração só em KG e M (RN-CAD-17): quantidadeAceitaFracao/validarFracaoDaQuantidade em contracts; validação no fator da unidade, no movimento de estoque e na carga de estoque
 2026-11-26 — T-0112 — RN-CAD-15: prazo médio digitado dentro da faixa das parcelas (domain, POST/PATCH 422, carga, web)
+2026-11-26 — T-0057 — lote 1: gravarLinhas extraído de carga.ts (api/carga-gravar.ts) e adaptadores puros do hub-v1 em domain/entrada/adaptar.ts (10 payloads, carga completa recusada com 422)
