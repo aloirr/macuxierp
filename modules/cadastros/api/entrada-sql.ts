@@ -55,6 +55,11 @@ export interface RepositorioEntrada {
   avancarCursor(conectorId: string, entidade: string, cursor: CursorHub, loteId: string): Promise<void>;
   /** RN-CAD-09 (0074): forma de pagamento do tenant ainda sem condição, pelo `external_id` do Hub; null = não existe (ou foi apagada). */
   lerForma(externalId: string): Promise<FormaGuardada | null>;
+  /**
+   * RN-CAD-09 (v0.3.26): a forma de mesmo código (sem diferenciar maiúsculas) que o tenant já tem: a da condição com `forma_codigo` igual,
+   * a derivada do tPag (condição sem `forma_external_id`) ou a mais antiga de `entrada_forma`. `external_id` nulo = a derivada do tPag.
+   */
+  formaPorCodigo(codigo: string, tpag: string | null): Promise<{ external_id: string | null } | null>;
   /** Grava ou atualiza a forma por (tenant, external_id); `igual` = nada mudou. O reenvio de uma forma apagada a revive. */
   gravarForma(f: FormaParaGravar): Promise<'nova' | 'alterada' | 'igual'>;
   /** LGPD: o lote `recebido` ou `processando` criado antes do `corte` vira `falhou` (`erro_codigo`), com o corpo zerado. Devolve quantos. Idempotente. */
@@ -111,6 +116,20 @@ export function entradaSql(tx: Transacao): RepositorioEntrada {
     async lerForma(externalId) {
       const r = await consultar<FormaGuardada>('SELECT codigo, nome, tpag FROM cadastros.entrada_forma WHERE external_id = $1 AND deleted_at IS NULL', [externalId]);
       return r[0] ?? null;
+    },
+
+    async formaPorCodigo(codigo, tpag) {
+      const c = await consultar<{ external_id: string | null }>(
+        `SELECT forma_external_id AS external_id FROM cadastros.condicao_pagamento
+          WHERE deleted_at IS NULL AND (upper(forma_codigo) = upper($1) OR (forma_codigo IS NULL AND forma_external_id IS NULL AND $2::text IS NOT NULL AND forma_tpag = $2::text))
+          ORDER BY (forma_external_id IS NULL), created_at, id LIMIT 1`,
+        [codigo, tpag],
+      );
+      if (c[0]) return c[0];
+      const e = await consultar<{ external_id: string | null }>(
+        'SELECT external_id FROM cadastros.entrada_forma WHERE upper(codigo) = upper($1) AND deleted_at IS NULL ORDER BY created_at, id LIMIT 1', [codigo],
+      );
+      return e[0] ?? null;
     },
 
     async gravarForma(f) {

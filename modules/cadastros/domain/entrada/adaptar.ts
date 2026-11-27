@@ -17,6 +17,20 @@ import { erroLinha, errosDeZod, mapearLinha, TPAG_RECUSADO, tpagDaForma, type Co
 export interface ContextoAdaptacao extends ContextoMapeamento {
   /** Forma de pagamento já conhecida (do lote ou do banco), pelo `external_id` do Hub. */
   formas: ReadonlyMap<string, Pick<FormaPagamentoHub, 'codigo' | 'nome'> & { tpag?: string | null }>;
+  /**
+   * RN-CAD-09 (v0.3.26): `external_id` recebido da forma → o `external_id` que a forma de mesmo código já tem no ERP (`null` = a forma
+   * é a derivada do tPag, sem `forma_external_id`). O recebido que não está aqui vale por ele mesmo.
+   */
+  formaCanonica?: ReadonlyMap<string, string | null>;
+}
+
+/**
+ * RN-CAD-09 (v0.3.26): a forma de pagamento é única por (tenant, código). Com forma de mesmo código já existente, a entrada reaproveita o
+ * `external_id` dela (`null` = derivada do tPag) e o recebido vira alias; sem ela, o recebido é a chave e não há alias.
+ */
+export function decidirChaveDaForma(recebido: string, existente: { external_id: string | null } | null): { external_id: string | null; alias: boolean } {
+  if (!existente || existente.external_id === recebido) return { external_id: recebido, alias: false };
+  return { external_id: existente.external_id, alias: true };
 }
 
 export type Adaptacao<E extends EntidadeCarga> = { ok: true; linha: LinhasCarga[E] } | { ok: false; erros: ErroLinha[] };
@@ -71,9 +85,11 @@ export const adaptarPrazoPagamento = (p: PrazoPagamentoHub, indice: number, ctx:
   // RN-CAD-09: a condição exige o tPag (`forma_tpag`). Forma achada com tPag nulo: o campo da FORMA é o que falta (o Hub não tem outro código
   // para "dado de outra entidade ausente"), então a linha do prazo é recusada com `campo_obrigatorio` em `forma_tpag`, sem gravar a condição.
   if (forma && forma.tpag === null) return { ok: false, erros: [erroLinha(numeroDaLinha(indice), 'forma_tpag', 'CARGA_OBRIGATORIO', 'A forma de pagamento ainda não tem o tPag')] };
+  // RN-CAD-15 (v0.3.26): `parcelas_dias` chega como texto "28/56" (compatibilidade) e o `mapearLinha` o grava como lista de inteiros ([28, 56]).
+  const chaveForma = ctx.formaCanonica?.has(p.forma_external_id) ? (ctx.formaCanonica.get(p.forma_external_id) ?? undefined) : p.forma_external_id;
   return mapear('condicao_pagamento', {
     external_id: p.external_id, codigo: p.codigo, descricao: p.descricao, parcelas_dias: p.parcelas_dias, ativo: sim(p.ativo),
-    forma_external_id: p.forma_external_id, forma_codigo: forma?.codigo, forma_nome: forma?.nome, forma_tpag: forma?.tpag ?? undefined,
+    forma_external_id: chaveForma, forma_codigo: forma?.codigo, forma_nome: forma?.nome, forma_tpag: forma?.tpag ?? undefined,
   }, indice, ctx);
 };
 

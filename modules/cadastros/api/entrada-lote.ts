@@ -16,7 +16,7 @@ import { CorpoLote, LIMITE_ERROS_RESPOSTA_MAX, type CorpoLote as CorpoLoteTipo }
 import { z } from 'zod';
 import type { ResultadoEntidade } from '../contracts';
 import {
-  PADRAO_UF, adaptarLote, agruparClientes, conferirFormasDoLote, cursorDoLote, cursorDepoisDoLote, errosDoLote, obsoletosDoLote, estadoFinalDoLote, idsVazios, repetidosNoLote,
+  PADRAO_UF, adaptarLote, agruparClientes, decidirChaveDaForma, conferirFormasDoLote, cursorDoLote, cursorDepoisDoLote, errosDoLote, obsoletosDoLote, estadoFinalDoLote, idsVazios, repetidosNoLote,
   tpagGuardadoDaForma, type ErroGuardado, type ErroLinha, type FormaDoLote, type MunicipioOficial,
 } from '../domain';
 import { estadoVazio } from './carga-entidades';
@@ -89,6 +89,8 @@ async function processarUm(d: DependenciasEntradaLote, tx: Transacao, trabalho: 
   for (const uf of ufsDosRegistros(registros)) municipios.set(uf, await r.oficiais.municipiosDaUf(uf, dataIso(agora)));
   // Forma de pagamento conhecida do banco (RN-CAD-09): a da condição (tPag da condição) ou a do lote de formas sem condição (entrada_forma, 0074).
   const formas = new Map<string, FormaGuardada>();
+  // RN-CAD-09 (v0.3.26): forma única por (tenant, código): o external_id recebido → o que a forma de mesmo código já tem.
+  const formaCanonica = new Map<string, string | null>();
   if (corpo.entidade === 'prazo_pagamento') {
     for (const ext of new Set(registros.map((x) => x.forma_external_id).filter((x): x is string => typeof x === 'string'))) {
       const c = (await r.carga.condicoesDaForma(ext))[0];
@@ -97,11 +99,16 @@ async function processarUm(d: DependenciasEntradaLote, tx: Transacao, trabalho: 
         const f = await entrada.lerForma(ext);
         if (f) formas.set(ext, f);
       }
+      const f = formas.get(ext);
+      if (f) {
+        const d = decidirChaveDaForma(ext, await entrada.formaPorCodigo(f.codigo, f.tpag));
+        if (d.alias) formaCanonica.set(ext, d.external_id);
+      }
     }
   }
   const adaptado = adaptarLote(
     { entidade: corpo.entidade, modo: corpo.modo, registros },
-    { municipiosDaUf: (uf) => municipios.get(uf) ?? [], formas },
+    { municipiosDaUf: (uf) => municipios.get(uf) ?? [], formas, formaCanonica },
   );
   if (!adaptado.ok) {
     await entrada.falhar(lote.id, adaptado.codigo.toLowerCase(), agora);
@@ -159,7 +166,11 @@ async function processarUm(d: DependenciasEntradaLote, tx: Transacao, trabalho: 
         continue;
       }
       const tpag = tpagGuardadoDaForma(f); // o mesmo valor nas irmãs e na entrada_forma (RN-CAD-09)
-      const o = await aplicarIrmasDaForma({ chave: f.external_id, external_id: f.external_id, codigo: f.codigo, nome: f.nome, ...(tpag === null ? {} : { tpag }), linha: f.linha, condicoes: [] }, st);
+      // RN-CAD-09 (v0.3.26): forma de mesmo código já existente: as irmãs são as dela (external_id existente); o recebido fica só como alias em entrada_forma.
+      const chaveForma = decidirChaveDaForma(f.external_id, await entrada.formaPorCodigo(f.codigo, tpag));
+      const o = chaveForma.external_id === null
+        ? { erros: [] as ErroLinha[], aplicada: false }
+        : await aplicarIrmasDaForma({ chave: chaveForma.external_id, external_id: chaveForma.external_id, codigo: f.codigo, nome: f.nome, ...(tpag === null ? {} : { tpag }), linha: f.linha, condicoes: [] }, st);
       errosCarga.push(...o.erros);
       const g = await entrada.gravarForma({ conector_id: lote.conector_id, external_id: f.external_id, codigo: f.codigo, nome: f.nome, tpag, ativo: f.ativo });
       if (g === 'nova') formasNovas += 1;
