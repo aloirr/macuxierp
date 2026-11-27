@@ -11,7 +11,8 @@
   --mx-espaco:12px;                                      /* NOVO */
   --mx-canto-cartao:8px;                                 /* NOVO */
   --mx-cor-cabecalho-tabela:#E6EBF3;                     /* NOVO, a validar com o design-de-marca */
-  --vao:16px; --margem:24px;
+  --mx-cor-linha-alternada:#FBFAF8;                     /* NOVO (v4), a validar com o design-de-marca */
+  --vao:12px; --margem:24px;                             /* v4: gap 12 */
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--mx-cor-perola);font-family:var(--mx-fonte-texto);font-size:var(--mx-tamanho-pequeno);color:var(--mx-cor-grafite);line-height:1.4}
@@ -58,9 +59,9 @@ dd{margin:2px 0 0;overflow-wrap:anywhere}
 .chip{border:1px solid var(--mx-cor-borda-tabela);border-radius:10px;padding:2px 8px;background:var(--mx-cor-nevoa)}
 .chip b{font-family:var(--mx-fonte-codigo);font-weight:var(--mx-peso-rotulo-pequeno)}
 table{width:100%;border-collapse:collapse}
-th{text-align:left;padding:8px 10px;background:var(--mx-cor-cabecalho-tabela);color:var(--mx-cor-azul-noite);font-weight:var(--mx-peso-titulo);font-size:var(--mx-tamanho-rotulo-dado);text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid var(--mx-cor-azul-noite);white-space:nowrap}
-td{padding:7px 10px;border-bottom:1px solid var(--mx-cor-borda-tabela);white-space:nowrap}
-tbody tr:nth-child(even) td{background:var(--mx-cor-perola)}
+th{text-align:left;height:34px;padding:0 10px;background:var(--mx-cor-cabecalho-tabela);color:var(--mx-cor-azul-noite);font-weight:var(--mx-peso-titulo);font-size:var(--mx-tamanho-rotulo-dado);text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid var(--mx-cor-azul-noite);white-space:nowrap}
+td{height:36px;padding:0 10px;border-bottom:1px solid var(--mx-cor-borda-tabela);white-space:nowrap}
+tbody tr:nth-child(even) td{background:var(--mx-cor-linha-alternada)}
 td:first-child,td.quebra{white-space:normal}
 td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 td.a{text-align:right}
@@ -83,7 +84,7 @@ td.a{text-align:right}
 <header class="topo"><img src="../../marca/ativos/2026-11-22-v1/macuxi-erp-a-negativo-grafite.svg" alt="Macuxi ERP"><span class="selo-plat">Plataforma</span><a href="#lista">Empresas</a><span class="dir">Superadmin Fictício · <a href="#">Sair</a></span></header>
 
 <template id="cab"><div class="cabeca"><h1>Comercial Igarapé Fictício Ltda</h1><span class="cod apoio">igarape-ficticio</span><span class="selo ok">Ativa</span><span class="selo neutro">Igual à Receita · 27/11 13h15</span></div></template>
-<template id="barra-emp"><div class="barra"><button class="btn">Salvar</button><button class="btn2">Descartar</button><button class="btn2">Atualizar pela Receita</button><span class="apoio">2 campos alterados</span><span class="fim"><button class="perigo">Suspender empresa</button></span></div></template>
+<template id="barra-emp"><div class="barra"><span class="apoio">2 campos alterados</span><span class="fim"><button class="perigo" style="margin-right:8px">Suspender empresa</button><button class="btn2">Atualizar pela Receita</button><button class="btn2">Descartar</button><button class="btn">Salvar</button></span></div></template>
 
 <!-- LISTA -->
 <main id="lista" class="tela">
@@ -94,11 +95,11 @@ td.a{text-align:right}
    <tr><td>Comercial Igarapé Fictício Ltda</td><td class="cod">igarape-ficticio</td><td class="cod">98.765.432/0001-98</td><td><span class="selo ok">Ativa</span></td><td>Cadastros · Pedidos · Integração FDV</td><td><span class="selo ok">Ligada</span></td><td>12/11/2026</td></tr>
    <tr><td>Distribuidora Rio Negro Fictícia Ltda</td><td class="cod">rio-negro-ficticia</td><td class="cod">98.765.433/0001-32</td><td><span class="selo ok">Ativa</span></td><td class="quebra">Cadastros · Pedidos · Faturamento · Fiscal · Integração FDV</td><td><span class="selo ok">Ligada</span></td><td>03/10/2026</td></tr>
    <tr><td>Atacado Tarumã Exemplo S.A.</td><td class="cod">taruma-exemplo</td><td class="cod">98.765.434/0001-13</td><td><span class="selo ok">Ativa</span></td><td>Cadastros · Pedidos</td><td><span class="selo aviso">Sem contato há 2 h</span></td><td>21/10/2026</td></tr>
-   <tr><td>Mercantil Solimões Teste ME</td><td class="cod">solimoes-teste</td><td class="cod">98.765.435/0001-02</td><td><span class="selo neutro">Suspensa</span></td><td>Cadastros</td><td><span class="selo neutro">Desligada</span></td><td>30/09/2026</td></tr>
+   <tr><td>Mercantil Solimões Teste ME</td><td class="cod">solimoes-teste</td><td class="cod">98.765.435/0001-02</td><td><span class="selo neutro">Suspensa</span></td><td>Cadastros</td><td class="apoio">—</td><td>30/09/2026</td></tr>
    <tr><td>Empório Ponta Negra Fictício</td><td class="cod">ponta-negra</td><td class="cod">98.765.436/0001-85</td><td><span class="selo ok">Ativa</span></td><td>Cadastros · Pedidos · Integração FDV</td><td><span class="selo erro">Erro no envio</span></td><td>18/11/2026</td></tr>
-   <tr><td>Casa Aleixo Exemplo Ltda</td><td class="cod">aleixo-exemplo</td><td class="cod">98.765.437/0001-66</td><td><span class="selo ok">Ativa</span></td><td>Cadastros · Pedidos · Faturamento · Fiscal</td><td><span class="selo neutro">Desligada</span></td><td>25/11/2026</td></tr>
+   <tr><td>Casa Aleixo Exemplo Ltda</td><td class="cod">aleixo-exemplo</td><td class="cod">98.765.437/0001-66</td><td><span class="selo ok">Ativa</span></td><td>Cadastros · Pedidos · Faturamento · Fiscal</td><td class="apoio">—</td><td>25/11/2026</td></tr>
   </tbody></table></div></div>
- <div class="barra"><button class="btn">Criar empresa</button></div>
+ <div class="barra"><span class="apoio">6 empresas</span><span class="fim"><button class="btn">Criar empresa</button></span></div>
 </main>
 
 <!-- EMPRESA -->
@@ -147,6 +148,12 @@ td.a{text-align:right}
  <div class="rodape" style="border:0;padding:0;margin:0"><button class="btn2">Fechar</button></div></div>
 </main>
 
+<main id="zerar" class="tela"><div id="fundo-zerar" style="display:contents"></div>
+ <div class="cortina"></div><div class="dialogo" role="dialog" aria-label="Zerar pedidos não faturados"><h2>Zerar pedidos não faturados?</h2>
+ <div class="faixa">Apaga os 37 pedidos ainda não faturados de Comercial Igarapé Fictício Ltda. Não tem volta.</div>
+ <div class="campo"><label>Digite o código da empresa para confirmar</label><input value="igarape-fic" aria-describedby="dica-zerar"><span id="dica-zerar" class="apoio mini">igarape-ficticio</span></div>
+ <div class="rodape" style="border:0;padding:0;margin:0"><button class="btn2">Cancelar</button><span class="fim"><button class="perigo cheio" disabled style="opacity:.5">Zerar pedidos</button></span></div></div>
+</main>
 <!-- INTEGRAÇÕES: uma coluna por sentido -->
 <main id="integracoes" class="tela"><div data-cab></div>
  <nav class="abas"><a>Empresa</a><a class="at">Integrações</a></nav>
@@ -172,12 +179,13 @@ td.a{text-align:right}
 </main>
 <script>
 const cab=document.getElementById('cab').innerHTML;document.querySelectorAll('[data-cab]').forEach(e=>e.innerHTML=cab);
-document.querySelectorAll('[data-barra]').forEach(e=>e.outerHTML=document.getElementById('barra-emp').innerHTML.replace(e.dataset.barra==='int'?'<button class="btn2">Atualizar pela Receita</button>':'@@',''));
+document.querySelectorAll('[data-barra]').forEach(e=>{let h=document.getElementById('barra-emp').innerHTML;if(e.dataset.barra==='int')h=h.replace('<button class="btn2">Atualizar pela Receita</button>','').replace('2 campos alterados','1 campo alterado');e.outerHTML=h;});
+if(location.hash==='#zerar')document.getElementById('fundo-zerar').innerHTML=document.getElementById('integracoes').innerHTML;
 if(location.hash==='#excluir')document.getElementById('fundo-excluir').innerHTML=document.getElementById('empresa').innerHTML;
 const sel=s=>s==='Carregado'||s==='Em dia'?'ok':s==='Parcial'?'aviso':'neutro';
 const cad=[['Filiais','Carregado','27/11 09h12','2','0'],['Vendedores','Carregado','27/11 09h12','12','0'],['Condições de pagamento','Carregado','26/11 18h40','9','0'],['Produtos','Parcial','27/11 09h58','3.815','2'],['Unidades','Carregado','27/11 09h58','6','0'],['Tabelas de preço','Carregado','27/11 10h05','4','0'],['Estoque','Carregado','27/11 17h30','3.815','0'],['Clientes','Carregado','27/11 10h12','1.240','0']];
 const fdv=[['Filiais','Em dia','27/11 09h13','2','0'],['Vendedores','Em dia','27/11 15h02','12','0'],['Formas de pagamento','Em dia','26/11 18h41','5','0'],['Condições de pagamento','Em dia','26/11 18h41','9','0'],['Produtos','Em dia','27/11 10h00','3.815','0'],['Preços','Em dia','27/11 17h39','3.815','0'],['Estoque','Parcial','27/11 17h35','3.815','2'],['Clientes','Em dia','27/11 16h10','1.240','0']];
-const lin=c=>`<tr><td>${c[0]}</td><td><span class="selo ${sel(c[1])}">${c[1]}</span></td><td>${c[2]}</td><td class="n">${c[3]}</td><td class="n">${c[4]}</td><td class="a lk"><a href="#" class="menu">Ações ▾</a></td></tr>`;
+const lin=c=>`<tr><td>${c[0]}</td><td>${c[1]==='Parcial'?'<span class="selo aviso">Parcial</span>':''}</td><td>${c[2]}</td><td class="n">${c[3]}</td><td class="n">${c[4]}</td><td class="a lk"><a href="#" class="menu">Ações ▾</a></td></tr>`;
 document.querySelector('[data-cli]').innerHTML=cad.map(lin).join('');
 document.querySelector('[data-fdv]').innerHTML=fdv.map(lin).join('');
 </script></body></html>
