@@ -42,20 +42,18 @@ describe('erroDaPlataforma (ADR 0012 §4)', () => {
     expect(JSON.stringify({ m: e.message, d: e.detalhes })).not.toContain('Fulano');
   });
 
-  it.each(['empresa_inativa', 'modulo_desligado'])('MXI04 (0039) com DETAIL %s vira 422 RN-CORE-02 com o motivo em detalhes.codigo', (detail) => {
+  it.each([
+    ['empresa_inativa', 'A empresa precisa estar ativa.'],
+    ['modulo_desligado', 'Integração FDV sem licença nesta empresa. Ligue o módulo na aba Empresa.'],
+  ])('MXI04 (0039) com DETAIL %s vira 422 RN-CORE-02 com o motivo em detalhes.codigo e o texto do motivo (RD-2324)', (detail, message) => {
     const e = erroDaPlataforma(Object.assign(pg('MXI04'), { detail }));
     expect(e).toBeInstanceOf(ErroApi);
-    expect(e).toMatchObject({
-      status: 422,
-      codigo: 'RN-CORE-02',
-      message: 'A empresa precisa estar ativa e com o módulo Integração FDV licenciado.',
-      detalhes: { codigo: detail },
-    });
+    expect(e).toMatchObject({ status: 422, codigo: 'RN-CORE-02', message, detalhes: { codigo: detail } });
   });
 
   it('MXI04 com DETAIL fora da lista não ecoa o texto do banco', () => {
     const e = erroDaPlataforma(Object.assign(pg('MXI04'), { detail: 'cliente Fulano de Tal' })) as ErroApi;
-    expect(e).toMatchObject({ status: 422, codigo: 'RN-CORE-02' });
+    expect(e).toMatchObject({ status: 422, codigo: 'RN-CORE-02', message: 'Integração FDV sem licença nesta empresa. Ligue o módulo na aba Empresa.' });
     expect(e.detalhes).toBeUndefined();
     expect(JSON.stringify({ m: e.message, d: e.detalhes })).not.toContain('Fulano');
   });
