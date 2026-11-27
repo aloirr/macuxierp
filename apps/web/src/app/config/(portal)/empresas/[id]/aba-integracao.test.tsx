@@ -111,7 +111,9 @@ describe('aba Integração do /config (T-0056)', () => {
   it('"Nenhum cadastro ligado" só quando nenhum está ligado (a credencial nasce sem cadastros)', () => {
     const nova = render(dados({}, false));
     expect(nova).toContain('Nenhum cadastro ligado.');
-    expect(nova.indexOf('Nenhum cadastro ligado.')).toBeLessThan(nova.indexOf('<table'));
+    // a tabela de lotes da entrada (T-0057 A1) vem antes do grupo FDV: a tabela que importa é a que vem depois da mensagem
+    const msg = nova.indexOf('Nenhum cadastro ligado.');
+    expect(nova.indexOf('<table', msg)).toBeGreaterThan(msg);
     expect(render()).not.toContain('Nenhum cadastro ligado');
   });
   it('sem a licença do módulo: aviso e escritas desabilitadas', () => {

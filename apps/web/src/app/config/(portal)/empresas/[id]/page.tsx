@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { codigoExibido, destinoErroEmpresa, lerApoio } from '@/lib/config/empresa';
 import { lerEmpresa, lerIntegracaoFdv, lerMonitorFdv } from '@/lib/config/api';
 import { lerCargas } from '@/lib/config/cargas-api';
+import { lerEntrada } from '@/lib/config/entrada-api';
 import { CodigoDoErro } from '@/components/codigo-do-erro';
 import { ConfigNaoAutenticado } from '@/lib/config/erros';
 import { exigirTokenConfig, ROTA_ENCERRAR, ROTA_SENHA } from '@/lib/config/sessao';
@@ -46,6 +47,7 @@ export default async function Empresa({ params, searchParams }: { params: Promis
   };
   const { valor: integracao, requestId: idIntegracao } = naIntegracao || naCarga ? await ler(() => lerIntegracaoFdv(token, id)) : { valor: null, requestId: undefined };
   const monitor = naIntegracao ? (await ler(() => lerMonitorFdv(token, id))).valor : null;
+  const entrada = naIntegracao ? (await ler(() => lerEntrada(token, id))).valor : null;
   const cargas = naCarga ? (await ler(() => lerCargas(token, id))).valor : null;
   const base = `/config/empresas/${encodeURIComponent(id)}`;
   const deps = MANIFESTOS.map((m) => ({ id: m.id, depende: m.depende }));
@@ -67,7 +69,7 @@ export default async function Empresa({ params, searchParams }: { params: Promis
         <AbaDados empresaId={empresa.id} dados={cargas} fuso={empresa.fuso} integracao={integracao} />
       ) : naIntegracao ? (
         integracao ? (
-          <AbaIntegracao empresaId={empresa.id} dados={integracao} fuso={empresa.fuso} monitor={monitor} />
+          <AbaIntegracao empresaId={empresa.id} dados={integracao} fuso={empresa.fuso} monitor={monitor} entrada={entrada} />
         ) : (
           <>
             <p className="erro" role="alert">Não foi possível carregar a integração.</p>
