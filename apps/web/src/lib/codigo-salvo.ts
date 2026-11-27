@@ -2,7 +2,7 @@ import { CodigoEmpresaLogin } from '@macuxierp/platform-sdk';
 
 /**
  * Única memória do navegador na tela de login (docs/design/login-unico): o código da empresa, como preferência local.
- * E-mail e senha nunca são guardados; nenhum outro armazenamento nem a URL levam dado do login.
+ * E-mail e senha nunca são guardados; nenhum outro armazenamento guarda dado do login; o link do e-mail traz código e e-mail só no fragmento, lido e limpo no navegador (lib/login-preenchimento.ts).
  */
 export const CHAVE_CODIGO_EMPRESA = 'mx.codigo_empresa';
 
