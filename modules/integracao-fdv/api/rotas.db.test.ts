@@ -183,7 +183,7 @@ describe.skipIf(!PG_DISPONIVEL)('rotas /v1/integracao-fdv no PostgreSQL real', (
       expect(r.status).toBe(200);
       const p = r.corpo.entidades.find((e: { entidade: string }) => e.entidade === 'produto');
       expect(p).toMatchObject({ habilitada: true, pendentes: 2, situacao: 'pausada', pausada_motivo: 'credencial', erros_abertos: 2, ultimo_envio_em: '2026-11-22T09:50:00.000Z', ultimo_sucesso_em: '2026-11-22T09:40:00.000Z' });
-      expect(p.pausada_mensagem).toContain('Credencial recusada');
+      expect(p.pausada_mensagem).toContain('recusou a chave');
       expect(r.corpo.entidades.find((e: { entidade: string }) => e.entidade === 'filial')).toMatchObject({ habilitada: false, situacao: 'ok', pendentes: 0 });
       expect(r.corpo.configuracao).toEqual({ entidades_habilitadas: ['produto', 'cliente'], limite_registros_lote: 250 });
       expect(r.corpo.sinal).toMatchObject({ ultimo_aceito_em: AGORA.toISOString(), ultimo_http: 200, parado_por_versao: false, politica_versao: { minima: '1.4.0' } });
@@ -192,7 +192,7 @@ describe.skipIf(!PG_DISPONIVEL)('rotas /v1/integracao-fdv no PostgreSQL real', (
       expect(e0).toMatchObject({ codigo: 'campo_obrigatorio', campo: 'nome', origem: 'hub', entidade: 'produto' });
       expect(e0.mensagem).toContain('Campo obrigatório vazio');
       const e1 = r.corpo.erros.find((e: { registro_external_id: string }) => e.registro_external_id === 'P2');
-      expect(e1.mensagem).toContain('Erro não catalogado');
+      expect(e1.mensagem).toContain('Erro desconhecido');
       expect(r.corpo.conflitos).toMatchObject([{ entidade: 'produto', chave: 'P9', codigo: 'chave_duplicada' }]);
       expect(r.corpo.conflitos[0].mensagem).toContain('Outro cadastro');
       expect(JSON.stringify(r.corpo)).not.toContain('chave_cifrada');

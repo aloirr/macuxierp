@@ -5,17 +5,17 @@ describe('catálogo de mensagens', () => {
   it('RN-INF-04: mensagem vem do catálogo pelo código; código desconhecido nunca ecoa texto', () => {
     expect(mensagemDoErro('referencia_ausente')).toContain('ser confirmado no FDV');
     expect(mensagemDoErro('texto livre com 12345678900')).not.toContain('12345678900');
-    expect(mensagemDoErro(null)).toContain('Erro não catalogado');
-    expect(mensagemDaPausa('credencial')).toContain('Troque a chave');
+    expect(mensagemDoErro(null)).toContain('Erro desconhecido');
+    expect(mensagemDaPausa('credencial')).toContain('Trocar chave');
   });
 
   it('RN-INF-04: chave_alterada e chave_duplicada têm mensagem própria no catálogo, sem valor de campo', () => {
-    for (const c of ['chave_alterada', 'chave_duplicada']) expect(mensagemDoErro(c)).not.toContain('Erro não catalogado');
+    for (const c of ['chave_alterada', 'chave_duplicada']) expect(mensagemDoErro(c)).not.toContain('Erro desconhecido');
   });
 
   it('RN-INF-04: resposta_grande e pedido_invalido têm mensagem própria no catálogo', () => {
-    expect(mensagemDoErro('resposta_grande')).not.toContain('Erro não catalogado');
-    expect(mensagemDoErro('pedido_invalido')).not.toContain('Erro não catalogado');
+    expect(mensagemDoErro('resposta_grande')).not.toContain('Erro desconhecido');
+    expect(mensagemDoErro('pedido_invalido')).not.toContain('Erro desconhecido');
   });
 
   it('RN-INF-04: código que causa pausa mostra o texto do motivo, um texto por fato', () => {
@@ -58,8 +58,8 @@ describe('motivo e ação separados (T-0086, Log do BKO)', () => {
 
   it('RN-INF-04: código desconhecido cai na ação genérica, nunca em texto do Hub', () => {
     expect(acaoDoErro('campo_invalido')).toContain('Corrija');
-    expect(acaoDoErro('codigo_novo_do_hub')).toContain('suporte');
-    expect(acaoDoErro(null)).toContain('suporte');
-    expect(motivoDoErro('codigo_novo_do_hub')).toContain('Erro não catalogado');
+    expect(acaoDoErro('codigo_novo_do_hub')).toContain('Macuxi');
+    expect(acaoDoErro(null)).toContain('Macuxi');
+    expect(motivoDoErro('codigo_novo_do_hub')).toContain('Erro desconhecido');
   });
 });
