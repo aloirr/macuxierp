@@ -2,6 +2,7 @@
  * Catálogo de mensagens do ERP por código de erro (RN-INF-04). O monitor mostra só estas mensagens, nunca a mensagem crua
  * do Hub (que pode citar valor de dado pessoal). Texto em pt-BR, sem placeholder de valor.
  */
+import { REFERENCIAS_HUB } from './mapeamento';
 import { classificarResposta } from './resposta';
 
 /** Causa e ação de um erro por linha: o Monitor junta as duas; o Log mostra separado (uma só frase de cada, sem repetir). */
@@ -15,7 +16,7 @@ export const CATALOGO_ERRO: Readonly<Record<string, TextoErro>> = {
   campo_invalido: { motivo: 'Valor em formato inválido para o FDV.', acao: 'Corrija o campo indicado no cadastro.' },
   quantidade_fracionaria: { motivo: 'A quantidade tem casas decimais, e o Macuxi FDV só aceita número inteiro.', acao: 'Ajuste a quantidade para um número inteiro.' },
   prazo_medio_fora_da_faixa: { motivo: 'O prazo médio precisa ficar entre a menor e a maior parcela.', acao: 'Corrija a condição de pagamento no cadastro.' },
-  referencia_ausente: { motivo: 'Depende de um cadastro que ainda não foi confirmado no FDV.', acao: 'Aguarde.' },
+  referencia_ausente: { motivo: 'Aguardando um cadastro de que este depende ser confirmado no FDV.', acao: 'Nada a fazer: aguarde.' },
   filial_codigo_repetido: { motivo: 'Duas filiais têm a mesma ordem de CNPJ. O FDV identifica a filial por essa ordem.', acao: 'Revise as filiais.' },
   falha_processamento: { motivo: 'O FDV não conseguiu processar o registro.', acao: 'Use Reprocessar; se persistir, fale com o suporte.' },
   acima_do_limite: { motivo: 'O lote passou do limite do FDV.', acao: 'Aguarde.' },
@@ -23,6 +24,16 @@ export const CATALOGO_ERRO: Readonly<Record<string, TextoErro>> = {
   limite_de_taxa: { motivo: 'O FDV pediu para aguardar.', acao: 'Aguarde.' },
   resposta_grande: { motivo: 'A resposta do FDV passou do limite aceito pelo ERP.', acao: 'Aguarde; se persistir, fale com o suporte.' },
   pedido_invalido: { motivo: 'O ERP montou uma chamada inválida ao FDV (defeito do ERP).', acao: 'Fale com o suporte informando o código.' },
+};
+
+const NOME_DO_ALVO: Readonly<Record<string, string>> = {
+  filial: 'filial', forma_pagamento: 'forma de pagamento', produto: 'produto', vendedor: 'vendedor', cliente: 'cliente',
+};
+
+/** Campo da referência → nome do cadastro aguardado: o alvo vem de `REFERENCIAS_HUB`; a tabela de preço é o campo composto do preço. */
+const NOME_DO_CAMPO: Readonly<Record<string, string>> = {
+  tabela_external_id: 'tabela de preço',
+  ...Object.fromEntries(Object.values(REFERENCIAS_HUB).flat().map(([campo, alvo]) => [campo, NOME_DO_ALVO[alvo] ?? alvo])),
 };
 
 /** Códigos que causam pausa: o status HTTP típico, para o motivo sair de `classificarResposta` (uma só fonte). */
@@ -52,8 +63,10 @@ const GENERICA = 'Erro não catalogado. Fale com o suporte informando o código.
 const ACAO_GENERICA = 'Fale com o suporte informando o código.';
 
 /** Causa do erro (Log do BKO). Código de pausa mostra o texto do motivo da pausa; desconhecido cai no genérico, nunca ecoa texto do Hub. */
-export function motivoDoErro(codigo: string | null | undefined): string {
+export function motivoDoErro(codigo: string | null | undefined, campo?: string | null): string {
   if (!codigo) return GENERICA;
+  const aguardado = codigo === 'referencia_ausente' && campo ? NOME_DO_CAMPO[campo] : undefined;
+  if (aguardado) return `Aguardando ${aguardado} ser confirmada no FDV.`;
   const status = STATUS_DO_CODIGO_DE_PAUSA[codigo];
   if (status !== undefined) {
     const a = classificarResposta({ tipo: 'recusa', status, codigo });
@@ -68,9 +81,9 @@ export function acaoDoErro(codigo: string | null | undefined): string {
 }
 
 /** Mensagem completa (causa e ação) do Monitor. Código de pausa e desconhecido já trazem a ação no próprio texto. */
-export function mensagemDoErro(codigo: string | null | undefined): string {
+export function mensagemDoErro(codigo: string | null | undefined, campo?: string | null): string {
   const t = codigo ? CATALOGO_ERRO[codigo] : undefined;
-  return t ? `${t.motivo} ${t.acao}` : motivoDoErro(codigo);
+  return t ? `${motivoDoErro(codigo, campo)} ${t.acao}` : motivoDoErro(codigo);
 }
 
 export function mensagemDaPausa(motivo: string | null | undefined): string {
