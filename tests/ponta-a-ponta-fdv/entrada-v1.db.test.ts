@@ -269,7 +269,7 @@ describe.skipIf(!PG_DISPONIVEL)('T-0057 T1 — /entrada/v1 → cadastros → dub
     };
     it.fails('D1: filial nova só pela entrada (sem o crt no FilialHub) grava', () => criarSemBko('filial', 'D1'));
     it.fails('D2: produto novo só pela entrada (sem NCM no ProdutoHub, RN-CAD-04) grava', () => criarSemBko('produto', 'D2'));
-    // v0.3.18, entrada_forma: a forma nova, sem condição no ERP, ainda não tem onde ficar (`cadastros.entrada_forma`).
+    // v0.3.18, cadastros.entrada_forma: a forma nova, sem condição no ERP, ainda não tem onde ficar.
     it.fails('D3: o 1º prazo de uma forma nova, sem condição no ERP, só pela entrada grava', () => criarSemBko('prazo_pagamento', 'D3'));
 
     it('D3 parcial (#768): com a forma já ligada a uma condição, o lote da forma e depois o 1º prazo novo dela gravam', async () => {
