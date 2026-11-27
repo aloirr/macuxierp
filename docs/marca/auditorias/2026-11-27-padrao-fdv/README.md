@@ -1,6 +1,6 @@
 # Auditoria de marca — Macuxi ERP no padrão do Macuxi FDV (SIMULAÇÃO)
 
-> **SIMULAÇÃO para aprovação. Nenhum código foi alterado.** Autor: design-de-marca · 27/11/2026, 18h22 a 19h00 (Manaus).
+> **APROVADA pelo Alexandre (decisão 54, 27/11/2026, ~19h00 Manaus); D1, D2 e D3 = A (decisões 51, 52 e 53, em [decisoes.md](../../decisoes.md)). Nenhum código foi alterado aqui: a correção sai pelos donos.** Autor: design-de-marca · 27/11/2026, 18h22 a 19h00 (Manaus).
 > Pedido do Alexandre, 27/11/2026, por volta das 18h35 (Manaus), texto literal: "O Makushi Força de Venda, ele tem um padrão de marca. Esse padrão de marca ele tem que se repetir no ERP, em todas as tabelas, os visuais, as cores. Então, crie uma seção em paralelo que revise um corretor de marca no padrão do Makushi FDV todas as telas e tabelas e fontes e cores do Makushi ERP e corrija todas, simulando para mim aqui as correções."
 > A correção só entra depois do "aprovado" do Alexandre, por recado do design-de-marca ao gerente-projetos com a lista MC-nnnn.
 
