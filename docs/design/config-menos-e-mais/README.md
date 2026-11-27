@@ -1,4 +1,4 @@
-# Config "menos é mais": simulação APROVADA (decisões 40, 44 A, 45 e 46 A)
+# Config "menos é mais": simulação APROVADA (decisões 40, 44 A, 45, 46 A, 52 A e 53 A)
 
 A base é a v4 do Gerente Sênior: `aloirr/macuxierp-recados`, pasta `recados/anexos/R-20261127-180115-config-v4/`, commit 981da89. `gerar.py` vem do `gen4.py` dela e gera os HTML (`python3 gerar.py`). Os PNG mostram 390, 1366 e 1920 nas telas principais e 1366 e 1920 na lista e na confirmação digitada. Só dados **fictícios**. O PR do `packages/ui` e do `apps/web` sai na v0.3.28, depois do "aprovado".
 
@@ -40,7 +40,8 @@ A base é a v4 do Gerente Sênior: `aloirr/macuxierp-recados`, pasta `recados/an
 ## Regra dos botões (CLAUDE.md, regra 12)
 - Uma barra no rodapé de cada bloco: ações à esquerda e destrutivas à direita, em vermelho. As destrutivas pedem confirmação e só o superadmin vê.
 - Rodapé da página: estado à esquerda; à direita, Suspender empresa e, separados, Atualizar pela Receita, Descartar e Salvar.
-- Fora das barras ficam só a busca, os links de linha (Editar · Redefinir senha · Excluir, Detalhes, Abrir) e os links de campo (trocar, mostrar).
+- Fora das barras ficam só a busca, o botão **"Ações ▾"** de cada linha (decisão 52 A, como no FDV: Editar, Redefinir senha, Inativar e Excluir; no último administrador ativo, o Excluir some do menu e a etiqueta "último administrador" continua) e os links de campo (trocar e mostrar).
+- Topo: grafite no /config e azul-noite no BKO; só o "Sair" é igual nos dois (decisão 53 A).
 
 ## Validação (27/11, por volta das 18h30)
 - design-de-marca: 🟢 no topo, nos botões, nos selos, no contraste e no 390. Os 🟡 foram aplicados:
