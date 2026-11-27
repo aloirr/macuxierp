@@ -9,14 +9,12 @@ vi.mock('./esqueci', () => ({ pedirEsqueciAction: vi.fn() }));
 
 import { VisaoLogin } from './formulario';
 import { resultadoErro } from '@/lib/resultado-acao';
-import Login from './page';
-import Entrar from '../config/entrar/page';
 
 const vazio = { empresa: '', email: '', senha: '' };
 
 describe('tela única de login (T-0076)', () => {
   it('três campos na ordem, olho só na senha, Entrar, sem "Sou de uma empresa" e sem o código reservado', () => {
-    const h = renderToStaticMarkup(<VisaoLogin destino="/" valores={vazio} />);
+    const h = renderToStaticMarkup(<VisaoLogin valores={vazio} />);
     const pos = ['Código da empresa', 'E-mail', 'Senha', 'Entrar'].map((t) => h.indexOf(t));
     expect(pos.every((p) => p >= 0)).toBe(true);
     expect([...pos].sort((a, b) => a - b)).toEqual(pos);
@@ -32,10 +30,10 @@ describe('tela única de login (T-0076)', () => {
     expect(h.toUpperCase()).not.toContain('MACUXI');
   });
   it('olho do CampoSenha (T-0094): alterna rótulo e tipo; o clique chama aoAlternarSenha', () => {
-    const visivel = renderToStaticMarkup(<VisaoLogin destino="/" valores={vazio} senhaVisivel />);
+    const visivel = renderToStaticMarkup(<VisaoLogin valores={vazio} senhaVisivel />);
     expect(visivel).toMatch(/<input[^>]*id="login-senha"[^>]*type="text"|<input[^>]*type="text"[^>]*id="login-senha"/);
     const alternar = vi.fn();
-    const arvore = VisaoLogin({ destino: '/', valores: vazio, aoAlternarSenha: alternar });
+    const arvore = VisaoLogin({ valores: vazio, aoAlternarSenha: alternar });
     const achar = (n: unknown): { props: { aoAlternar?: () => void } } | undefined => {
       if (!n || typeof n !== 'object') return undefined;
       const el = n as { type?: { name?: string }; props?: { children?: unknown } };
@@ -46,19 +44,19 @@ describe('tela única de login (T-0076)', () => {
     expect(alternar).toHaveBeenCalledTimes(1);
   });
   it('estados: carregando, erro de login (role alert, neutro), erro de campo por aria', () => {
-    expect(renderToStaticMarkup(<VisaoLogin destino="/" valores={vazio} pendente />)).toMatch(/disabled=""[^>]*>Entrando…/);
-    expect(renderToStaticMarkup(<VisaoLogin destino="/" valores={vazio} pendente />)).toContain('aria-busy="true"');
-    const e = renderToStaticMarkup(<VisaoLogin destino="/" valores={vazio} resultado={resultadoErro('Empresa, e-mail ou senha incorretos.')} />);
+    expect(renderToStaticMarkup(<VisaoLogin valores={vazio} pendente />)).toMatch(/disabled=""[^>]*>Entrando…/);
+    expect(renderToStaticMarkup(<VisaoLogin valores={vazio} pendente />)).toContain('aria-busy="true"');
+    const e = renderToStaticMarkup(<VisaoLogin valores={vazio} resultado={resultadoErro('Empresa, e-mail ou senha incorretos.')} />);
     expect(e).toContain('role="alert"');
     expect(e).toContain('Empresa, e-mail ou senha incorretos.');
-    const c = renderToStaticMarkup(<VisaoLogin destino="/" valores={vazio} erros={{ empresa: 'Informe o código da empresa.', senha: 'Informe a senha.' }} />);
+    const c = renderToStaticMarkup(<VisaoLogin valores={vazio} erros={{ empresa: 'Informe o código da empresa.', senha: 'Informe a senha.' }} />);
     expect(c).toContain('class="erro-campo" id="login-erro-empresa"');
     expect(c).toContain('aria-describedby="login-erro-empresa"');
     expect(c).toContain('aria-invalid="true"');
     expect(c).toContain('Informe a senha.');
   });
   it('36 A: o erro do Entrar fica logo abaixo do botão, no ResultadoAcao, e não no topo do formulário', () => {
-    const h = renderToStaticMarkup(<VisaoLogin destino="/" valores={vazio} resultado={resultadoErro('Empresa, e-mail ou senha incorretos.')} />);
+    const h = renderToStaticMarkup(<VisaoLogin valores={vazio} resultado={resultadoErro('Empresa, e-mail ou senha incorretos.')} />);
     const botao = h.indexOf('>Entrar</button>');
     expect(botao).toBeGreaterThan(0);
     expect(h.indexOf('Empresa, e-mail ou senha incorretos.')).toBeGreaterThan(botao);
@@ -66,7 +64,7 @@ describe('tela única de login (T-0076)', () => {
     expect(h).toMatch(/<div role="alert"[^>]*><div style=[^>]*><span>Empresa, e-mail ou senha incorretos\.<\/span>/);
   });
   it('a senha nunca vem preenchida do servidor; o código lembrado preenche', () => {
-    const h = renderToStaticMarkup(<VisaoLogin destino="/" valores={{ empresa: 'AM2808', email: '', senha: '' }} />);
+    const h = renderToStaticMarkup(<VisaoLogin valores={{ empresa: 'AM2808', email: '', senha: '' }} />);
     expect(h).toContain('value="AM2808"');
   });
   it('só o código vai ao navegador: nenhum storage, cookie ou URL com e-mail/senha no formulário', () => {
@@ -83,17 +81,13 @@ describe('tela única de login (T-0076)', () => {
     vi.resetModules();
     const situacao = vi.fn();
     vi.doMock('@/lib/esqueci-api', () => ({ lerSituacaoEsqueci: situacao }));
-    const { default: PaginaNova } = await import('./page');
+    const { TelaLogin } = await import('./tela');
     situacao.mockResolvedValue(true);
-    expect(renderToStaticMarkup(await PaginaNova({ searchParams: Promise.resolve({}) }))).toContain('Esqueci a senha');
+    expect(renderToStaticMarkup(await TelaLogin())).toContain('Esqueci a senha');
     situacao.mockResolvedValue(false);
-    const h = renderToStaticMarkup(await PaginaNova({ searchParams: Promise.resolve({}) }));
+    const h = renderToStaticMarkup(await TelaLogin());
     expect(h).not.toContain('Esqueci a senha');
     expect(h).toContain('Acesse sua conta');
     vi.doUnmock('@/lib/esqueci-api');
-  });
-  it('/config/entrar redireciona para /login (favoritos)', () => {
-    expect(() => Entrar()).toThrow('REDIRECT /login');
-    expect(Login).toBeTypeOf('function');
   });
 });

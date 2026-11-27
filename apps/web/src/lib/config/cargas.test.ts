@@ -98,8 +98,8 @@ describe('conferência automática ao escolher o arquivo', () => {
     expect(r).toMatchObject({ ok: false });
   });
   it('erro do portal vira a mensagem; 401 leva ao login; rede caída tem texto próprio', async () => {
-    expect(await conferirArquivoEscolhido(EMP, 'produto', csv(), async () => json({ ok: false, erro: 'Seu acesso expirou. Entre de novo.', redirecionar: '/login' }, 401)))
-      .toMatchObject({ ok: false, erro: 'Seu acesso expirou. Entre de novo.', redirecionar: '/login' });
+    expect(await conferirArquivoEscolhido(EMP, 'produto', csv(), async () => json({ ok: false, erro: 'Seu acesso expirou. Entre de novo.', redirecionar: '/' }, 401)))
+      .toMatchObject({ ok: false, erro: 'Seu acesso expirou. Entre de novo.', redirecionar: '/' });
     expect(await conferirArquivoEscolhido(EMP, 'produto', csv(), async () => { throw new Error('rede'); })).toMatchObject({ ok: false, erro: 'Sem conexão com o servidor. Tente de novo.' });
   });
   it('resposta fora do contrato não vira conferência (o efeito só vem no Substituir tudo)', async () => {
