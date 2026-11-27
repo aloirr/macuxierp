@@ -45,6 +45,7 @@ import {
   decidirEnvioLote,
   dividirAoMeio,
   ehLinhaRetida,
+  erroDoHubReprocessavel,
   esperaConsultaSegundos,
   filiaisComCodigoRepetido,
   hashRegistro,
@@ -718,12 +719,12 @@ export async function finalizar(tx: Transacao, e: Exec, lote: LinhaLote, status:
   );
 
   // erro por linha do Hub (a origem "conector" é a linha inválida que o ERP mesmo mandou: já está gravada como "erp")
-  const doHub = (r.erros ?? []).filter((x) => x.origem !== 'conector');
+  const doHub = (r.erros ?? []).filter((x) => x.origem !== 'conector').map((x) => ({ ...x, reprocessavel: erroDoHubReprocessavel(codigoDoHub(x.codigo), x.reprocessavel) }));
   for (const x of doHub) {
-    await gravarErroDeLinha(tx, e, { loteId: lote.id, origem: 'hub', indice: x.indice, externalId: x.external_id, codigo: x.codigo, campo: x.campo, reprocessavel: x.reprocessavel === true });
+    await gravarErroDeLinha(tx, e, { loteId: lote.id, origem: 'hub', indice: x.indice, externalId: x.external_id, codigo: x.codigo, campo: x.campo, reprocessavel: x.reprocessavel });
   }
   const comErro = new Set(doHub.map((x) => x.external_id));
-  const reprocessaveis = new Set(doHub.filter((x) => x.reprocessavel === true).map((x) => x.external_id));
+  const reprocessaveis = new Set(doHub.filter((x) => x.reprocessavel).map((x) => x.external_id));
   // lista cortada: o Hub contou mais registros com erro do que listou. Quem não está na lista pode ser um deles: nada fora
   // da lista é confirmado (volta pela curva longa); os da lista seguem o caminho normal (o firme sai da fila e a lista encolhe).
   const listados = (r.erros ?? []).length;

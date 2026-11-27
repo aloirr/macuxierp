@@ -26,7 +26,7 @@ describe.skipIf(!PG_DISPONIVEL)('regressão da carga de 24/11', { timeout: 60_00
   const um = (rs: Awaited<ReturnType<typeof rows>>, entidade: string) => { const r = por(rs, entidade)[0]; if (!r) throw new Error(`sem registro ${entidade}`); return r; };
 
   // Hub que aceita tudo; com o gate fechado, o lote da filial fica em "processando".
-  function hubGuardado(log: string[], gate: { aberto: boolean }) {
+  function hubGuardado(log: string[], gate: { aberto: boolean }, ausente?: { chave: string }) {
     const recebidos = new Map<string, LoteHub>();
     return hubDuble({
       ...Object.fromEntries(ENTIDADES_HUB_F2.map((e) => [`GET /cursores/${e}`, [ok({ entidade: e, cursor: null, atualizado_em: null }, false, 200)]])),
@@ -41,6 +41,10 @@ describe.skipIf(!PG_DISPONIVEL)('regressão da carga de 24/11', { timeout: 60_00
         const id = p.caminho.split('/').pop()!; const c = recebidos.get(id)!;
         const n = c.registros.length;
         if (!gate.aberto && c.entidade === 'filial') return ok({ lote_id: id, entidade: c.entidade, modo: c.modo ?? 'completo', status: 'processando', contagens: { recebidas: n, com_erro: 0, novas: 0 }, erros: [] }, false, 200);
+        if (ausente && c.entidade === 'vendedor') {
+          const chave = ausente.chave; ausente = undefined; // só o primeiro lote do vendedor é recusado
+          return ok({ lote_id: id, entidade: c.entidade, modo: c.modo ?? 'delta', status: 'concluido_com_erros', contagens: { recebidas: n, com_erro: 1, novas: 0 }, erros: [{ indice: 0, external_id: chave, codigo: 'referencia_ausente', campo: 'filial_external_id', reprocessavel: false, origem: 'hub' }] });
+        }
         return ok({ lote_id: id, entidade: c.entidade, modo: c.modo ?? 'delta', status: 'concluido', contagens: { recebidas: n, com_erro: 0, novas: n }, erros: [] });
       }],
     });
@@ -109,5 +113,24 @@ describe.skipIf(!PG_DISPONIVEL)('regressão da carga de 24/11', { timeout: 60_00
     const final = await rows(t);
     expect(final).toHaveLength(4);
     for (const r of final) { expect(r.pendente).toBe(false); expect(r.hash_confirmado).toBe(r.hash); }
+  });
+
+  it('RN-INF-02: referencia_ausente do Hub com reprocessavel false volta o registro e termina confirmado', async () => {
+    const t = await montar('rep-c');
+    const f = U(); const v = U();
+    await tratar(t, evento(t, 'cadastros.filial.alterada@1', f, cadFilial(f, { external_id: 'FIL-AM2808-01' }), T(50)));
+    await tratar(t, evento(t, 'cadastros.vendedor.alterado@1', v, cadVendedor(v, f, { external_id: 'VEN-3' }), T(52)));
+    const log: string[] = [];
+    const hub = hubGuardado(log, { aberto: true }, { chave: 'VEN-3' });
+    for (let i = 0; i < 14; i++) await ciclo(banco, agenda, hub, mais(AGORA, i * 300), [t]);
+
+    expect(log.filter((l) => l.startsWith('POST vendedor'))).toHaveLength(2);
+    const r = um(await rows(t), 'vendedor');
+    expect(r.pendente).toBe(false);
+    expect(r.hash_confirmado).toBe(r.hash);
+    const erros = await adm('SELECT reprocessavel, resolvido_em FROM integracao_fdv.lote_erro WHERE tenant_id=$1 AND codigo=$2', [t, 'referencia_ausente']);
+    expect(erros).toHaveLength(1);
+    expect(erros[0]!.reprocessavel).toBe(true);
+    expect(erros[0]!.resolvido_em).not.toBeNull();
   });
 });
