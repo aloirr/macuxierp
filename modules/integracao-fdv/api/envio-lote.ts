@@ -41,6 +41,7 @@ import {
   campoDoHub,
   chaveIdempotencia,
   classificarResposta,
+  CODIGO_QUANTIDADE_FRACIONARIA,
   codigoDoHub,
   decidirEnvioLote,
   dividirAoMeio,
@@ -305,6 +306,24 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | 
         WHERE tenant_id = $1 AND entidade = 'prazo_pagamento' AND NOT pendente AND deleted_at IS NULL AND payload IS NOT NULL
           AND contrato_enviado <> $2`,
       [tenant, versaoContratoDoLote('prazo_pagamento', PRAZO_CONTRATO_V2_LIGADO)],
+    );
+  }
+
+  // T-0097 (RN-INF-07): recusa firme quantidade_fracionaria volta à fila uma vez (marca virada_fracao; hash intacto) e o erro aberto fecha junto.
+  if (entidade === 'produto_unidade') {
+    await tx.consultar(
+      `WITH alvo AS (
+         UPDATE integracao_fdv.registro_publicado r SET pendente = true, fonte_refs = r.fonte_refs || '{"virada_fracao": true}'::jsonb
+          WHERE r.tenant_id = $1 AND r.entidade = 'produto_unidade' AND NOT r.pendente AND r.deleted_at IS NULL AND r.payload IS NOT NULL
+            AND NOT (r.fonte_refs ? 'virada_fracao')
+            AND EXISTS (SELECT 1 FROM integracao_fdv.lote_erro le
+                         WHERE le.tenant_id = r.tenant_id AND le.entidade = r.entidade AND le.registro_external_id = r.registro_external_id
+                           AND le.codigo = $3 AND le.resolvido_em IS NULL)
+          RETURNING r.registro_external_id)
+       UPDATE integracao_fdv.lote_erro le SET resolvido_em = $2
+         FROM alvo WHERE le.tenant_id = $1 AND le.entidade = 'produto_unidade' AND le.registro_external_id = alvo.registro_external_id
+          AND le.codigo = $3 AND le.resolvido_em IS NULL`,
+      [tenant, agora, CODIGO_QUANTIDADE_FRACIONARIA],
     );
   }
 

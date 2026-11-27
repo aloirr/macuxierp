@@ -5,7 +5,7 @@
 import { z } from 'zod';
 import { EXTERNAL_ID_MAX } from '@macuxierp/platform-sdk/hub-v1';
 import type { Transacao } from '@macuxierp/platform-sdk';
-import type { EntidadeHub } from './hub';
+import { QuantidadeAte4, type EntidadeHub } from './hub';
 
 export const MODULO = 'integracao-fdv' as const;
 
@@ -95,7 +95,7 @@ export const RetornoErp = z.object({
     .optional(),
   itens_faturados: z
     // `RetornoErp.itens_faturados` do Hub (OpenAPI real): `anyOf array minItems 1 | null`, não obrigatório. `[]` é inválido.
-    .array(z.object({ sequencia: z.number().int().min(1), produto_external_id: ChaveHubLida, quantidade: z.number(), valor_cents: CentavosLido }))
+    .array(z.object({ sequencia: z.number().int().min(1), produto_external_id: ChaveHubLida, quantidade: QuantidadeAte4(), valor_cents: CentavosLido }))
     .min(1)
     .nullable()
     .optional(),

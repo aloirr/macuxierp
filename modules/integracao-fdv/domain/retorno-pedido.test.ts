@@ -41,17 +41,12 @@ describe('retornoDoPedido (RN-PED-05, T-0013 §6.2)', () => {
     expect(t).toMatchObject({ acao: 'enviar', corpo: { status: 'faturado_total', nota: { chave_acesso: '1'.repeat(44) } } });
     expect(JSON.stringify([p, t])).not.toContain(U(3)); // ADR 0010 item 1: a chave do Hub, nunca o UUID do ERP
   });
-  it('T-0085: item faturado fracionário sai do retorno (o Hub só aceita inteiro), os demais seguem, e a decisão aponta a sequência recusada', () => {
-    const mistos = [itens[0]!, { sequencia: 2, produto_id: U(3), quantidade: 25_000, valor_centavos: 100 }];
+  it('RN-INF-07 (T-0097): item faturado fracionário vai no retorno com até 4 casas, junto dos inteiros, sem cálculo novo', () => {
+    const mistos = [itens[0]!, { sequencia: 2, produto_id: U(3), quantidade: 25_000, valor_centavos: 100 }, { sequencia: 3, produto_id: U(3), quantidade: 12_345, valor_centavos: 7 }];
     const d = retornoDoPedido(ev('pedido.pedido.faturado@1', { status: 'faturado', ambiente: 'producao', nota, itens_faturados: mistos }), 'integrado', CHAVES);
-    expect(d).toMatchObject({ acao: 'enviar', itens_fracionarios: [2], corpo: { itens_faturados: [{ sequencia: 1, quantidade: 2 }] } });
-    if (d.acao === 'enviar') expect(JSON.stringify(d.corpo)).not.toContain('2.5');
-    const todos = retornoDoPedido(ev('pedido.pedido.faturado@1', { status: 'faturado', ambiente: 'producao', nota, itens_faturados: [mistos[1]!] }), 'integrado', CHAVES);
-    expect(todos).toMatchObject({ acao: 'enviar', itens_fracionarios: [2], corpo: { status: 'faturado_total', nota: { numero: '10' } } });
-    if (todos.acao === 'enviar') {
-      expect(todos.corpo).not.toHaveProperty('itens_faturados'); // o Hub exige minItens 1 ou null: nunca []
-      expect(RetornoErp.safeParse(todos.corpo).success).toBe(true);
-    }
+    expect(d).toMatchObject({ acao: 'enviar', corpo: { itens_faturados: [{ sequencia: 1, quantidade: 2 }, { sequencia: 2, quantidade: 2.5 }, { sequencia: 3, quantidade: 1.2345 }] } });
+    expect(d).not.toHaveProperty('itens_fracionarios');
+    if (d.acao === 'enviar') expect(RetornoErp.safeParse(d.corpo).success).toBe(true);
   });
   it('T-0085: o contrato RetornoErp recusa itens_faturados [] (minItems 1 no Hub) e aceita null ou ausente', () => {
     const base = { versao_contrato: 'v1', pedido_uuid: U(2), status: 'faturado_total', ocorrido_em: '2026-11-21T18:00:00.000Z' };

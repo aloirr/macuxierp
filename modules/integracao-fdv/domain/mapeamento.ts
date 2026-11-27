@@ -13,7 +13,7 @@ import { PAYLOADS_HUB, PrazoPagamentoHubV2, type EntidadeHub, type LinhaInvalida
 import { externalIdForma, hashRegistro } from './canonico';
 import { chaveHub } from './chave';
 import { lerParcelasDias, normalizarPrazo, parcelasDiasParaHub } from './parcelas';
-import { CODIGO_QUANTIDADE_FRACIONARIA, FATOR_MAXIMO_HUB, unidadesInteirasParaHub } from './quantidade-hub';
+import { CODIGO_QUANTIDADE_FRACIONARIA, FATOR_MAXIMO_HUB, fatorAceitoNoHub } from './quantidade-hub';
 import { cnpjValido } from '@macuxierp/platform-sdk';
 
 type Evento<N extends keyof typeof EVENTOS> = z.infer<(typeof EVENTOS)[N]>;
@@ -415,10 +415,10 @@ export function validarRegistro(registro: RegistroEspelho, confirmado: (entidade
   });
   // Campo composto de outra referência (C-2): ausente = a referência ainda não chegou (reprocessável), não erro do cadastro.
   if (falta) return { external_id: r.external_id, codigo: (CAMPOS_DE_REFERENCIA[r.entidade] ?? []).includes(falta) ? 'referencia_ausente' : 'campo_obrigatorio', campo: falta };
-  // T-0085: o Hub só aceita fator inteiro (até 9999); o fracionário sai só deste registro, o resto do lote segue.
+  // T-0097 (RN-CAD-17, RN-INF-07): fração no fator só em KG e M, até 4 casas; fora disso sai só este registro, o resto do lote segue.
   if (r.entidade === 'produto_unidade') {
     const fator = Number(r.payload.fator);
-    if (!unidadesInteirasParaHub(fator)) return { external_id: r.external_id, codigo: CODIGO_QUANTIDADE_FRACIONARIA, campo: 'fator' };
+    if (!fatorAceitoNoHub(String(r.payload.unidade ?? ''), fator)) return { external_id: r.external_id, codigo: CODIGO_QUANTIDADE_FRACIONARIA, campo: 'fator' };
     if (fator > FATOR_MAXIMO_HUB) return { external_id: r.external_id, codigo: 'campo_invalido', campo: 'fator' };
   }
   // T-0112 (RN-CAD-15, ADR 0072 do FDV): o prazo médio fica entre a menor e a maior parcela; à vista [0] só aceita 0

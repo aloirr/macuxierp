@@ -14,7 +14,7 @@ export const CATALOGO_ERRO: Readonly<Record<string, TextoErro>> = {
   vinculo_divergente: { motivo: 'O cliente já está vinculado no FDV com outro código.', acao: 'Resolva a divergência do vínculo.' },
   campo_obrigatorio: { motivo: 'Campo obrigatório vazio no cadastro.', acao: 'Complete o campo indicado e salve de novo.' },
   campo_invalido: { motivo: 'Valor em formato inválido para o FDV.', acao: 'Corrija o campo indicado no cadastro.' },
-  quantidade_fracionaria: { motivo: 'A quantidade tem casas decimais, e o Macuxi FDV só aceita número inteiro.', acao: 'Ajuste a quantidade para um número inteiro.' },
+  quantidade_fracionaria: { motivo: 'Esta unidade não aceita fração; só KG e M, até 4 casas.', acao: 'Use número inteiro ou mude a unidade para KG ou M.' },
   prazo_medio_fora_da_faixa: { motivo: 'O prazo médio precisa ficar entre a menor e a maior parcela.', acao: 'Corrija a condição de pagamento no cadastro.' },
   referencia_ausente: { motivo: 'Aguardando um cadastro de que este depende ser confirmado no FDV.', acao: 'Nada a fazer: aguarde.' },
   filial_codigo_repetido: { motivo: 'Duas filiais têm a mesma ordem de CNPJ. O FDV identifica a filial por essa ordem.', acao: 'Revise as filiais.' },
