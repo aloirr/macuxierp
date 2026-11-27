@@ -10,7 +10,7 @@ export interface CaixaResumoProps {
 export function CaixaResumo({ tom, numero, texto: frase }: CaixaResumoProps) {
   const t = tons[tom];
   return (
-    <div style={{ ...texto('base'), ...t, border: `1px solid ${t.color}`, borderRadius: canto, padding: `${espaco.sm}px ${espaco.md}px`, display: 'flex', alignItems: 'baseline', gap: espaco.sm }}>
+    <div style={{ ...texto('texto'), ...t, border: `1px solid ${t.color}`, borderRadius: canto, padding: `${espaco.sm}px ${espaco.md}px`, display: 'flex', alignItems: 'baseline', gap: espaco.sm }}>
       <span style={{ ...texto('grande', 'titulo'), color: t.color }}>{numero}</span>
       <span>{frase}</span>
     </div>

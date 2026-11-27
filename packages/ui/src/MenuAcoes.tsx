@@ -104,7 +104,7 @@ export function posicaoMenu(gatilho: Retangulo, menu: { largura: number; altura:
 }
 
 const itemBase: CSSProperties = {
-  ...texto('base'),
+  ...texto('texto'),
   display: 'block',
   width: '100%',
   textAlign: 'left',

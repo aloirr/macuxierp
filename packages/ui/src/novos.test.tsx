@@ -135,11 +135,11 @@ describe('🟡 da marca nas telas do pedido', () => {
     expect(h).toMatch(/<th style="[^"]*width:[^"]*">Qtd\.<\/th>/);
     expect(h).not.toMatch(/<th style="[^"]*width:[^"]*">Produto<\/th>/);
   });
-  it('legenda em 15 px e 600, na tabela e no formulário de itens', () => {
+  it('legenda em 13 px (texto) e 600, na tabela e no formulário de itens', () => {
     const f = form({ legenda: 'Itens do pedido' });
     const t = renderToStaticMarkup(<TabelaDensa colunas={cols} linhas={[]} chaveLinha={(l) => l.id} legenda="Notas" />);
-    expect(f).toMatch(/<caption[^>]*font-size:var\(--mx-tamanho-base\)[^>]*>Itens do pedido</);
-    expect(t).toMatch(/<caption[^>]*font-size:var\(--mx-tamanho-base\)/);
+    expect(f).toMatch(/<caption[^>]*font-size:var\(--mx-tamanho-texto\)[^>]*>Itens do pedido</);
+    expect(t).toMatch(/<caption[^>]*font-size:var\(--mx-tamanho-texto\)/);
     expect(f).toMatch(/<caption[^>]*font-weight:var\(--mx-peso-rotulo-campo\)[^>]*>Itens do pedido</);
     expect(t).toMatch(/<caption[^>]*font-weight:var\(--mx-peso-rotulo-campo\)/);
   });

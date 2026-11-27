@@ -5,10 +5,10 @@ import { Dialogo } from './Dialogo.js';
 
 describe('aviso fixo do Dialogo (T-0068)', () => {
   for (const tom of ['erro', 'aviso'] as const) {
-    it(`tomAviso ${tom}: 15 px e peso 600`, () => {
+    it(`tomAviso ${tom}: 13 px (texto, decisão 51 A) e peso 600`, () => {
       const h = renderToStaticMarkup(<Dialogo titulo="T" aoFechar={() => {}} aviso="Sem volta" tomAviso={tom}>x</Dialogo>);
       const av = /data-aviso-dialogo="" style="([^"]*)"/.exec(h)?.[1] ?? '';
-      expect(av).toContain('font-size:var(--mx-tamanho-base)');
+      expect(av).toContain('font-size:var(--mx-tamanho-texto)');
       expect(av).toContain('font-weight:var(--mx-peso-rotulo-campo)');
     });
   }
@@ -22,9 +22,9 @@ describe('AlertaBloqueante (T-0068)', () => {
     expect(h).toContain('border-left:4px solid var(--mx-cor-erro-texto)');
     expect(h).toContain('background:var(--mx-cor-erro-fundo)');
   });
-  it('ícone decorativo e título 15 px peso 600', () => {
+  it('ícone decorativo e título 13 px (texto) peso 600', () => {
     expect(h).toMatch(/<svg aria-hidden="true"/);
-    expect(h).toMatch(/data-alerta-titulo="" style="[^"]*font-size:var\(--mx-tamanho-base\)[^"]*font-weight:var\(--mx-peso-rotulo-campo\)/);
+    expect(h).toMatch(/data-alerta-titulo="" style="[^"]*font-size:var\(--mx-tamanho-texto\)[^"]*font-weight:var\(--mx-peso-rotulo-campo\)/);
   });
   it('ordem: título, texto, ação', () => {
     expect(h.indexOf('Nota não emitida')).toBeLessThan(h.indexOf('Falta a IE'));

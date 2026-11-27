@@ -117,6 +117,9 @@
   outline: 2px solid var(--mx-cor-branco);
   outline-offset: 2px;
 }
+h1 {
+  color: var(--mx-cor-azul-noite);
+}
 .mx-botao:disabled, .mx-botao-secundario:disabled, .mx-botao-destrutivo:disabled, .mx-botao[aria-disabled="true"], .mx-botao-secundario[aria-disabled="true"], .mx-botao-destrutivo[aria-disabled="true"] {
   opacity: 0.55;
   cursor: not-allowed;
