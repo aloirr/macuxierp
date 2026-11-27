@@ -93,3 +93,13 @@ describe('v0.3.18 A2: último código e próxima tentativa no Monitor', () => {
     expect(vistaMonitor(mon(), 'America/Manaus').codigo).toBeNull();
   });
 });
+
+describe('v0.3.19: retorno de falha sem texto da API (🟡 do designer)', () => {
+  it('formulário pede para conferir os campos; as demais ações pedem para tentar de novo', async () => {
+    const { textoDaFalha } = await import('./operacao-fdv');
+    const { ERRO_CAMPOS, ERRO_CONCLUIR } = await import('../textos');
+    expect(textoDaFalha('', true)).toBe(ERRO_CAMPOS);
+    expect(textoDaFalha('', false)).toBe(ERRO_CONCLUIR);
+    expect(textoDaFalha('O FDV recusou a chave do conector.', false)).toBe('O FDV recusou a chave do conector.');
+  });
+});

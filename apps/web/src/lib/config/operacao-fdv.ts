@@ -9,6 +9,10 @@ import {
   type EntidadeEnvioFdv, type InativacaoZerarFdv, type LogCadastroFdvPlataforma, type MonitorConectorFdv, type SituacaoConectorFdv, type TomEnvioFdv,
 } from '@macuxierp/platform-sdk';
 import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
+import { ERRO_CAMPOS, ERRO_CONCLUIR } from '../textos';
+
+/** Retorno de falha sem texto da API: formulário pede para conferir os campos; as demais ações, para tentar de novo. */
+export const textoDaFalha = (erro: string, formulario: boolean): string => erro || (formulario ? ERRO_CAMPOS : ERRO_CONCLUIR);
 
 /** `erro` (marca, R-20261124-183313): selo "Falhou" e o alerta do último envio que falhou; o `Chip` da ui ainda não tem o tom, então a tela usa `SeloTom`. */
 export type Tom = TomEnvioFdv;

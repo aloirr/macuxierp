@@ -15,7 +15,8 @@ interface CadastroFdvBase {
   entidade: EntidadeEnvioFdv;
   ligada: boolean;
   ultimo_envio_em: string | null;
-  falha: { motivo: MotivoFalhaEnvioFdv; acao: AcaoSugeridaFdv } | null;
+  /** `acao: null` (v0.3.19, expand): o motivo vale sozinho (ex.: licenca_erp, cuja ação fica na faixa da aba). */
+  falha: { motivo: MotivoFalhaEnvioFdv; acao: AcaoSugeridaFdv | null } | null;
   /** Só nas pausas por credencial ou licença do FDV (sondagem de 30 min). */
   proxima_tentativa_em?: string | null;
 }
@@ -42,7 +43,7 @@ export function linhaBaseFdv(c: CadastroFdvBase, fuso: string, acao: (a: AcaoSug
     rotulo: ROTULO_ENTIDADE[c.entidade],
     ligada: c.ligada,
     ultimoEnvio: c.ultimo_envio_em ? formatarDataHora(c.ultimo_envio_em, fuso) : '—',
-    falha: c.falha ? { motivo: TEXTO_MOTIVO_FDV[c.falha.motivo], acao: acao(c.falha.acao) } : null,
+    falha: c.falha ? { motivo: TEXTO_MOTIVO_FDV[c.falha.motivo], acao: c.falha.acao ? acao(c.falha.acao) : '' } : null,
     proximaTentativa: c.proxima_tentativa_em ? textoProximaTentativa(c.proxima_tentativa_em, fuso) : null,
   };
 }

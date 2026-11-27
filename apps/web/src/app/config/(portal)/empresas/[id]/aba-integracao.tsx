@@ -7,14 +7,13 @@ import { useRef, useState, useTransition } from 'react';
 import { AMBIENTES_FDV, LIMITE_INICIAL_FDV, habilitadasApos, validarLimiteLote, acoesDaLinhaFdv, menuDaLinha, linhasCadastros, avisoLigar, type LinhaCadastroFdv } from '@/lib/config/integracao-fdv';
 import { ChavesIdempotencia } from '@/lib/config/chaves';
 import { MSG_SEM_LICENCA } from '@macuxierp/integracao-fdv/contracts';
-import { ERRO_CAMPOS } from '@/lib/textos';
 import { colunasStatusFdv } from '@/lib/integracao-fdv';
 import { textoZerado } from '@/lib/config/cargas';
 import type { Resultado } from '@/lib/config/executar';
 import { resultadoErro, resultadoSucesso } from '@/lib/resultado-acao';
 import { configurarFdvAcao, lerMonitorFdvAcao, reprocessarFdvAcao, retomarFdvAcao, salvarCredencialFdvAcao, testarConexaoFdvAcao } from '../acoes-integracao-fdv';
 import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
-import { RETORNOS_FDV, ROTULOS_FDV, maisRecente, textoAtualizado, textoReprocessarOk, vistaMonitor } from '@/lib/config/operacao-fdv';
+import { RETORNOS_FDV, ROTULOS_FDV, maisRecente, textoAtualizado, textoDaFalha, textoReprocessarOk, vistaMonitor } from '@/lib/config/operacao-fdv';
 import { BlocoEntradaApi } from './bloco-entrada-api';
 import { LogCadastro } from './log-cadastro';
 import { ZerarCadastro } from './zerar-cadastro';
@@ -59,10 +58,10 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
 
   /** Uma Idempotency-Key por ação e cadastro; só renova depois de resposta definitiva (repetição de rede reaproveita). */
   const chaveDe = (id: string) => chaves.current.de(id);
-  const concluir = <T,>(id: string | null, r: Resultado<T>, textoOk: string, mostrar: (x: ResultadoUi) => void) => {
+  const concluir = <T,>(id: string | null, r: Resultado<T>, textoOk: string, mostrar: (x: ResultadoUi) => void, formulario = false) => {
     chaves.current.aposResposta(id, r);
     setCampos(r.ok ? {} : r.campos);
-    mostrar(r.ok ? resultadoSucesso(textoOk) : resultadoErro(r.erro || ERRO_CAMPOS));
+    mostrar(r.ok ? resultadoSucesso(textoOk) : resultadoErro(textoDaFalha(r.erro, formulario)));
     if (r.ok) router.refresh();
   };
 
@@ -71,7 +70,7 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
     iniciar(async () => {
       const r = await salvarCredencialFdvAcao(empresaId, { conector_id: String(d.get('conector_id') ?? ''), chave: String(d.get('chave') ?? ''), ambiente: String(d.get('ambiente') ?? '') });
       if (r.ok) f.reset(); // a chave sai do campo na hora
-      concluir(null, r, RETORNOS_FDV.chaveSalva, mostrarChave);
+      concluir(null, r, RETORNOS_FDV.chaveSalva, mostrarChave, true);
     });
   };
   /** Salvar a 1ª chave grava direto; trocar a que existe pede confirmação (a chave antiga para na hora). A chave segue só no campo: o formulário é guardado, não o valor. */
@@ -84,7 +83,7 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
     const v = validarLimiteLote(String(new FormData(f).get('limite_registros_lote') ?? ''));
     if (!v.ok) return setCampos({ limite_registros_lote: v.erro });
     const chave = `lim:${dados.entidades_habilitadas.join(',')}:${v.valor}`;
-    iniciar(async () => concluir(chave, await configurarFdvAcao(empresaId, { entidades_habilitadas: dados.entidades_habilitadas, limite_registros_lote: v.valor }, chaveDe(chave)), RETORNOS_FDV.limiteSalvo, mostrarLimite));
+    iniciar(async () => concluir(chave, await configurarFdvAcao(empresaId, { entidades_habilitadas: dados.entidades_habilitadas, limite_registros_lote: v.valor }, chaveDe(chave)), RETORNOS_FDV.limiteSalvo, mostrarLimite, true));
   };
   const testar = () => iniciar(async () => concluir('testar', await testarConexaoFdvAcao(empresaId, chaveDe('testar')), RETORNOS_FDV.testeIniciado, mostrarTestar));
   /** Reprocessar (só falhas e pendentes): sem confirmação, não apaga nada. 409 com lote em voo vira a mensagem da API. */

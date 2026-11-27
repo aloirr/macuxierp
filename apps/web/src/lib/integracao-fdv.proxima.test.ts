@@ -13,3 +13,12 @@ describe('v0.3.18 A2: próxima tentativa (texto e linha)', () => {
     expect(linhaBaseFdv(base, 'America/Manaus', () => '').proximaTentativa).toBeNull();
   });
 });
+
+describe('v0.3.19 expand: falha sem ação (acao: null, licenca_erp)', () => {
+  it('a linha mostra só o motivo, sem ação, e não chama o texto da ação', () => {
+    let chamou = false;
+    const l = linhaBaseFdv({ entidade: 'cliente', ligada: true, ultimo_envio_em: null, falha: { motivo: 'licenca_erp', acao: null } }, 'America/Manaus', () => { chamou = true; return 'x'; });
+    expect(l.falha).toEqual({ motivo: 'Sem licença da Integração FDV.', acao: '' });
+    expect(chamou).toBe(false);
+  });
+});
