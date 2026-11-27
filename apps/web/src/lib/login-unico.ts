@@ -1,6 +1,7 @@
 import { CABECALHO_CSRF_CONFIG, CAMINHO_LOGIN, COOKIE_CONFIG, LoginResposta, type LoginEntrada } from '@macuxierp/platform-sdk';
 import { buscarNaApi, usaApiFalsaAgora } from './api';
 import { CREDENCIAL_FALSA, REFRESH_FALSO, TOKEN_FALSO } from './falso';
+import { registrarFalha } from './falha-log';
 import { erroDaApi, sinalDeBloqueioNaResposta, type ErrosLogin } from './login-regras';
 
 /**
@@ -17,6 +18,8 @@ export type ResultadoLogin =
   | { tipo: 'limite'; retry_after_s: number }
   | { tipo: 'bloqueada' }
   | { tipo: 'campos'; erros: ErrosLogin }
+  /** 4xx com o envelope da API ({ codigo, mensagem }) fora dos já tratados (ex.: 422 REGRA_PLATAFORMA): a tela mostra a `mensagem` da API. */
+  | { tipo: 'recusado'; mensagem: string }
   | { tipo: 'indisponivel' };
 
 export function valorDoCookie(r: Response, nome?: string): string | undefined {
@@ -33,6 +36,12 @@ function sessaoDe(r: Response, c: LoginResposta): SessaoAberta | null {
   return refresh ? { destino: 'bko', acesso: c.token_acesso, refresh } : null;
 }
 
+/** `indisponivel` nunca sem rastro: loga só o tipo (sem e-mail, empresa, senha ou token) e o build. */
+function indisponivel(origem: string, erro: unknown): ResultadoLogin {
+  registrarFalha(origem, erro);
+  return { tipo: 'indisponivel' };
+}
+
 export async function loginUnico(entrada: LoginEntrada): Promise<ResultadoLogin> {
   if (usaApiFalsaAgora()) {
     const c = CREDENCIAL_FALSA;
@@ -47,8 +56,8 @@ export async function loginUnico(entrada: LoginEntrada): Promise<ResultadoLogin>
       headers: { 'content-type': 'application/json', [CABECALHO_CSRF_CONFIG]: '1' },
       body: JSON.stringify(entrada),
     });
-  } catch {
-    return { tipo: 'indisponivel' };
+  } catch (e) {
+    return indisponivel('login.api', e);
   }
   const corpo: unknown = await r.json().catch(() => null);
   if (sinalDeBloqueioNaResposta(r.status, corpo)) return { tipo: 'bloqueada' };
@@ -56,8 +65,15 @@ export async function loginUnico(entrada: LoginEntrada): Promise<ResultadoLogin>
   if (falha) return falha;
   if (r.status === 400) return { tipo: 'credencial' };
   if (r.status === 401 || r.status === 403) return { tipo: 'credencial' };
-  if (!r.ok) return { tipo: 'indisponivel' };
+  if (r.status >= 400 && r.status < 500) {
+    const env = corpo as { codigo?: unknown; mensagem?: unknown } | null;
+    const mensagem = typeof env?.mensagem === 'string' ? env.mensagem.trim() : '';
+    const codigo = typeof env?.codigo === 'string' ? env.codigo : undefined;
+    registrarFalha('login.status', { name: `HTTP_${r.status}`, code: codigo }); // só origem, status e código; nunca a mensagem
+    return mensagem && codigo ? { tipo: 'recusado', mensagem: mensagem.slice(0, 300) } : { tipo: 'indisponivel' };
+  }
+  if (!r.ok) return indisponivel('login.status', { name: `HTTP_${r.status}` });
   const c = LoginResposta.safeParse(corpo);
   const sessao = c.success ? sessaoDe(r, c.data) : null;
-  return sessao ? { tipo: 'ok', sessao } : { tipo: 'indisponivel' };
+  return sessao ? { tipo: 'ok', sessao } : indisponivel('login.resposta', { name: 'RespostaInvalida' });
 }

@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import type { NextConfig } from 'next';
 
@@ -15,7 +16,21 @@ const aliasUi = Object.fromEntries(
     .map((f) => [`./${f.replace(/\.tsx?$/, '')}.js`, `${PASTA_UI}/${f}`]),
 );
 
+/** Identificador do build, só para a trava da recarga e para o log (sem segredo): `MACUXI_BUILD_ID` ou o SHA curto do git; sem nenhum dos dois, `dev`. */
+function idDoBuild(): string {
+  if (process.env.MACUXI_BUILD_ID) return process.env.MACUXI_BUILD_ID;
+  try {
+    return execFileSync('git', ['rev-parse', '--short', 'HEAD'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim() || 'dev';
+  } catch {
+    return 'dev';
+  }
+}
+
+/** Páginas: tudo menos `/_next/static`, `/_next/image`, `/favicon.ico` e caminhos com extensão de arquivo. */
+export const REGRA_SEM_CACHE = '/((?!_next/static|_next/image|favicon\\.ico|.*\\.[a-zA-Z0-9]+$).*)';
+
 const config: NextConfig = {
+  env: { NEXT_PUBLIC_BUILD_ID: idDoBuild() },
   turbopack: { resolveAlias: aliasUi },
   output: 'standalone',
   poweredByHeader: false,
@@ -23,6 +38,12 @@ const config: NextConfig = {
   transpilePackages: doWorkspace,
   async headers() {
     return [
+      {
+        // HTML (BKO e /config) nunca em cache: o navegador sempre pega a página do build que está no ar. Fora os estáticos
+        // com hash (`/_next/static`, cache imutável do Next), as imagens otimizadas, o favicon e os arquivos de `public/` com extensão.
+        source: REGRA_SEM_CACHE,
+        headers: [{ key: 'Cache-Control', value: 'no-store' }],
+      },
       {
         source: '/:path*',
         headers: [

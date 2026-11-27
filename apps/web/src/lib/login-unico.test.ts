@@ -77,6 +77,25 @@ describe('login único (SDK): POST /v1/auth/login, destino pela API', () => {
     vi.stubGlobal('fetch', async () => { throw new Error('rede'); });
     expect(await entrar(entrada)).toEqual({ tipo: 'indisponivel' });
   });
+  it('4xx com envelope da API (422): mostra a mensagem da API e loga só origem, status e código; sem envelope ou 503: indisponível', async () => {
+    const entrar = await carregar();
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    resposta = () => json({ codigo: 'REGRA_PLATAFORMA', mensagem: 'Pedido recusado pelas regras da plataforma' }, 422);
+    expect(await entrar(entrada)).toEqual({ tipo: 'recusado', mensagem: 'Pedido recusado pelas regras da plataforma' });
+    const linha = String(log.mock.calls.at(-1)?.[0]);
+    expect(linha).toContain('"origem":"login.status"');
+    expect(linha).toContain('HTTP_422');
+    expect(linha).toContain('REGRA_PLATAFORMA');
+    expect(linha).not.toContain('Pedido recusado');
+    log.mockClear();
+    resposta = () => json({}, 422);
+    expect(await entrar(entrada)).toEqual({ tipo: 'indisponivel' });
+    expect(log).toHaveBeenCalledTimes(1);
+    resposta = () => json({ codigo: 'X', mensagem: 'não deve aparecer' }, 503);
+    expect(await entrar(entrada)).toEqual({ tipo: 'indisponivel' });
+    expect(log).toHaveBeenCalledTimes(2);
+    log.mockRestore();
+  });
   it('o web não compara o código com nenhum valor reservado', async () => {
     const { readFileSync } = await import('node:fs');
     for (const f of ['./login-unico.ts', './login-regras.ts', '../app/login/entrar.ts', '../app/login/formulario.tsx']) {

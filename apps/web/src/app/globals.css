@@ -181,6 +181,8 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 .faixa-aviso strong + p { margin: 4px 0 0; }
 .botao-recuperar { display: block; width: 100%; margin: 0 0 16px; }
 .faixa-aviso.aviso-sistema { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+/* Aviso de versão nova (layout raiz): primeiro filho do body, no fluxo (sticky no topo), empurra o conteúdo; sem aviso não ocupa espaço. Em celular, texto e botão em coluna à esquerda. */
+.faixa-aviso.aviso-versao-nova { position: sticky; top: 0; z-index: 2000; margin: 0; border-radius: 0; border-width: 0 0 1px; flex-direction: column; align-items: flex-start; justify-content: flex-start; }
 @media (max-width: 480px) { .topo .espaco { display: none; } }
 
 /* Tabelas da Integração FDV (T-0056): a coluna Falha (4ª) não espreme; a tabela rola dentro do contêiner, com a sombra de rolagem. */

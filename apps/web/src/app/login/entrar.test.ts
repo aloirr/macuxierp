@@ -73,6 +73,11 @@ describe('login único: navegação pelo destino que a API devolve', () => {
     expect(r.erro).toContain('Muitas tentativas');
     expect(set).not.toHaveBeenCalled();
   });
+  it('4xx recusado pela API: a mensagem da API aparece na tela', async () => {
+    loginUnico.mockResolvedValue({ tipo: 'recusado', mensagem: 'Pedido recusado pelas regras da plataforma' });
+    expect(await entrarAction(form(ok))).toEqual({ erro: 'Pedido recusado pelas regras da plataforma' });
+    expect(set).not.toHaveBeenCalled();
+  });
   it('serviço indisponível; 400 da API vira erro de campo', async () => {
     loginUnico.mockResolvedValue({ tipo: 'indisponivel' });
     expect(await entrarAction(form(ok))).toEqual({ erro: 'Serviço indisponível no momento. Tente de novo em instantes.' });

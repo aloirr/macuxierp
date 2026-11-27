@@ -12,7 +12,7 @@ import {
   GRUPOS_FICHA, OPCOES_REGIME, camposMudados, formComPrevia, formDaFicha, textoPrevia, textoSalvo, validarFicha,
   type CampoFicha, type DefCampo, type FormFicha,
 } from '@/lib/config/ficha-edicao';
-import { previaReceitaAcao, revelarContatoAcao, salvarFichaAcao } from '../acoes-ficha';
+import { previaReceitaAcao, revelarContatoAcao, salvarFichaAcao } from '@/lib/acoes-cliente';
 
 interface Props {
   empresaId: string;

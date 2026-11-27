@@ -8,7 +8,7 @@ import { LIGACAO_ENTRADA, fichaEntrada } from '@/lib/config/ligacoes';
 import { CartaoLigacao, FichaDaLigacao } from './ligacao';
 import * as T from '@/lib/config/entrada-textos';
 import { resultadoErro, resultadoSucesso } from '@/lib/resultado-acao';
-import { gerarChaveEntradaAcao, revogarChaveEntradaAcao } from '../acoes-entrada';
+import { gerarChaveEntradaAcao, revogarChaveEntradaAcao } from '@/lib/acoes-cliente';
 
 /**
  * Ligação "Sistema do cliente → ERP" da aba Integração (v0.3.24, docs/design/integracao-duas-ligacoes; era o bloco "Integração via

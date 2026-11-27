@@ -9,7 +9,7 @@ import { DialogoMotivo, MenuAcoes, ResultadoAcao, useResultado, type AcaoMenu, t
 import type { AcaoVista, AmbienteVista, EntradaAcao } from '@/lib/descritor/tipos';
 import { aposResposta, chaveParaEnvio, estadoDoClique, type EstadoChave } from '@/lib/descritor/idempotencia';
 import { executorDeAcoes, type OrigemDasAcoes } from '@/lib/telas';
-import { escrever, ler } from '@/app/(shell)/[modulo]/[...pagina]/acoes';
+import { escrever, ler } from '@/lib/acoes-cliente';
 import { PainelSegredo } from './painel-segredo';
 import { DialogoEscrita, type CarregarItens, type EntradaDialogo } from './dialogo-escrita';
 
