@@ -30,6 +30,7 @@ import {
 } from '@macuxierp/core/api';
 import {
   consultaTitulosPedido,
+  criarConsultaNfeProducao,
   criarPluginFaturamento,
   criarUsosPedidosFaturamento,
   repositoriosSql as repositoriosFaturamento,
@@ -291,7 +292,7 @@ export function montarDependenciasProducao(e: EntradaProducao): DependenciasApp 
             banco: bancoPlataforma,
             // Transação de tenant das rotas por etapa do portal (carga, T-0058): o mesmo `Banco` do BKO (papel `macuxierp_app`).
             bancoTenant: e.banco,
-            plugins: pluginsPlataforma(modulos, { chaveIntegracao: e.chaveIntegracao ?? null, pepperEntrada: e.pepperEntrada ?? null, outbox, cadastros }),
+            plugins: pluginsPlataforma(modulos, { chaveIntegracao: e.chaveIntegracao ?? null, pepperEntrada: e.pepperEntrada ?? null, outbox, cadastros, bancoTenant: e.banco }),
             segredoBff: e.config.segredoBff,
           },
         } : {}),
@@ -312,6 +313,11 @@ export interface DependenciasPlataformaModulos {
   cadastros?: DependenciasCadastros;
   /** Portas do "Zerar dados" (RN-CAD-10, T-0058). Padrão: `dependenciasZeragemProducao()` (só as `portal_*` da 0043). */
   zeragem?: DependenciasZeragemPlataforma;
+  /**
+   * RN-CORE-16: o `Banco` do BKO (papel `macuxierp_app`, com RLS) da porta `ConsultaNfeProducao` do faturamento, que trava a
+   * troca do CNPJ com NF-e autorizada em produção. Ausente = a troca responde 503 e a situação sai `consulta_indisponivel`.
+   */
+  bancoTenant?: Pick<Banco, 'comTenant'>;
 }
 
 /**
@@ -332,7 +338,14 @@ export function pluginsPlataforma(
   // "Atualizar pela Receita" (T-0101, ADR 0012): a consulta do RF-CAD-02 do cadastros, ligada aqui (o core não importa cadastros/api)
   const consultaCnpj = criarConsultaCnpjParaCore({ repositorios: cadastros.repositorios, fontes: cadastros.fontes, relogio: relogioDoSistema });
   return [
-    criarPluginPlataformaCore({ repo: new RepositorioPlataformaSql(), manifestos, hashSenha: (senha) => gerarHashSenha(senha), consultaReceita: consultaCnpj }),
+    criarPluginPlataformaCore({
+      repo: new RepositorioPlataformaSql(),
+      manifestos,
+      hashSenha: (senha) => gerarHashSenha(senha),
+      consultaReceita: consultaCnpj,
+      // RN-CORE-16: a porta do faturamento, ligada aqui (o core não importa o faturamento, regra 1)
+      ...(dependencias.bancoTenant ? { consultaNfeProducao: criarConsultaNfeProducao(dependencias.bancoTenant) } : {}),
+    }),
     criarPluginPlataformaIntegracaoFdv({ chaveIntegracao: dependencias.chaveIntegracao }),
     criarPluginPlataformaCadastros({ deps: cadastros, outbox: dependencias.outbox ?? new OutboxPg() }),
     criarPluginPlataformaCadastrosZerar(dependencias.zeragem ?? dependenciasZeragemProducao()),

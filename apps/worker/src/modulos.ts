@@ -17,7 +17,7 @@
  * - Purga da memória do simulador: purga-simulador.ts (T-0045 §9).
  * - Expurgo diário do pré-cadastro recusado (T-0059, RN-INF-06): expurgo-pre-cadastro.ts.
  */
-import { criarConsumidorCargaInicial, criarConsumidorEstoqueNota, criarExecutorCargaInicial, criarExecutorEntradaLote, criarExecutorExpurgoEntrada, entradaSql, exportadorCadastros, repositoriosSql } from '@macuxierp/cadastros/api';
+import { criarConsumidorCargaInicial, criarConsumidorCnpjEmpresa, criarConsumidorEstoqueNota, criarExecutorCargaInicial, criarExecutorEntradaLote, criarExecutorExpurgoEntrada, entradaSql, exportadorCadastros, repositoriosSql } from '@macuxierp/cadastros/api';
 import {
   criarConsumidorEmpresaDaFilial,
   destinoAvisosSql,
@@ -138,6 +138,8 @@ export interface DependenciasConsumidoresWorker {
  * retorno descartado sem chave do produto aparece no monitor.
  * Notas do faturamento (`nota.autorizada@1`, `nota.cancelada@1`): o pedido soma a nota e publica o `faturado@1` (#194, com o
  * mesmo alerta do monitor nas recusas) e o cadastros baixa ou devolve o estoque (#192, só produção ou `conta_como_real`).
+ * Empresa e filial padrão (RN-CORE-14/16): a empresa nasce da filial (`filial.alterada@1`) e a troca de CNPJ da empresa
+ * (`cnpj_alterado@1`) chega à filial.
  */
 export function montarConsumidores(d: DependenciasConsumidoresWorker): readonly ConsumidorEvento[] {
   const outbox = d.outbox ?? new OutboxPg();
@@ -156,6 +158,15 @@ export function montarConsumidores(d: DependenciasConsumidoresWorker): readonly 
     }),
     // T-0100 (RN-CORE-14): a core.empresa nasce da primeira filial padrão viva (cadastros.filial.alterada@1)
     criarConsumidorEmpresaDaFilial({ outbox, auditoria: new AuditoriaPg(), agora: () => d.relogio.agora() }),
+    // v0.3.24 (RN-CORE-16): core.empresa.cnpj_alterado@1 leva o CNPJ novo à filial padrão. Sem laço: o filial.alterada@1
+    // que sai daqui só cria a empresa quando ela não existe e nunca emite cnpj_alterado (cnpj-empresa.db.test.ts).
+    criarConsumidorCnpjEmpresa({
+      repositorios: repositoriosSql,
+      outbox,
+      auditoria: new AuditoriaPg(),
+      agora: () => d.relogio.agora(),
+      log: { warn: (o, msg) => d.log.warn({ ...o, modulo: 'cadastros', consumidor: 'cadastros.cnpj-empresa' }, msg) },
+    }),
   ]);
 }
 
