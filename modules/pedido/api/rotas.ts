@@ -3,11 +3,11 @@
  * `executar` (RN-CORE-02; sem licença, 403 `MODULO_INATIVO`). Aqui entram as regras do domain (a API sempre revalida),
  * a carteira do vendedor, a auditoria (A) e os eventos, tudo pelo serviço, na transação do tenant.
  */
-import { csvDaLista, definirRota, erros, type ContextoRota, type RotaModulo } from '@macuxierp/platform-sdk';
+import { csvDaLista, definirRota, erros, fusoDaRota, type ContextoRota, type RotaModulo } from '@macuxierp/platform-sdk';
 import { AprovarEntrada, CancelarEntrada, PedidoManualEntrada, RecusarEntrada } from '../contracts';
 import { CATALOGO_MOTIVOS, ocultarDocumento, podeVerDocumentoCliente } from '../domain';
 import { MotivoCancelamento, MotivoRecusa } from '../contracts';
-import { COLUNA_DOCUMENTO, paginaPedidos } from '../web/paginas';
+import { COLUNA_DOCUMENTO, paginaPedidos, paginaPedidosNoFuso } from '../web/paginas';
 import type { Dependencias, FiltroPedidos } from './portas';
 import { criarServico, type Efeitos, type ResultadoLancamento } from './servico';
 import { idDe } from './util';
@@ -78,8 +78,9 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
         const comDocumento = podeVerDocumentoCliente(c.sessao.perfil);
         const linhas = restrita && vendedor_id === null ? [] : await R(c).listarTodos({ ...filtros, comDocumento }, MAXIMO_LINHAS_CSV);
         // O vendedor nunca recebe o documento do cliente: a coluna sai do CSV e o SQL nem a seleciona.
-        const colunas = !comDocumento ? paginaPedidos.colunas.filter((col) => col.id !== COLUNA_DOCUMENTO) : paginaPedidos.colunas;
-        return csvDaLista({ ...paginaPedidos, colunas }, c.sessao.perfil, linhas);
+        const pagina = paginaPedidosNoFuso(fusoDaRota(c));
+        const colunas = !comDocumento ? pagina.colunas.filter((col) => col.id !== COLUNA_DOCUMENTO) : pagina.colunas;
+        return csvDaLista({ ...pagina, colunas }, c.sessao.perfil, linhas);
       },
     }),
     definirRota({

@@ -11,8 +11,6 @@ import { OrigemPedido, StatusPedido } from '../contracts';
 import { formatarCentavos, formatarDataHora } from '@macuxierp/platform-sdk/formatar';
 import { COLUNA_DOCUMENTO, ROTULO_STATUS, paginaPedidos, type ItemListaPedido } from './paginas';
 
-export { ROTULO_STATUS };
-
 export const ROTULO_ORIGEM: Readonly<Record<OrigemPedido, string>> = { fdv: 'Macuxi FDV', bko: 'Manual' };
 
 /** Colunas do CSV do perfil: as do descritor, sem o documento do cliente para quem não pode vê-lo (mesma regra da API). */
@@ -40,9 +38,8 @@ export function linhaDaTela(p: ItemListaPedido, fuso: string): Record<string, st
   };
 }
 
-/** Título da coluna na tabela (a de data mostra o fuso do tenant, não UTC como no CSV). */
+/** Título da coluna na tabela: o total sai sem o "(R$)" do CSV (a célula já traz o símbolo). */
 export function tituloDaColuna(c: ColunaLista<ItemListaPedido>): string {
-  if (c.id === 'emitido_em') return 'Emitido em';
   if (c.id === 'total_centavos') return 'Total';
   return c.titulo;
 }

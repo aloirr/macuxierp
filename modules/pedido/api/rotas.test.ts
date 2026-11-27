@@ -634,6 +634,18 @@ describe('CSV (RF-PED-05)', () => {
   });
 });
 
+describe('CSV no fuso do tenant (regra 4)', () => {
+  it('a coluna Emitido em muda com o fuso do tenant', async () => {
+    const t = montar();
+    await lancar(t, pedidoManual({ vendedor_id: IDS.vendedor }));
+    const manaus = await t.chamar('GET', '/pedidos/exportar', { sessao: gerente, fuso: 'America/Manaus' });
+    const sp = await t.chamar('GET', '/pedidos/exportar', { sessao: gerente, fuso: 'America/Sao_Paulo' });
+    const data = (c: string) => c.trim().split('\r\n')[1]!.split(';')[3];
+    expect(data(sp.corpo)).not.toBe(data(manaus.corpo));
+    expect(data(manaus.corpo)).toMatch(/^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/);
+  });
+});
+
 describe('LGPD: nenhum log das rotas leva dado pessoal (T-0013 §9.1, item 9)', () => {
   it('documento, nome, observação e motivo livre ficam fora do log; o pedido_id e os códigos entram', async () => {
     const t = montar();

@@ -6,7 +6,8 @@ import { textoMotivo, textoMotivoSistema } from '../domain/motivos';
 import { TEXTO_PRAZO } from '../domain/validacao';
 import { MotivoCodigo, type CodigoPendencia, type HistoricoPedido, Pedido, PendenciaDetalhada } from '../contracts';
 import { formatarCentavos, formatarDataHora, formatarDocumento, formatarPontosBase, formatarQuantidade } from '@macuxierp/platform-sdk/formatar';
-import { ROTULO_ORIGEM, ROTULO_STATUS } from './lista';
+import { ROTULO_ORIGEM } from './lista';
+import { ROTULO_STATUS } from './paginas';
 
 export const ROTULO_PENDENCIA: Readonly<Record<CodigoPendencia, string>> = {
   cliente_inativo: 'Cliente inativo',

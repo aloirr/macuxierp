@@ -30,7 +30,7 @@ export function criarAmbiente(plugin: PluginModulo, agora = new Date('2026-11-21
   async function chamar(
     metodo: MetodoHttp,
     caminho: string,
-    o: { sessao?: Sessao; corpo?: unknown; consulta?: Record<string, unknown>; cabecalhos?: Record<string, string>; semLicenca?: boolean } = {},
+    o: { sessao?: Sessao; corpo?: unknown; consulta?: Record<string, unknown>; cabecalhos?: Record<string, string>; semLicenca?: boolean; fuso?: string } = {},
   ): Promise<Resposta> {
     const partes = caminho.split('/').filter(Boolean);
     for (const rota of plugin.rotas) {
@@ -50,7 +50,7 @@ export function criarAmbiente(plugin: PluginModulo, agora = new Date('2026-11-21
       if (consulta && !consulta.success) return { status: 400, corpo: { codigo: 'VALIDACAO', campos: consulta.error.flatten().fieldErrors } };
       try {
         const ctx = {
-          sessao, tx, request_id: 'req-teste', agora: relogio.agora,
+          sessao, tx, request_id: 'req-teste', agora: relogio.agora, ...(o.fuso ? { fuso: o.fuso } : {}),
           publicar: async (e: { nome: string; agregado_id: string; payload: Record<string, unknown> }) => {
             eventos.push(e);
             return { ...e, id: crypto.randomUUID(), tenant_id: TENANT, versao: 1, ocorrido_em: relogio.agora.toISOString(), ator: sessao.usuario_id, request_id: 'req-teste' } as EnvelopeEvento;
