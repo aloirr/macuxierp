@@ -27,8 +27,8 @@ export type FonteFichaReceita = z.infer<typeof FonteFichaReceita>;
 export const RegimeFicha = z.enum(['mei', 'simples', 'normal']);
 export type RegimeFicha = z.infer<typeof RegimeFicha>;
 
-/** IE editável (RN-CORE-16): até 14 posições, só dígitos ou "ISENTO", em maiúsculas (mesma largura da IE dos cadastros). */
-export const IeFicha = z.string().trim().toUpperCase().max(14).regex(/^(\d+|ISENTO)$/, 'IE: só dígitos ou ISENTO');
+/** IE editável (RN-CORE-16): de 2 a 14 dígitos ou "ISENTO", em maiúsculas (mesma largura da IE dos cadastros). */
+export const IeFicha = z.string().trim().toUpperCase().regex(/^(\d{2,14}|ISENTO)$/, 'IE: de 2 a 14 dígitos ou ISENTO');
 
 const Cnae = z.string().regex(FORMATO_FICHA.cnae);
 const Data = z.string().regex(FORMATO_FICHA.data);
