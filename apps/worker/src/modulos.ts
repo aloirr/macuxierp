@@ -17,7 +17,7 @@
  * - Purga da memória do simulador: purga-simulador.ts (T-0045 §9).
  * - Expurgo diário do pré-cadastro recusado (T-0059, RN-INF-06): expurgo-pre-cadastro.ts.
  */
-import { criarConsumidorCargaInicial, criarConsumidorEstoqueNota, criarExecutorCargaInicial, criarExecutorEntradaLote, entradaSql, exportadorCadastros, repositoriosSql } from '@macuxierp/cadastros/api';
+import { criarConsumidorCargaInicial, criarConsumidorEstoqueNota, criarExecutorCargaInicial, criarExecutorEntradaLote, criarExecutorExpurgoEntrada, entradaSql, exportadorCadastros, repositoriosSql } from '@macuxierp/cadastros/api';
 import {
   criarConsumidorEmpresaDaFilial,
   destinoAvisosSql,
@@ -60,6 +60,7 @@ import { consumidoresFaturamento, type MontagemFaturamentoWorker } from './fatur
 import { criarAlertaMonitor, type MontagemPedidosFdv } from './pedidos-fdv';
 import { criarRotinaPurgaSimulador } from './purga-simulador';
 import type { RotinaDiaria, RotinaPeriodica } from './rotinas';
+import { criarRotinaExpurgoEntrada } from './expurgo-entrada';
 
 export class RegistroExecutoresInvalido extends Error {
   override readonly name = 'RegistroExecutoresInvalido';
@@ -112,6 +113,8 @@ export function montarExecutores(d: DependenciasModulosWorker): readonly Executo
     criarExecutorCargaInicial({ repositorios: repositoriosSql, fila: d.fila ?? new FilaDeTrabalhosPg(), outbox: d.outbox ?? new OutboxPg(), agora: d.agora }),
     // Lote da /entrada/v1 (T-0057, C3): aplica o delta do conector do cliente nos cadastros.
     criarExecutorEntradaLote({ repositorios: repositoriosSql, entrada: entradaSql, outbox: d.outbox ?? new OutboxPg(), auditoria: new AuditoriaPg(), fila: d.fila ?? new FilaDeTrabalhosPg(), agora: d.agora }),
+    // Expurgo de 24 h do corpo do lote da entrada (T-0057, LGPD; cadastros #775), agendado de hora em hora pelo montarPeriodicas.
+    criarExecutorExpurgoEntrada({ entrada: entradaSql, agora: d.agora }),
     ...(d.faturamento?.executores ?? []),
   ]);
 }
@@ -170,9 +173,17 @@ export function montarRotinas(d: Pick<DependenciasModulosWorker, 'banco' | 'log'
   ]);
 }
 
-/** Rotinas periódicas (a varredura do faturamento). */
-export function montarPeriodicas(d: Pick<DependenciasModulosWorker, 'faturamento'>): readonly RotinaPeriodica[] {
-  return Object.freeze([...(d.faturamento?.periodicas ?? [])]);
+/**
+ * Rotinas periódicas: a varredura do faturamento e, com o `banco`, o agendamento de hora em hora do expurgo de 24 h do corpo do lote da
+ * `/entrada/v1` (T-0057, LGPD), em cada tenant com o `cadastros`.
+ */
+export function montarPeriodicas(d: Pick<DependenciasModulosWorker, 'faturamento'> & Partial<Pick<DependenciasModulosWorker, 'banco' | 'log' | 'fila'>>): readonly RotinaPeriodica[] {
+  return Object.freeze([
+    ...(d.faturamento?.periodicas ?? []),
+    ...(d.banco && d.log
+      ? [criarRotinaExpurgoEntrada({ banco: d.banco, log: d.log, fila: d.fila ?? new FilaDeTrabalhosPg(), licencas: new LicencasPg(), tenantsAtivos: (tx) => fonteTenantsSql.ativos(tx) })]
+      : []),
+  ]);
 }
 
 export interface DependenciasAgendasWorker {
