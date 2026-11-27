@@ -210,3 +210,22 @@ Pedido do Alexandre, pelo PO, em 26/11 às 21h21: "quando eu clicar em esquecer 
 - **Limite por IP (10 em 15 min, contra força bruta):** conta só as falhas (401 e 423), na tela única e no `/config/entrar`, que deixa de contar o login certo. Com o IP no limite, **só a temporária válida entra**: a senha comum, certa ou errada, recebe o 429 `MuitasTentativasResposta`, sem somar falha na conta e com o mesmo custo de argon2 da recusa.
 - **Esqueci:** sai o limite por conta. Fica só o anti-spam por IP, 20 pedidos a cada 15 min (`LIMITES_ESQUECI_SENHA` do SDK), sempre com o 202 neutro.
 - **Trava em memória da conta que não existe (T-0111):** também sem prazo, para o 423 continuar igual ao da conta que existe. Ela tem um teto de 100 mil chaves e zera quando o processo reinicia.
+
+## Emenda §1-A (27/11/2026, Manaus): entrar no `/config` pela sessão do BKO, sem novo login (45 A, v0.3.21)
+
+- **Base:** decisão do PO (45 A) e do Alexandre ("46) A", retransmitida pelo gerente-projetos às 06h43 de 27/11); desenho do banco-dados (0076). Muda a §1 só neste ponto: o superadmin continua identidade de plataforma, fora dos tenants e sem impersonação. O que sai é o segundo login.
+- **Quem tem acesso (`acesso_config` no `EuResposta`):** o usuário do BKO que tem um superadmin com o mesmo e-mail normalizado (`lower(btrim)`), e esse superadmin precisa estar ativo, não excluído, não travado (`bloqueado_ate` no passado ou nulo) e sem `deve_trocar_senha`. O usuário e o tenant de origem também precisam estar ativos, e o usuário sem troca de senha pendente. O item "Configuração" do menu do BKO só aparece com `acesso_config = true`, que vem da função de leitura `plataforma.superadmin_acesso_pelo_bko`.
+- **Rota `POST /v1/auth/config` (`CAMINHO_ENTRAR_PELO_BKO`, no SDK):** fica no `/v1/auth` do tenant e não no `/v1/plataforma`, onde o JWT do tenant nunca vale (§2). A prova é o refresh da sessão do BKO, o cookie do `/v1/auth`, que o BFF repassa como no `/v1/auth/sair`, mais o `CABECALHO_CSRF_CONFIG`. A função `plataforma.superadmin_abrir_sessao_pelo_bko` (SECURITY DEFINER, EXECUTE só do `macuxierp_config`) só lê a `plataforma.sessao`: não gira o refresh nem mexe na família. Ela abre a `sessao_superadmin` com `expira_em = least(fim da sessão do BKO, agora + 8 h)` (a regra fica só no banco; a API manda as 8 h, `VALIDADE_SESSAO_CONFIG_MS`); a ociosidade de 30 min vale igual.
+- **Uma por sessão do BKO:** abrir de novo pela mesma sessão do BKO revoga a sessão do `/config` aberta antes por ela. A sessão do BKO conta pela família do refresh, porque o refresh gira a cada uso. A leitura da sessão do BKO é `FOR NO KEY UPDATE`, para serializar duas aberturas ao mesmo tempo, e não altera a linha.
+- **Sem argon2, sem efeito no login:** o caminho não zera `falhas_login` nem a trava e não grava `ultimo_acesso_em` do superadmin.
+- **Respostas:** 200 `SessaoPlataformaResposta` com o cookie `COOKIE_CONFIG` (Path=/v1/plataforma); 401 para refresh inválido, vencido ou revogado, ou tenant ou usuário inativo; 403 `CODIGO_TROCAR_SENHA` para usuário com troca pendente; 403 `CODIGO_SEM_ACESSO_CONFIG` sem superadmin válido. A mensagem não diz por quê, para não revelar se o e-mail é de um superadmin.
+- **Auditoria:** `plataforma.superadmin.entrar_pelo_bko` no tenant de referência, como o `entrar`, com `superadmin_id` como autor e `depois = {tenant_origem, usuario_id, sessao_bko_id}`. Sem e-mail, hash ou token (regra 8).
+- **Risco aceito pelo Alexandre ("46) A"):** quem roubar a sessão do BKO desse usuário (o refresh de 30 dias) entra no `/config` como superadmin, sem a senha do superadmin. Mitigações:
+  - o teto da sessão do BKO e das 8 h;
+  - CSRF;
+  - o cookie `HttpOnly`, `Secure` e `SameSite` dos dois lados;
+  - uma sessão do `/config` por sessão do BKO;
+  - a auditoria de cada entrada;
+  - desativar o superadmin ou revogar a sessão do BKO corta o caminho na hora.
+  Sair do BKO **não** derruba a sessão do `/config` já aberta (ela vence pelo próprio teto ou pelo "Sair" do portal).
+- **Versão seguinte:** com o TOTP (§7), este caminho passa a pedir o segundo fator. Exigir uma sessão do BKO recente (login há menos de N minutos) fica junto com o TOTP.

@@ -225,7 +225,7 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
   // porque a tela única (MACUXI) usa o mesmo serviço do superadmin.
   const esqueci: EsqueciMontado = { envio: d.esqueci?.envio ?? null, limites: d.esqueci?.limites ?? novosLimitesEsqueci() };
   const plataforma = d.plataforma
-    ? montarPlataforma(app, d.plataforma, { auth: d.auth, relogio: d.relogio, cookieSeguro: d.cookieSeguro, ...(d.cronometro ? { cronometro: d.cronometro } : {}), esqueci })
+    ? montarPlataforma(app, d.plataforma, { auth: d.auth, relogio: d.relogio, cookieSeguro: d.cookieSeguro, ...(d.cronometro ? { cronometro: d.cronometro } : {}), esqueci, cookieRefreshBko: COOKIE_REFRESH })
     : undefined;
   const segredoBff = d.plataforma?.segredoBff ?? null;
   const limiteLogin = d.limiteLogin ?? new LimitePorChave();
@@ -317,6 +317,13 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
         const ativos = new Set(modulosLicenciados(licencas, agora));
         const filiais = await d.repoAuth.filiaisPorIds(tx, usuario.filial_ids);
         const avisos = await (d.avisosA1 ?? semAvisosA1)(tx, agora);
+        // 45 A: o item "Configuração" do menu (ADR 0012 §1-A). Falha no banco de plataforma não derruba o /eu: só esconde o item.
+        const acessoConfig = plataforma
+          ? await plataforma.acessoPeloBko(s.tenant_id, s.usuario_id).catch((e: unknown) => {
+              req.log.warn({ err_code: (e as { code?: unknown } | null)?.code ?? null }, 'acesso_config: leitura falhou; item escondido');
+              return false;
+            })
+          : false;
         // A saída passa pelo contrato: campo a mais (e-mail, tenant_id) não vaza, e dado fora dele é 500 (erro nosso),
         // nunca o 400 VALIDACAO do ZodError, que é do corpo do pedido.
         const eu = EuResposta.safeParse({
@@ -331,6 +338,7 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
           filiais,
           modulos: d.modulos.filter((m) => ativos.has(m.manifesto.id)).map((m) => ({ id: m.manifesto.id, menus: [...(m.manifesto.web?.menus ?? [])] })),
           avisos_a1: avisos.map((a) => ({ filial_id: a.filial_id, dias: a.dias, valido_ate: a.valido_ate.toISOString() })),
+          ...(acessoConfig ? { acesso_config: true } : {}),
         } satisfies EuResposta);
         if (!eu.success) throw new Error(`GET /v1/auth/eu fora do contrato EuResposta: ${eu.error.issues.map((i) => i.path.join('.')).join(', ')}`);
         return eu.data;

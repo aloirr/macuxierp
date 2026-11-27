@@ -4,9 +4,12 @@
  * programação vira 500 no handler global).
  */
 import {
+  CODIGO_SEM_ACESSO_CONFIG,
+  CODIGO_TROCAR_SENHA,
   CODIGOS_ESTADO_MUDOU_ZERAR,
   ErroApi,
   erros,
+  MENSAGEM_SEM_ACESSO_CONFIG,
   MENSAGEM_SEM_CREDENCIAL_FDV,
   MENSAGENS_CARGA_PORTAL,
   SQLSTATES_CARGA_PORTAL,
@@ -22,6 +25,22 @@ const SQLSTATE_ESTADO_MUDOU = 'MXI03';
 /** SQLSTATE da 0039: escrita do portal em empresa fora de `ativo` ou sem o módulo `integracao-fdv` (ADR 0013 §2, emenda). */
 const SQLSTATE_SEM_LICENCA_FDV = 'MXI04';
 
+/**
+ * SQLSTATE próprios da 0076 (45 A, ADR 0012 §1-A), da `superadmin_abrir_sessao_pelo_bko`: o usuário do BKO com troca de
+ * senha pendente e o usuário sem um superadmin válido com o mesmo e-mail.
+ */
+const SQLSTATE_BKO_TROCA_PENDENTE = 'MXS11';
+const SQLSTATE_SEM_ACESSO_CONFIG = 'MXS12';
+
+/** Os dois SQLSTATE da 0076 → 403 com mensagem fixa; `null` para qualquer outro erro (segue como está). */
+export function erroEntrarPeloBko(e: unknown): ErroApi | null {
+  const code = (e as { code?: unknown } | null)?.code;
+  if (code === SQLSTATE_BKO_TROCA_PENDENTE) return new ErroApi(403, CODIGO_TROCAR_SENHA, MENSAGEM_TROCAR_SENHA_BKO);
+  if (code === SQLSTATE_SEM_ACESSO_CONFIG) return new ErroApi(403, CODIGO_SEM_ACESSO_CONFIG, MENSAGEM_SEM_ACESSO_CONFIG);
+  return null;
+}
+
+const MENSAGEM_TROCAR_SENHA_BKO = 'Troque a sua senha antes de abrir a Configuração.';
 const MENSAGEM_CREDENCIAL_MUDOU = 'A credencial mudou; recarregue a página.';
 const MENSAGEM_ESTADO_MUDOU = 'O estado mudou; recarregue a página.';
 /** Texto do bloqueio por motivo (36 A, RD-2324): sem motivo conhecido, vale o da licença do ERP, do catálogo da integração (RD-2340). */
