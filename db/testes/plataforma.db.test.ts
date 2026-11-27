@@ -102,7 +102,8 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — plataforma (T-0003, lote 1)
          WHERE EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = t.oid AND a.attname IN ('id', 'tenant_id') AND NOT a.attnotnull)
        UNION ALL SELECT t.t, 'sem índice único (tenant_id, external_id)' FROM t WHERE NOT EXISTS (SELECT 1 FROM pg_index i
          WHERE i.indrelid = t.oid AND i.indisunique
-           AND pg_get_indexdef(i.indexrelid) ~ '\\(tenant_id, external_id\\) WHERE \\(external_id IS NOT NULL\\)')`,
+           -- sem o WHERE só onde o external_id é NOT NULL (0074: o upsert da entrada_forma)
+           AND pg_get_indexdef(i.indexrelid) ~ '\\(tenant_id, external_id\\)( WHERE \\(external_id IS NOT NULL\\))?$')`,
     );
     expect(problemas).toEqual([]);
   });

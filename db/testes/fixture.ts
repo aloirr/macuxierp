@@ -118,6 +118,13 @@ BEGIN
 ${fixtureEntrada(t)}
   END IF;
 END $entrada$;
+-- 0074: ver fixtureEntradaForma
+DO $forma$
+BEGIN
+  IF to_regclass('cadastros.entrada_forma') IS NOT NULL THEN
+${fixtureEntradaForma(t)}
+  END IF;
+END $forma$;
 `;
 }
 
@@ -553,6 +560,14 @@ INSERT INTO cadastros.entrada_cursor (tenant_id, conector_id, entidade, cursor_a
   VALUES ('${id}', '${conector}', 'cliente', '2026-11-26T12:00:00Z', 'CLI-1');
 INSERT INTO cadastros.entrada_sinal (tenant_id, conector_id, ultimo_sinal_em, versao_conector, ip_origem)
   VALUES ('${id}', '${conector}', now(), '1.5.0', '200.10.20.0/24');
+`;
+}
+
+/** Massa da cadastros.entrada_forma (0074, T-0057): uma forma do lote, ainda sem condição. */
+export function fixtureEntradaForma(t: Tenant): string {
+  return `
+INSERT INTO cadastros.entrada_forma (tenant_id, conector_id, external_id, codigo, nome, tpag)
+  VALUES ('${t.id}', 'entrada-${t.slug}', 'FP-${t.slug}', 'PIX', 'Pix', '17');
 `;
 }
 
