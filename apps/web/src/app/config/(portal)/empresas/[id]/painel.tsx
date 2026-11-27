@@ -1,11 +1,12 @@
 'use client';
 import type { FichaReceitaPlanaMascarada } from '@macuxierp/core/contracts';
 import type { EmpresaPlataforma, ModuloId } from '@macuxierp/platform-sdk';
-import { DialogoMotivo, FaixaPendencias, RegiaoErros } from '@macuxierp/ui';
+import { DialogoMotivo, FaixaPendencias, RegiaoErros, ResultadoAcao, useResultado } from '@macuxierp/ui';
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { dadosDaEmpresa } from '@/lib/config/empresa';
 import { fichaVazia } from '@/lib/config/ficha';
 import type { Resultado } from '@/lib/config/executar';
+import { resultadoErro, resultadoSucesso } from '@/lib/resultado-acao';
 import { validarMotivo } from '@/lib/config/formularios';
 import { alternar, ativosDe, dependentesLigados, linhasModulos, mudancasDe, nomeModulo, pendenciasDe, type Dependencia } from '@/lib/config/modulos';
 import { RevelarMascarado } from '@/components/revelar-mascarado';
@@ -69,9 +70,8 @@ function EmailAdmin({ empresaId, mascarado }: { empresaId: string; mascarado: st
 function BlocoModulos({ empresa, deps, aoErro, aoMudar }: Comum & { deps: Dependencia[]; aoMudar: (m: boolean) => void }) {
   const [marcados, setMarcados] = useState<Set<ModuloId>>(() => ativosDe(empresa.modulos));
   const [desligar, setDesligar] = useState<{ modulo: ModuloId; dependentes: ModuloId[] } | null>(null);
-  const [erro, setErro] = useState('');
   const [campos, setCampos] = useState<Record<string, string>>({});
-  const [salvo, setSalvo] = useState(false);
+  const [resultado, chaveResultado, mostrar, limpar] = useResultado(); // 36 A: abaixo do "Salvar módulos"
   const [pendente, iniciar] = useTransition();
   const mudancas = mudancasDe(empresa.modulos, marcados);
   const editavel = empresa.situacao !== 'encerrado';
@@ -79,7 +79,7 @@ function BlocoModulos({ empresa, deps, aoErro, aoMudar }: Comum & { deps: Depend
   useEffect(() => aoMudar(mudancas.length > 0), [mudancas.length, aoMudar]);
 
   const aplicar = (m: ModuloId, ligar: boolean) => {
-    setSalvo(false);
+    limpar();
     setMarcados((atual) => alternar(m, ligar, atual, deps));
   };
   const marcar = (m: ModuloId, ligar: boolean) => {
@@ -90,10 +90,12 @@ function BlocoModulos({ empresa, deps, aoErro, aoMudar }: Comum & { deps: Depend
   const salvar = () =>
     iniciar(async () => {
       const r = await alterarModulosAcao(empresa.id, mudancas);
-      setErro(r.ok ? '' : r.erro);
       setCampos(r.ok ? {} : r.campos);
       aoErro(!r.ok);
-      setSalvo(r.ok);
+      // erro que a faixa de pendências já explica não se repete aqui
+      if (r.ok) mostrar(resultadoSucesso('Módulos salvos.'));
+      else if (pendenciasDe(r.campos, marcados, deps).length === 0) mostrar(resultadoErro(r.erro));
+      else limpar();
     });
   const pendencias = pendenciasDe(campos, marcados, deps);
 
@@ -101,7 +103,6 @@ function BlocoModulos({ empresa, deps, aoErro, aoMudar }: Comum & { deps: Depend
     <section className="bloco" aria-labelledby="h-modulos">
       <h2 id="h-modulos">Módulos</h2>
       <FaixaPendencias itens={pendencias} />
-      {erro && pendencias.length === 0 && <p className="erro">{erro}</p>}
       <ul className="lista-modulos">
         {linhasModulos(marcados, deps).map((l) => (
           <li key={l.modulo}>
@@ -116,7 +117,7 @@ function BlocoModulos({ empresa, deps, aoErro, aoMudar }: Comum & { deps: Depend
       <button className={mudancas.length > 0 ? 'mx-botao' : 'mx-botao-secundario'} type="button" disabled={mudancas.length === 0 || pendente || !editavel} onClick={salvar}>
         {pendente ? 'Salvando…' : 'Salvar módulos'}
       </button>
-      {salvo && <p className="apoio" role="status">Módulos salvos.</p>}
+      <ResultadoAcao resultado={resultado} chave={chaveResultado} />
       {desligar && (
         <DialogoMotivo
           titulo={`Desligar ${nomeModulo(desligar.modulo)}?`}
@@ -146,8 +147,8 @@ function BlocoAdmin({ empresa, chaves, aoErro, principal }: Comum & { chaves: Ch
   const [chaveCriar, setChaveCriar] = useState(chaves.admin);
   const [chaveSenha, setChaveSenha] = useState(chaves.senha);
   const [confirmar, setConfirmar] = useState(false);
-  const [erro, setErro] = useState('');
   const [campos, setCampos] = useState<Record<string, string>>({});
+  const [retorno, chaveRetorno, mostrar, limpar] = useResultado(); // 36 A: abaixo de Criar administrador / Redefinir senha
   const [pendente, iniciar] = useTransition();
   const painel = useRef<HTMLDivElement>(null);
   const botaoRedefinir = useRef<HTMLButtonElement>(null);
@@ -158,25 +159,25 @@ function BlocoAdmin({ empresa, chaves, aoErro, principal }: Comum & { chaves: Ch
     if (senha) painel.current?.focus();
   }, [senha]);
 
-  const resultado = (r: Resultado<{ senha: string }>, renovar: (k: string) => void) => {
+  const aplicarRetorno = (r: Resultado<{ senha: string }>, renovar: (k: string) => void) => {
     if (r.ok) {
-      setErro('');
+      limpar();
       setCampos({});
       setCopiado(false);
       setSenha(r.valor.senha);
       renovar(crypto.randomUUID());
     } else {
-      setErro(r.erro);
+      mostrar(resultadoErro(r.erro));
       setCampos(r.campos);
       if (r.chaveNova) renovar(crypto.randomUUID());
     }
     aoErro(!r.ok);
   };
   const criar = () =>
-    iniciar(async () => resultado(await criarAdminAcao(empresa.id, { email, nome }, chaveCriar), setChaveCriar));
+    iniciar(async () => aplicarRetorno(await criarAdminAcao(empresa.id, { email, nome }, chaveCriar), setChaveCriar));
   const redefinir = () => {
     setConfirmar(false);
-    iniciar(async () => resultado(await redefinirSenhaAcao(empresa.id, chaveSenha), setChaveSenha));
+    iniciar(async () => aplicarRetorno(await redefinirSenhaAcao(empresa.id, chaveSenha), setChaveSenha));
   };
   const copiar = async () => {
     if (!senha) return;
@@ -191,12 +192,12 @@ function BlocoAdmin({ empresa, chaves, aoErro, principal }: Comum & { chaves: Ch
   return (
     <section className="bloco" aria-labelledby="h-admin">
       <h2 id="h-admin">1º administrador</h2>
-      {erro && <p className="erro">{erro}</p>}
       {admin ? (
         <>
           {admin.email_mascarado && <EmailAdmin empresaId={empresa.id} mascarado={admin.email_mascarado} />}
           <p>Situação: <strong>{rotuloAdmin(admin)}</strong></p>
           <button ref={botaoRedefinir} className="mx-botao-secundario" type="button" disabled={pendente || !editavel} onClick={() => setConfirmar(true)}>Redefinir senha</button>
+          <ResultadoAcao resultado={retorno} chave={chaveRetorno} />
         </>
       ) : (
         <form
@@ -218,6 +219,7 @@ function BlocoAdmin({ empresa, chaves, aoErro, principal }: Comum & { chaves: Ch
             {campos.nome && <span id="erro-nome-admin" className="erro-campo">{campos.nome}</span>}
           </label>
           <button className={principal ? 'mx-botao' : 'mx-botao-secundario'} type="submit" disabled={pendente || !editavel}>{pendente ? 'Criando…' : 'Criar administrador'}</button>
+          <ResultadoAcao resultado={retorno} chave={chaveRetorno} />
         </form>
       )}
       {senha && (
@@ -251,7 +253,7 @@ const AVISO_DADO_PESSOAL = 'Não escreva dado pessoal no motivo.';
 function BlocoSituacao({ empresa, chave, aoErro }: Comum & { chave: string }) {
   const [aberto, setAberto] = useState(false);
   const [chaveAtual, setChave] = useState(chave);
-  const [erro, setErro] = useState('');
+  const [resultado, chaveResultado, mostrar, limpar] = useResultado(); // 36 A: abaixo de Suspender/Reativar
   const [pendente, iniciar] = useTransition();
   const suspender = empresa.situacao === 'ativo';
   if (empresa.situacao === 'encerrado') {
@@ -266,7 +268,9 @@ function BlocoSituacao({ empresa, chave, aoErro }: Comum & { chave: string }) {
     setAberto(false);
     iniciar(async () => {
       const r = await situacaoAcao(empresa.id, suspender ? 'suspenso' : 'ativo', motivo, chaveAtual);
-      setErro(r.ok ? '' : r.erro || r.campos.motivo || '');
+      const texto = r.ok ? '' : r.erro || r.campos.motivo || '';
+      if (texto) mostrar(resultadoErro(texto));
+      else limpar();
       aoErro(!r.ok);
       if (r.ok || r.chaveNova) setChave(crypto.randomUUID());
     });
@@ -275,8 +279,8 @@ function BlocoSituacao({ empresa, chave, aoErro }: Comum & { chave: string }) {
   return (
     <section className="bloco" aria-labelledby="h-situacao">
       <h2 id="h-situacao">Situação</h2>
-      {erro && <p className="erro">{erro}</p>}
       <button className="mx-botao-secundario" type="button" disabled={pendente} onClick={() => setAberto(true)}>{suspender ? 'Suspender empresa' : 'Reativar empresa'}</button>
+      <ResultadoAcao resultado={resultado} chave={chaveResultado} />
       {aberto && (
         <DialogoMotivo
           titulo={`${suspender ? 'Suspender' : 'Reativar'} ${nome}?`}

@@ -1,14 +1,16 @@
 'use client';
 import { LIMITE_REGISTROS_LOTE_FDV, type PortalEntradaLeitura, type EntidadeEnvioFdv, type IntegracaoFdvPlataforma, type MonitorConectorFdv } from '@macuxierp/platform-sdk';
-import { DialogoMotivo, MenuAcoes, TabelaDensa, type ColunaTabela } from '@macuxierp/ui';
+import { DialogoMotivo, MenuAcoes, ResultadoAcao, TabelaDensa, useResultado, type ColunaTabela, type Resultado as ResultadoUi } from '@macuxierp/ui';
 import { SeloTom } from '@/components/selo-tom';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, useTransition } from 'react';
 import { AMBIENTES_FDV, LIMITE_INICIAL_FDV, habilitadasApos, validarLimiteLote, acoesDaLinhaFdv, menuDaLinha, linhasCadastros, avisoLigar, type LinhaCadastroFdv } from '@/lib/config/integracao-fdv';
 import { ChavesIdempotencia } from '@/lib/config/chaves';
+import { TEXTO_SEM_LICENCA_FDV } from '@/lib/integracao-fdv-textos';
 import { colunasStatusFdv } from '@/lib/integracao-fdv';
 import { textoZerado } from '@/lib/config/cargas';
 import type { Resultado } from '@/lib/config/executar';
+import { resultadoErro, resultadoSucesso } from '@/lib/resultado-acao';
 import { configurarFdvAcao, lerMonitorFdvAcao, reprocessarFdvAcao, retomarFdvAcao, salvarCredencialFdvAcao, testarConexaoFdvAcao } from '../acoes-integracao-fdv';
 import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
 import { RETORNOS_FDV, ROTULOS_FDV, maisRecente, textoAtualizado, textoReprocessarOk, vistaMonitor } from '@/lib/config/operacao-fdv';
@@ -19,7 +21,6 @@ import { ZerarPedidos } from './zerar-pedidos';
 import { textoPedidosZerados } from '@/lib/config/pedidos-zerar';
 
 type Pedido = { tipo: 'ligar' | 'desligar' | 'retomar'; linha: LinhaCadastroFdv };
-type Mensagem = { ok: boolean; texto: string } | null;
 
 /**
  * Aba "Integração" da ficha da empresa (T-0056, ADR 0013, molde: aba Integração do portal do FDV). Só o superadmin chega aqui
@@ -34,7 +35,13 @@ type Mensagem = { ok: boolean; texto: string } | null;
 export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial = null, entrada = null }: { empresaId: string; dados: IntegracaoFdvPlataforma; fuso: string; monitor?: MonitorConectorFdv | null; entrada?: PortalEntradaLeitura | null }) {
   const router = useRouter();
   const [pendente, iniciar] = useTransition();
-  const [mensagem, setMensagem] = useState<Mensagem>(null);
+  // 36 A: um resultado por botão, logo abaixo dele (docs/design/resultado-acao/README.md).
+  const [rAtualizar, kAtualizar, mostrarAtualizar] = useResultado();
+  const [rChave, kChave, mostrarChave] = useResultado();
+  const [rTestar, kTestar, mostrarTestar] = useResultado();
+  const [rLimite, kLimite, mostrarLimite] = useResultado();
+  const [rLinha, kLinha, mostrarLinha] = useResultado(); // menu "Ações" das linhas da tabela
+  const [rZerarPedidos, kZerarPedidos, mostrarZerarPedidos] = useResultado();
   const [campos, setCampos] = useState<Record<string, string>>({});
   const [pedido, setPedido] = useState<Pedido | null>(null);
   const [lido, setLido] = useState<MonitorConectorFdv | null>(null);
@@ -51,10 +58,10 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
 
   /** Uma Idempotency-Key por ação e cadastro; só renova depois de resposta definitiva (repetição de rede reaproveita). */
   const chaveDe = (id: string) => chaves.current.de(id);
-  const concluir = <T,>(id: string | null, r: Resultado<T>, textoOk: string) => {
+  const concluir = <T,>(id: string | null, r: Resultado<T>, textoOk: string, mostrar: (x: ResultadoUi) => void) => {
     chaves.current.aposResposta(id, r);
     setCampos(r.ok ? {} : r.campos);
-    setMensagem(r.ok ? { ok: true, texto: textoOk } : { ok: false, texto: r.erro || 'Confira os campos.' });
+    mostrar(r.ok ? resultadoSucesso(textoOk) : resultadoErro(r.erro || 'Confira os campos.'));
     if (r.ok) router.refresh();
   };
 
@@ -63,7 +70,7 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
     iniciar(async () => {
       const r = await salvarCredencialFdvAcao(empresaId, { conector_id: String(d.get('conector_id') ?? ''), chave: String(d.get('chave') ?? ''), ambiente: String(d.get('ambiente') ?? '') });
       if (r.ok) f.reset(); // a chave sai do campo na hora
-      concluir(null, r, RETORNOS_FDV.chaveSalva);
+      concluir(null, r, RETORNOS_FDV.chaveSalva, mostrarChave);
     });
   };
   /** Salvar a 1ª chave grava direto; trocar a que existe pede confirmação (a chave antiga para na hora). A chave segue só no campo: o formulário é guardado, não o valor. */
@@ -76,15 +83,15 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
     const v = validarLimiteLote(String(new FormData(f).get('limite_registros_lote') ?? ''));
     if (!v.ok) return setCampos({ limite_registros_lote: v.erro });
     const chave = `lim:${dados.entidades_habilitadas.join(',')}:${v.valor}`;
-    iniciar(async () => concluir(chave, await configurarFdvAcao(empresaId, { entidades_habilitadas: dados.entidades_habilitadas, limite_registros_lote: v.valor }, chaveDe(chave)), RETORNOS_FDV.limiteSalvo));
+    iniciar(async () => concluir(chave, await configurarFdvAcao(empresaId, { entidades_habilitadas: dados.entidades_habilitadas, limite_registros_lote: v.valor }, chaveDe(chave)), RETORNOS_FDV.limiteSalvo, mostrarLimite));
   };
-  const testar = () => iniciar(async () => concluir('testar', await testarConexaoFdvAcao(empresaId, chaveDe('testar')), RETORNOS_FDV.testeIniciado));
+  const testar = () => iniciar(async () => concluir('testar', await testarConexaoFdvAcao(empresaId, chaveDe('testar')), RETORNOS_FDV.testeIniciado, mostrarTestar));
   /** Reprocessar (só falhas e pendentes): sem confirmação, não apaga nada. 409 com lote em voo vira a mensagem da API. */
   const reprocessar = (l: LinhaCadastroFdv) => {
     const id = `reproc:${l.entidade}`;
     iniciar(async () => {
       const r = await reprocessarFdvAcao(empresaId, l.entidade, chaveDe(id));
-      concluir(id, r, r.ok ? textoReprocessarOk(r.valor.falhas, r.valor.pendentes) : '');
+      concluir(id, r, r.ok ? textoReprocessarOk(r.valor.falhas, r.valor.pendentes) : '', mostrarLinha);
     });
   };
   /** Atualizar: relê o Monitor (com `lido_em`) e a ficha (`router.refresh`, que traz os cadastros e o último sinal). */
@@ -92,7 +99,7 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
     iniciar(async () => {
       const r = await lerMonitorFdvAcao(empresaId);
       if (r.ok) setLido(r.valor);
-      setMensagem(r.ok ? null : { ok: false, texto: r.erro || 'Não foi possível atualizar. Tente de novo.' });
+      if (!r.ok) mostrarAtualizar(resultadoErro(r.erro || 'Não foi possível atualizar. Tente de novo.'));
       router.refresh();
     });
   const confirmar = (p: Pedido) => {
@@ -101,11 +108,11 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
     iniciar(async () => {
       if (p.tipo === 'retomar') {
         const r = await retomarFdvAcao(empresaId, e, chaveDe(`retomar:${e}`));
-        return concluir(`retomar:${e}`, r, r.ok && !r.valor.retomada ? RETORNOS_FDV.naoEstavaParado : RETORNOS_FDV.envioLiberado);
+        return concluir(`retomar:${e}`, r, r.ok && !r.valor.retomada ? RETORNOS_FDV.naoEstavaParado : RETORNOS_FDV.envioLiberado, mostrarLinha);
       }
       const ligar = p.tipo === 'ligar';
       const nova = habilitadasApos(dados.entidades_habilitadas, e, ligar);
-      return concluir(`cfg:${e}:${nova.join(',')}`, await configurarFdvAcao(empresaId, { entidades_habilitadas: nova, limite_registros_lote: dados.limite_registros_lote ?? LIMITE_INICIAL_FDV }, chaveDe(`cfg:${e}:${nova.join(',')}`)), ligar ? RETORNOS_FDV.ligado : RETORNOS_FDV.desligado);
+      return concluir(`cfg:${e}:${nova.join(',')}`, await configurarFdvAcao(empresaId, { entidades_habilitadas: nova, limite_registros_lote: dados.limite_registros_lote ?? LIMITE_INICIAL_FDV }, chaveDe(`cfg:${e}:${nova.join(',')}`)), ligar ? RETORNOS_FDV.ligado : RETORNOS_FDV.desligado, mostrarLinha);
     });
   };
 
@@ -138,8 +145,7 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
         <BlocoEntradaApi empresaId={empresaId} dados={entrada} fuso={fuso} />
       </div>
       <div aria-label="Macuxi FDV" role="group">
-        {!dados.modulo_licenciado && <p className="faixa-aviso" role="status">Integração FDV sem licença nesta empresa. Ligue o módulo na aba Empresa.</p>}
-        {mensagem && <p className={mensagem.ok ? 'faixa-aviso' : 'erro'} role={mensagem.ok ? 'status' : 'alert'}>{mensagem.texto}</p>}
+        {!dados.modulo_licenciado && <p className="faixa-aviso" role="status">{TEXTO_SEM_LICENCA_FDV}</p>}
       <section className="bloco" aria-labelledby="h-monitor">
         <div className="cabeca-cargas cabeca-monitor">
           <h2 id="h-monitor">Monitor</h2>
@@ -148,6 +154,7 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
             <button type="button" className="mx-botao-secundario" disabled={bloqueado} onClick={atualizar}>Atualizar</button>
           </span>
         </div>
+        <ResultadoAcao resultado={rAtualizar} chave={kAtualizar} />
         {monitor ? <BlocoMonitor monitor={monitor} fuso={fuso} /> : <p className="apoio" data-testid="monitor-indisponivel">Monitor indisponível agora.</p>}
       </section>
       <section className="bloco" aria-labelledby="h-cred">
@@ -170,6 +177,9 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
           <div className="barra-acoes">
             <button className="mx-botao" type="submit" disabled={bloqueado}>{semCredencial ? ROTULOS_FDV.salvarChave : ROTULOS_FDV.trocarChave}</button>
             <button className="mx-botao-secundario" type="button" disabled={bloqueado || semCredencial} onClick={testar}>Testar conexão</button>
+            {/* Fila de dois botões: cada um com o seu resultado, na linha de baixo e na ordem dos botões (decisão 36 A). */}
+            <ResultadoAcao resultado={rChave} chave={kChave} />
+            <ResultadoAcao resultado={rTestar} chave={kTestar} />
           </div>
         </form>
       </section>
@@ -178,13 +188,14 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
         <form aria-label="Registros por lote" onSubmit={(ev) => { ev.preventDefault(); salvarLimite(ev.currentTarget); }}>
           <label className="campo"><span>Registros por lote</span><input name="limite_registros_lote" type="number" inputMode="numeric" min={1} max={LIMITE_REGISTROS_LOTE_FDV} step={1} defaultValue={dados.limite_registros_lote ?? LIMITE_INICIAL_FDV} required /></label>
           {campos.limite_registros_lote && <p className="erro-campo" role="alert">{campos.limite_registros_lote}</p>}
-          <div className="barra-acoes"><button className="mx-botao-secundario" type="submit" disabled={bloqueado || semCredencial}>Salvar</button></div>
+          <div className="barra-acoes"><button className="mx-botao-secundario" type="submit" disabled={bloqueado || semCredencial}>Salvar</button><ResultadoAcao resultado={rLimite} chave={kLimite} /></div>
         </form>
         {!linhas.some((l) => l.ligada) && <p className="apoio" data-testid="nenhum-ligado">Nenhum cadastro ligado.</p>}
         <div className="tabela-rolavel com-sinal-rolagem tabela-fdv legenda-so-leitor">
           <TabelaDensa colunas={colunas} linhas={linhas} chaveLinha={(l) => l.entidade} textoVazio="Nenhum cadastro." legenda="Envio por cadastro" />
         </div>
-        <div className="barra-acoes"><button type="button" className="mx-botao-secundario" disabled={bloqueado} onClick={() => setZerarPedidos(true)}>Zerar pedidos não faturados</button></div>
+        <ResultadoAcao resultado={rLinha} chave={kLinha} />
+        <div className="barra-acoes"><button type="button" className="mx-botao-secundario" disabled={bloqueado} onClick={() => setZerarPedidos(true)}>Zerar pedidos não faturados</button><ResultadoAcao resultado={rZerarPedidos} chave={kZerarPedidos} /></div>
       </section>
       </div>
       {log && <LogCadastro empresaId={empresaId} entidade={log.entidade} rotulo={log.rotulo} fuso={fuso} aoFechar={() => setLog(null)} />}
@@ -196,7 +207,7 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
           aoFechar={() => setZerar(null)}
           aoZerar={(mantidos) => {
             setZerar(null);
-            setMensagem({ ok: true, texto: textoZerado(zerar.rotulo, mantidos) });
+            mostrarLinha(resultadoSucesso(textoZerado(zerar.rotulo, mantidos)));
             router.refresh();
           }}
         />
@@ -207,7 +218,7 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
           aoFechar={() => setZerarPedidos(false)}
           aoZerar={(r) => {
             setZerarPedidos(false);
-            setMensagem({ ok: true, texto: textoPedidosZerados(r) });
+            mostrarZerarPedidos(resultadoSucesso(textoPedidosZerados(r)));
             router.refresh();
           }}
         />

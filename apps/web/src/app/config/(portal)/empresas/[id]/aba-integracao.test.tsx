@@ -116,6 +116,24 @@ describe('aba Integração do /config (T-0056)', () => {
     expect(nova.indexOf('<table', msg)).toBeGreaterThan(msg);
     expect(render()).not.toContain('Nenhum cadastro ligado');
   });
+  it('36 A: cada botão com retorno tem o ResultadoAcao depois dele e nada de mensagem solta no topo', () => {
+    const h = render(dados(), monitor());
+    const depois = (rotulo: string) => {
+      const i = h.indexOf(`>${rotulo}</button>`);
+      expect(i, rotulo).toBeGreaterThan(0);
+      return h.indexOf('data-resultado-acao', i);
+    };
+    // Atualizar: abaixo do cabeçalho do Monitor; Testar conexão e Trocar chave: abaixo da fila; Salvar e Zerar: logo depois
+    expect(depois('Atualizar')).toBeLessThan(h.indexOf('data-testid="monitor"'));
+    expect(depois('Testar conexão')).toBeLessThan(h.indexOf('<h2 id="h-env">'));
+    expect(depois('Trocar chave')).toBe(depois('Testar conexão')); // fila de dois botões: os resultados vêm depois dela, na ordem dos botões
+    expect(depois('Salvar')).toBeLessThan(h.indexOf('<table', h.indexOf('<h2 id="h-env">')));
+    expect(depois('Zerar pedidos não faturados')).toBeGreaterThan(h.indexOf('Zerar pedidos não faturados'));
+    const topo = h.slice(0, h.indexOf('<h2 id="h-monitor">'));
+    expect(topo).not.toMatch(/class="erro"|aviso-sucesso/);
+    expect(h).not.toMatch(/<p class="(faixa-aviso|erro)"[^>]*role="(status|alert)">(Chave|Conexão|Limite)/);
+    expect((h.match(/data-resultado-acao/g) ?? []).length).toBeGreaterThanOrEqual(7);
+  });
   it('sem a licença do módulo: aviso e escritas desabilitadas', () => {
     const h = render(dados({ modulo_licenciado: false }));
     expect(h).toContain('Integração FDV sem licença nesta empresa. Ligue o módulo na aba Empresa.');

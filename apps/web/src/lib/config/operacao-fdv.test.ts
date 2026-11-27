@@ -64,7 +64,9 @@ describe('operação da Integração FDV no /config (T-0086)', () => {
   it('motivos e ação de nova tentativa (RD-X4, RD-X5): sem "Fale com a Macuxi" no motivo, uma frase só para "aguarde"', () => {
     expect(TEXTO_MOTIVO_FDV.versao).toBe('O FDV não aceita mais esta versão do conector.');
     expect(TEXTO_MOTIVO_FDV.topologia).toBe('Outro conector já envia este cadastro ao FDV.');
-    expect(TEXTO_MOTIVO_FDV.licenca_erp).toBe('A licença da Integração FDV está vencida ou desligada.');
+    // a faixa do topo da aba (sem licença) já traz a ação "Ligue o módulo na aba Empresa"; o motivo da linha só diz o fato
+    expect(TEXTO_MOTIVO_FDV.licenca_erp).toBe('Sem licença da Integração FDV.');
+    expect(TEXTO_MOTIVO_FDV.licenca_fdv).toBe('A licença do FDV não permite o envio.'); // recusa do lado do FDV: "Ligue o módulo" não a resolve
     expect(acaoNoPortal('aguardar_retentativa')).toBe('Aguarde: o envio se repete sozinho.');
     expect(acaoNoBko('aguardar_retentativa')).toBe(acaoNoPortal('aguardar_retentativa'));
   });

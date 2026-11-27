@@ -1,5 +1,7 @@
 'use client';
 import { useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
+import { ResultadoAcao, useResultado, type Resultado } from '@macuxierp/ui';
+import { resultadoErro } from '@/lib/resultado-acao';
 import { pedirEsqueciAction } from '@/app/login/esqueci';
 import {
   TEXTOS_ESQUECI as T,
@@ -20,19 +22,24 @@ const CAMPOS: readonly CampoEsqueci[] = ['empresa', 'email'];
 export type EstadoEsqueci = {
   fase: 'form' | 'enviando' | 'confirmado';
   erros: ErrosLogin;
-  aviso?: string;
 };
 
 export function estadoDe(r: ResultadoEsqueci): EstadoEsqueci {
   if (r.tipo === 'ok') return { fase: 'confirmado', erros: {} };
   if (r.tipo === 'campos') return { fase: 'form', erros: r.erros };
-  return { fase: 'form', erros: {}, aviso: r.texto };
+  return { fase: 'form', erros: {} };
 }
+
+/** Erro ou limite do envio: o texto vai para o ResultadoAcao abaixo do botão. */
+export const retornoDe = (r: ResultadoEsqueci): Resultado | null => (r.tipo === 'erro' || r.tipo === 'limite' ? resultadoErro(r.texto) : null);
 
 /** Parte visual pura (testável sem DOM). Nunca guarda nem põe e-mail em URL ou storage. */
 export function PainelEsqueciVisao({
-  estado, valores = {}, aoEnviar, aoVoltar, refs,
+  estado, valores = {}, aoEnviar, aoVoltar, refs, resultado = null, chave = 0,
 }: {
+  /** Retorno do envio, de `useResultado()`. */
+  resultado?: Resultado | null;
+  chave?: number;
   estado: EstadoEsqueci;
   valores?: DadosEsqueci;
   aoEnviar?: (f: FormData) => void;
@@ -55,7 +62,6 @@ export function PainelEsqueciVisao({
         aria-busy={estado.fase === 'enviando'}
         onSubmit={(e) => { e.preventDefault(); aoEnviar?.(new FormData(e.currentTarget)); }}
       >
-        {estado.aviso && <p className="erro" role="alert">{estado.aviso}</p>}
         {CAMPOS.map((c) => (
           <label className="campo" key={c}>
             <span>{TEXTOS_LOGIN.rotulos[c]}</span>
@@ -74,6 +80,8 @@ export function PainelEsqueciVisao({
           </label>
         ))}
         <button className="mx-botao" type="submit" disabled={estado.fase === 'enviando'}>{T.botao}</button>
+        {/* 36 A: o erro do envio fica logo abaixo do botão */}
+        <ResultadoAcao resultado={resultado} chave={chave} />
       </form>
       {voltar}
     </section>
@@ -91,6 +99,7 @@ export function EsqueciSenha({
   const [estado, setEstado] = useState<EstadoEsqueci>({ fase: 'form', erros: {} });
   const inputs = useRef<Partial<Record<CampoEsqueci, HTMLInputElement | null>>>({});
   const texto = useRef<HTMLParagraphElement | null>(null);
+  const [resultado, chave, mostrar, limpar] = useResultado();
   const valores: DadosEsqueci = { empresa: empresaInicial, email: emailInicial };
 
   useEffect(() => {
@@ -101,14 +110,18 @@ export function EsqueciSenha({
       for (const c of CAMPOS) lido[c] = inputs.current[c]?.value ?? valores[c];
       inputs.current[alvo ?? primeiroVazio(CAMPOS, lido) ?? 'email']?.focus();
     }
-  }, [estado.fase === 'confirmado', estado.erros, estado.aviso]);
+  }, [estado.fase === 'confirmado', estado.erros, resultado]);
 
   async function aoEnviar(f: FormData) {
     const dados = { empresa: String(f.get('empresa') ?? '').trim(), email: String(f.get('email') ?? '').trim() };
     const erros = validarCampos(CAMPOS, dados);
     if (Object.keys(erros).length) return setEstado({ fase: 'form', erros });
     setEstado({ fase: 'enviando', erros: {} });
-    setEstado(estadoDe(await enviar(dados).catch((): ResultadoEsqueci => ({ tipo: 'erro', texto: T.erroGenerico }))));
+    const r = await enviar(dados).catch((): ResultadoEsqueci => ({ tipo: 'erro', texto: T.erroGenerico }));
+    const retorno = retornoDe(r);
+    if (retorno) mostrar(retorno);
+    else limpar();
+    setEstado(estadoDe(r));
   }
 
   return (
@@ -117,6 +130,8 @@ export function EsqueciSenha({
       valores={valores}
       aoEnviar={(f) => void aoEnviar(f)}
       aoVoltar={aoVoltar}
+      resultado={resultado}
+      chave={chave}
       refs={{ campo: (c) => (el) => { inputs.current[c] = el; }, texto: (el) => { texto.current = el; } }}
     />
   );

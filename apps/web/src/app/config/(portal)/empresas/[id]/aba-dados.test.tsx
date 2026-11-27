@@ -17,6 +17,12 @@ const conf = ValidarCargaPlataformaResposta.parse(conferenciaBruta({ com_erro: 2
 ] }));
 
 describe('aba Dados (T-0058, T-0086)', () => {
+  it('36 A: o retorno das ações da tabela fica logo abaixo dela; nada de aviso ou erro no topo', () => {
+    const h = aba();
+    const fim = h.indexOf('</table>');
+    expect(h.indexOf('data-resultado-acao')).toBeGreaterThan(fim);
+    expect(h.slice(0, h.indexOf('<table'))).not.toMatch(/faixa-aviso|class="erro"/);
+  });
   it('uma tabela só: uma linha por cadastro com situação, última carga (data, hora, registros), origem e Importar à vista (o Modelo vai ao menu "Ações")', () => {
     const h = aba();
     expect(h.match(/<tr[^>]*data-/g) ?? h.match(/<tbody>[\s\S]*<\/tbody>/)).toBeTruthy();

@@ -21,6 +21,14 @@ const toda = Object.fromEntries(Object.keys(ficha).map((k) => [k, null])) as unk
 const render = (f: typeof ficha | null = ficha, editavel = true) => renderToStaticMarkup(<FichaReceita empresaId={ID} ficha={f} fuso="America/Manaus" editavel={editavel} />);
 
 describe('ficha da Receita na aba Empresa (T-0101)', () => {
+  it('36 A: o retorno fica logo depois de "Atualizar pela Receita" e não sobra mensagem solta', () => {
+    const h = render();
+    const botao = h.indexOf('Atualizar pela Receita</button>');
+    expect(botao).toBeGreaterThan(0);
+    expect(h.indexOf('data-resultado-acao')).toBeGreaterThan(botao);
+    expect(h.indexOf('data-resultado-acao')).toBeLessThan(h.indexOf('<dl'));
+    expect(h).not.toMatch(/class="erro"/);
+  });
   it('mostra a ficha, com e-mail e telefone como o banco mascarou e um Mostrar por campo, sem repetir o bloco Dados', () => {
     const h = render();
     for (const t of ['Ficticia', '123456789', 'Ativa', '31/01/2020', 'Sociedade Empresária Limitada', 'Demais', 'Simples Nacional', '4711-3/02', 'Rua A, 10, Centro, CEP 69000-000', 'Consultada em 24/11/2026 12:00']) expect(h).toContain(t);

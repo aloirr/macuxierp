@@ -1,9 +1,11 @@
 'use client';
 import type { CampoContato, FichaReceitaPlanaMascarada } from '@macuxierp/core/contracts';
+import { ResultadoAcao, useResultado } from '@macuxierp/ui';
 import { useRouter } from 'next/navigation';
-import { useRef, useState, useTransition } from 'react';
+import { useRef, useTransition } from 'react';
 import { RevelarMascarado } from '@/components/revelar-mascarado';
 import { ChavesIdempotencia } from '@/lib/config/chaves';
+import { resultadoErro, resultadoSucesso } from '@/lib/resultado-acao';
 import { AUSENTE } from '@/lib/config/empresa';
 import { TEXTO_FICHA_VAZIA, estadoDaFicha, linhasDaFicha, origemDaConsulta, textosCnaeSecundarios } from '@/lib/config/ficha';
 import { atualizarReceitaAcao, revelarContatoAcao } from '../acoes-ficha';
@@ -35,14 +37,14 @@ export function FichaReceita({ empresaId, ficha: fichaRecebida, fuso, editavel }
   const secundarios = ficha ? textosCnaeSecundarios(ficha) : [];
   const router = useRouter();
   const [pendente, iniciar] = useTransition();
-  const [mensagem, setMensagem] = useState<{ ok: boolean; texto: string } | null>(null);
+  const [resultado, chave, mostrar] = useResultado(); // 36 A: abaixo do "Atualizar pela Receita"
   const chaves = useRef(new ChavesIdempotencia());
   /** Uma Idempotency-Key por tentativa; só renova depois de resposta definitiva (repetição de rede reaproveita). */
   const atualizar = () =>
     iniciar(async () => {
       const r = await atualizarReceitaAcao(empresaId, chaves.current.de('receita'));
       chaves.current.aposResposta('receita', r);
-      setMensagem(r.ok ? { ok: true, texto: r.valor.campos_alterados.length > 0 ? 'Ficha atualizada pela Receita.' : 'Consulta feita: a ficha já estava em dia.' } : { ok: false, texto: r.erro });
+      mostrar(r.ok ? resultadoSucesso(r.valor.campos_alterados.length > 0 ? 'Ficha atualizada pela Receita.' : 'Consulta feita: a ficha já estava em dia.') : resultadoErro(r.erro));
       if (r.ok) router.refresh();
     });
   return (
@@ -54,11 +56,7 @@ export function FichaReceita({ empresaId, ficha: fichaRecebida, fuso, editavel }
           {pendente ? 'Consultando a Receita…' : 'Atualizar pela Receita'}
         </button>
       </div>
-      {mensagem && (
-        <p className={mensagem.ok ? 'apoio' : 'erro'} role={mensagem.ok ? 'status' : 'alert'}>
-          {mensagem.texto}
-        </p>
-      )}
+      <ResultadoAcao resultado={resultado} chave={chave} />
       {ficha ? (
         <>
           <dl className="dados-empresa">

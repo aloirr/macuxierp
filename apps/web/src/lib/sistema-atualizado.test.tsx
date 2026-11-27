@@ -21,9 +21,9 @@ describe('sistema atualizado (server action que sumiu depois do deploy)', () => 
     expect(g).not.toContain('Recarregar');
   });
   it('só a mensagem do sistema atualizado leva o botão', () => {
-    expect(renderToStaticMarkup(<MensagemRecarregar texto={SISTEMA_ATUALIZADO} />)).toContain('>Recarregar<');
-    expect(renderToStaticMarkup(<MensagemRecarregar texto="Outro erro." />)).not.toContain('Recarregar');
-    const av = renderToStaticMarkup(<MensagemRecarregar texto={SISTEMA_ATUALIZADO} />);
+    const av = renderToStaticMarkup(<MensagemRecarregar />);
+    expect(av).toContain('>Recarregar<');
+    expect(av).toContain(SISTEMA_ATUALIZADO);
     expect(av).toContain('faixa-aviso');
     expect(av).toContain('role="status"');
     expect(av).toContain('mx-botao-secundario');

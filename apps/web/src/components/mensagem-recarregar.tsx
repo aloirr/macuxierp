@@ -6,15 +6,13 @@ import { SISTEMA_ATUALIZADO } from '@/lib/sistema-atualizado';
 /** Id do ponto, no topo da área de conteúdo do shell, onde o aviso de sistema atualizado aparece. */
 export const ID_AVISOS_CONTEUDO = 'avisos-conteudo';
 
-/** Mensagem de erro; quando é a do sistema atualizado, vira aviso informativo (tokens de aviso, role=status) com o botão "Recarregar", no topo da área de conteúdo. */
-export function MensagemRecarregar({ texto, className = 'erro', role = 'alert' }: { texto: string; className?: string; role?: 'alert' | 'status' }) {
-  const atualizado = texto === SISTEMA_ATUALIZADO;
+/** Aviso de sistema atualizado (tokens de aviso, role=status) com o botão "Recarregar", no topo da área de conteúdo. Outros erros de ação vão para o ResultadoAcao. */
+export function MensagemRecarregar() {
   const [topo, setTopo] = useState<HTMLElement | null>(null);
-  useEffect(() => { if (atualizado) setTopo(document.getElementById(ID_AVISOS_CONTEUDO)); }, [atualizado]);
+  useEffect(() => { setTopo(document.getElementById(ID_AVISOS_CONTEUDO)); }, []);
   const no = (
-    <p className={atualizado ? 'faixa-aviso aviso-sistema' : className} role={atualizado ? 'status' : role}>
-      {texto}
-      {atualizado && <>{' '}<button type="button" className="mx-botao-secundario" onClick={() => window.location.reload()}>Recarregar</button></>}
+    <p className="faixa-aviso aviso-sistema" role="status">
+      {SISTEMA_ATUALIZADO}{' '}<button type="button" className="mx-botao-secundario" onClick={() => window.location.reload()}>Recarregar</button>
     </p>
   );
   return topo ? createPortal(no, topo) : no;
