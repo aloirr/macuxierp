@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { AUSENTE } from '@/lib/config/empresa';
 import { resultadoErro, resultadoSucesso } from '@/lib/resultado-acao';
-import { trocarCnpjAcao } from '../acoes-ficha';
+import { trocarCnpjAcao } from '@/lib/acoes-cliente';
 
 /** Sem a situação (leitura falhou), a troca fica fechada (falha fechada), com o texto do core para "não foi possível verificar". */
 const CNPJ_SEM_SITUACAO: SituacaoTrocaCnpj = { permitida: false, motivo: 'consulta_indisponivel', mensagem: MENSAGENS_BLOQUEIO_CNPJ.consulta_indisponivel };

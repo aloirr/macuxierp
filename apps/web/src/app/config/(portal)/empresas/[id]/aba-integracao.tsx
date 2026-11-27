@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { maisRecente, textoAtualizado } from '@/lib/config/operacao-fdv';
 import { resultadoErro } from '@/lib/resultado-acao';
-import { lerMonitorFdvAcao } from '../acoes-integracao-fdv';
+import { lerMonitorFdvAcao } from '@/lib/acoes-cliente';
 import { LigacaoEntrada } from './ligacao-entrada';
 import { LigacaoSaida } from './ligacao-saida';
 

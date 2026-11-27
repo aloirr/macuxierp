@@ -25,3 +25,5 @@ O Macuxi ERP usa **a mesma marca Macuxi do FDV**. A fonte única é o manual da 
 3. **Só tokens do `packages/ui`** (`--mx-*`), sem hex solto. Conferência: designer-ux, design-de-marca e corretor-redundancias.
 
 Observação para a auditoria da versão (não é ajuste agora): a caixa-alta usa hoje três espaçamentos de letra — menu lateral `.06em` (`apps/web/src/app/globals.css:34`), faixa de homologação `.03em` (`globals.css:125`) e rótulo de dado `.04em` (`docs/design/telas-horizontais.md:58`).
+
+- **AUDITORIA (27/11/2026, simulação para aprovação):** marca no padrão do FDV em todas as telas, em [auditorias/2026-11-27-padrao-fdv/](auditorias/2026-11-27-padrao-fdv/README.md). MC-0201 a MC-0213. Nada aplicado até o "aprovado" do Alexandre.

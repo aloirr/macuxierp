@@ -8,7 +8,8 @@ import {
   type LinhaEnvioLog, type LinhaErroLog, type LinhaRecebidoLog,
 } from '@macuxierp/integracao-fdv/web';
 import { ROTULOS_FDV } from '@/lib/config/operacao-fdv';
-import { lerLogFdv, type ResultadoLogFdv } from '@/app/(shell)/[modulo]/[...pagina]/acoes-log-fdv';
+import { lerLogFdv } from '@/lib/acoes-cliente';
+import type { ResultadoLogFdv } from '@/app/(shell)/[modulo]/[...pagina]/acoes-log-fdv';
 
 /** Texto do resumo de erros: "1 erro aberto" / "N erros abertos". */
 export const textoErrosAbertos = (n: number): string => `${n} ${n === 1 ? 'erro aberto' : 'erros abertos'}`;
