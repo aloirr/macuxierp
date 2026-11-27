@@ -80,6 +80,16 @@ O `corretor-redundancias` cuida de excesso e repetição, e o `testes` cuida de 
 - O BKO com a mesma identidade do BKO do FDV.
 - Login e telas vazias com o tom da marca.
 
+### E1. Telas horizontais e destaque no cabeçalho (R-20261127-110345)
+Você valida esta regra em toda tela do BKO e do /config; a referência completa é `docs/design/telas-horizontais.md`.
+- As telas usam a largura toda da janela, sem coluna estreita centralizada com sobra vazia.
+- No computador, os blocos ficam lado a lado, em 2 a 4 colunas, com cartão de no mínimo 280 px; um embaixo do outro só abaixo de 768 px.
+- Exceções: login, diálogos e parágrafo corrido.
+- Rótulo e cabeçalho em `rotuloDestaque` (Azul noite), com peso e caixa-alta diferentes do valor; o valor em texto normal.
+- O destaque nunca depende só da cor.
+- Só tokens do `packages/ui`.
+- Cor fora do token é achado MC.
+
 ### F. Tom de voz da marca
 - Fala de quem conhece o campo: direta, confiante e próxima. Nada de jargão técnico na comunicação com o cliente.
 - O texto de interface continua sendo do `designer-ux` e do corretor. Você valida só o que é **voz da marca**: nome de produto e de plano, slogan, e-mail e mensagem de boas-vindas.

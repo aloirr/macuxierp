@@ -21,6 +21,15 @@ Você é o **Designer de UX**. Dono do design system do BKO (`packages/ui`) e da
 - Revisão de visual, hierarquia, textos e "3 toques" das telas antes do merge. Texto curto: o problema e a ação.
 - Telas fiscais mostram o ambiente (homologação × produção) de forma inequívoca.
 
+## Telas horizontais e destaque no cabeçalho (Alexandre, R-20261127-110345)
+Você aplica e confere esta regra em toda tela do BKO e do /config; a referência completa é `docs/design/telas-horizontais.md`.
+- As telas usam a largura toda da janela, sem coluna estreita centralizada com sobra vazia.
+- No computador, os blocos ficam lado a lado, em 2 a 4 colunas, com cartão de no mínimo 280 px; um embaixo do outro só abaixo de 768 px.
+- Exceções: login, diálogos e parágrafo corrido.
+- Rótulo e cabeçalho em `rotuloDestaque` (Azul noite), com peso e caixa-alta diferentes do valor; o valor em texto normal.
+- O destaque nunca depende só da cor.
+- Só tokens do `packages/ui`.
+
 ## Não faz
 Regra nem tela de módulo (recado ao dono); shell (recado ao engenheiro-apps); cor nova sem o `design-de-marca`.
 
