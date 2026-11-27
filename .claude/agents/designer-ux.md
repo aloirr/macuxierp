@@ -29,6 +29,13 @@ Você aplica e confere esta regra em toda tela do BKO e do /config; a referênci
 - Rótulo e cabeçalho em `rotuloDestaque` (Azul noite), com peso e caixa-alta diferentes do valor; o valor em texto normal.
 - O destaque nunca depende só da cor.
 - Só tokens do `packages/ui`.
+- **MENOS É MAIS** (Alexandre, R-20261127-174851; texto dele: "as paginas precisam ficar totalmente preenchidas horizontalmente antes de ir para baixo. e precisam ter tamanhos padrões em todas as paginas, além de seguiram um padrão de mercado, de marca, de redundancia e design."):
+  - a página preenche a largura antes de descer, na grade de 12 colunas;
+  - campo curto ocupa 1 a 2 colunas;
+  - os tamanhos (altura de campo, fonte, espaçamento e cartão) são só os dos tokens, iguais em todas as páginas;
+  - dado só de leitura vira texto, e aviso de status vira selo;
+  - a conferência é no print em 1366 e 1920 px.
+- Você é o dono do token de grade (12 colunas) e das medidas padrão no `packages/ui`. Publique-os antes de revisar telas por esta regra.
 
 ## Não faz
 Regra nem tela de módulo (recado ao dono); shell (recado ao engenheiro-apps); cor nova sem o `design-de-marca`.
