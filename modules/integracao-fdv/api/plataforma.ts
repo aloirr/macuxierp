@@ -41,7 +41,7 @@ import {
 import { z } from 'zod';
 import { entidadeDaRota } from './operacao';
 import { EVENTOS, EVENTO_CARGA_INICIAL, MotivoPausa } from '../contracts';
-import { decidirCargaCompleta, decidirRetomar, entidadesParaCargaInicial, montarLogPlataforma, montarMonitor, planejarTrocaCredencial, prefixoExibido, validarConfiguracao } from '../domain';
+import { MSG_SEM_LICENCA, decidirCargaCompleta, decidirRetomar, entidadesParaCargaInicial, montarLogPlataforma, montarMonitor, planejarTrocaCredencial, prefixoExibido, validarConfiguracao } from '../domain';
 
 const Uuid = z.string().uuid();
 const Instante = z.string().datetime();
@@ -243,8 +243,8 @@ const idDaRota = (params: Record<string, string>): string => {
   return r.data;
 };
 
-const MSG_LOTE_EM_VOO = 'Este cadastro está enviando agora. Aguarde o envio terminar.';
-const MSG_MODULO_DESLIGADO = 'Ligue o módulo Integração FDV na empresa antes de configurar';
+const MSG_LOTE_EM_VOO = 'Este cadastro está enviando agora. Espere terminar.';
+const MSG_MODULO_DESLIGADO = MSG_SEM_LICENCA;
 const semModulo = () => erros.regra('RN-CORE-02', MSG_MODULO_DESLIGADO, undefined, { codigo: 'modulo_desligado' });
 
 export function criarPluginPlataformaIntegracaoFdv(deps: DependenciasPlataformaIntegracaoFdv): PluginPlataforma {

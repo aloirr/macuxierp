@@ -6,7 +6,7 @@ import { violacao, type Violacao } from '@macuxierp/platform-sdk/erros';
 import { ENTIDADES_CARGA_INICIAL, ENTIDADES_HUB_F2, LIMITE_REGISTROS_LOTE, type AmbienteHub, type MotivoPausa } from '../contracts';
 
 /** Textos da validação da configuração (RN-INF-02): a API e a web usam estes, sem cópia. */
-export const MENSAGEM_LIMITE_LOTE = 'O limite por lote vai de 1 a 5.000 registros';
+export const MENSAGEM_LIMITE_LOTE = 'Informe um número de 1 a 5.000.';
 export const MENSAGEM_ENTIDADES_HABILITADAS = 'Escolha só cadastros da lista, sem repetir';
 
 export interface IdentidadeCredencial {
@@ -78,7 +78,7 @@ export type DecisaoCargaCompleta = { ok: true } | { ok: false; codigo: 'entidade
 /** Carga completa recomeça a sessão da entidade: só se ela está habilitada e sem lote em voo (a sessão não troca no meio de um lote). */
 export function decidirCargaCompleta(e: { habilitada: boolean; loteEmVoo: boolean }): DecisaoCargaCompleta {
   if (!e.habilitada) return { ok: false, codigo: 'entidade_desabilitada', mensagem: 'Habilite a entidade antes de pedir a carga completa' };
-  if (e.loteEmVoo) return { ok: false, codigo: 'lote_em_voo', mensagem: 'Já há um envio desta entidade em andamento. Espere terminar e tente de novo' };
+  if (e.loteEmVoo) return { ok: false, codigo: 'lote_em_voo', mensagem: 'Este cadastro está enviando agora. Espere terminar.' };
   return { ok: true };
 }
 

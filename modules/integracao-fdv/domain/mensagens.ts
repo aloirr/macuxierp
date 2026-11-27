@@ -23,7 +23,7 @@ export const CATALOGO_ERRO: Readonly<Record<string, TextoErro>> = {
   rede: { motivo: 'Sem resposta do FDV.', acao: 'Aguarde.' },
   limite_de_taxa: { motivo: 'O FDV pediu para aguardar.', acao: 'Aguarde.' },
   resposta_grande: { motivo: 'A resposta do FDV passou do limite aceito pelo ERP.', acao: 'Aguarde; se persistir, fale com o suporte.' },
-  pedido_invalido: { motivo: 'O ERP montou uma chamada inválida ao FDV (defeito do ERP).', acao: 'Fale com o suporte informando o código.' },
+  pedido_invalido: { motivo: 'O ERP montou uma chamada inválida ao FDV (defeito do ERP).', acao: 'Fale com a Macuxi.' },
 };
 
 const NOME_DO_ALVO: Readonly<Record<string, string>> = {
@@ -48,19 +48,22 @@ const STATUS_DO_CODIGO_DE_PAUSA: Readonly<Record<string, number>> = {
   entidade_de_outro_conector: 422,
 };
 
+/** Texto único de "sem licença" (ERP e FDV): a API usa o mesmo. */
+export const MSG_SEM_LICENCA = 'Integração FDV sem licença nesta empresa. Ligue o módulo na aba Empresa.';
+
 export const MENSAGENS_PAUSA: Readonly<Record<string, string>> = {
-  credencial: 'Credencial recusada pelo FDV. Troque a chave na tela Integração FDV e use "Tentar de novo".',
-  licenca_fdv: 'Módulo de integração inativo no FDV para esta empresa. Peça a ativação e use "Tentar de novo".',
-  licenca_erp: 'O módulo Integração FDV não está licenciado no ERP. Nada é enviado.',
-  versao: 'O FDV recusou a versão do conector para esta entidade. Fale com o suporte.',
-  envelope: 'O FDV recusou o formato do lote. Fale com o suporte e use "Tentar de novo" depois da correção.',
-  idempotencia: 'Conflito de idempotência no envio. Fale com o suporte antes de tentar de novo.',
-  topologia: 'Outro conector já alimenta esta entidade no FDV. Ajuste no FDV e use "Tentar de novo".',
+  credencial: 'O FDV recusou a chave do conector. Use "Trocar chave".',
+  licenca_fdv: MSG_SEM_LICENCA,
+  licenca_erp: MSG_SEM_LICENCA,
+  versao: 'O FDV não aceita mais esta versão do conector. Fale com a Macuxi.',
+  envelope: 'O FDV recusou o formato do envio. Fale com a Macuxi.',
+  idempotencia: 'O FDV recusou um envio repetido. Fale com a Macuxi.',
+  topologia: 'Outro conector já envia este cadastro ao FDV. Fale com a Macuxi.',
 };
 
-const GENERICA = 'Erro não catalogado. Fale com o suporte informando o código.';
+const GENERICA = 'Erro desconhecido. Fale com a Macuxi.';
 
-const ACAO_GENERICA = 'Fale com o suporte informando o código.';
+const ACAO_GENERICA = 'Fale com a Macuxi.';
 
 /** Causa do erro (Log do BKO). Código de pausa mostra o texto do motivo da pausa; desconhecido cai no genérico, nunca ecoa texto do Hub. */
 export function motivoDoErro(codigo: string | null | undefined, campo?: string | null): string {

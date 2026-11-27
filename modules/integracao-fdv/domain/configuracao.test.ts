@@ -43,7 +43,7 @@ describe('configuração do envio (RN-INF-02)', () => {
   it('RN-INF-02: limite de registros por lote vai de 1 a 5.000', () => {
     expect(LIMITE_REGISTROS_LOTE).toBe(5000);
     expect(validarConfiguracao({ entidades_habilitadas: [], limite_registros_lote: 0 })[0]).toMatchObject({ rn: 'RN-INF-02', mensagem: MENSAGEM_LIMITE_LOTE });
-    expect(MENSAGEM_LIMITE_LOTE).toBe('O limite por lote vai de 1 a 5.000 registros');
+    expect(MENSAGEM_LIMITE_LOTE).toBe('Informe um número de 1 a 5.000.');
     expect(validarConfiguracao({ entidades_habilitadas: ['filial'], limite_registros_lote: 5000 })).toEqual([]);
     for (const n of [0, -1, 5001, 1.5]) expect(validarConfiguracao({ entidades_habilitadas: [], limite_registros_lote: n }).map((v) => v.campo)).toEqual(['limite_registros_lote']);
   });
