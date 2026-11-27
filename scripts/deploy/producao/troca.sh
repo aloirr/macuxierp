@@ -49,12 +49,21 @@ todas_ok() { # serviço função [args] → 0 = há réplica e a função passa 
   for id in $ids; do "$f" "$id" "$@" || return 1; done
 }
 
-remover_replica() { # id [dreno] → sai do túnel, drena, para (SIGTERM, até 30 s) e é removido
+sair_do_tunel() { # id [dreno] → sai do túnel e drena (sleep)
   local dreno="${2:-$TROCA_DRENO_S}"
   docker network disconnect "$REDE_TUNEL" "$1" >/dev/null 2>&1 || true
   [ "$dreno" -gt 0 ] && sleep "$dreno"
+  return 0
+}
+
+parar_replica() { # id → para (SIGTERM, até 30 s) e é removido
   docker stop -t 30 "$1" >/dev/null 2>&1 || true
   docker rm -f "$1" >/dev/null 2>&1 || true
+}
+
+remover_replica() { # id [dreno] → sai do túnel, drena, para e é removido
+  sair_do_tunel "$1" "${2:-$TROCA_DRENO_S}"
+  parar_replica "$1"
 }
 
 # ---------- laço de curl pelo domínio durante a troca (v0.3.24; ADR 0003, adendo 48 A, "Laço durante a troca") ----------
@@ -166,12 +175,99 @@ laco_encerrar() { # → as linhas do laço; 0 = as duas URLs passaram (laco_resu
   return "$ok"
 }
 
+# ---------- dreno da réplica velha e conferência pela instância (v0.3.25; ADR 0003, adendo 48 A, "Dreno e conferência") ----------
+# Toda resposta da api e do web da v0.3.25 em diante traz x-macuxierp-instancia (8 hex aleatórios da partida do processo;
+# apps/api/src/dreno.ts e apps/web/dreno.cjs), e o SIGUSR2 põe a réplica em dreno (Connection: close e keep-alive ocioso
+# fechado). A instância de cada réplica é lida de dentro do contêiner (docker exec pelo id do dc ps -q); a do domínio, pelo
+# mesmo URL base do laço (/v1/saude para a api, /login para o web).
+TROCA_USR2_S="${MACUXIERP_TROCA_USR2_S:-10}"         # dreno pedido: tempo mínimo antes do disconnect (além do TROCA_DRENO_S)
+TROCA_USR2_MAX_S="${MACUXIERP_TROCA_USR2_MAX_S:-30}" # sem a nova vista até aqui: segue com aviso (a conferência decide)
+TROCA_CONFERE_N="${MACUXIERP_TROCA_CONFERE_N:-5}"
+TROCA_CONFERE_PASSO_S="${MACUXIERP_TROCA_CONFERE_PASSO_S:-0.5}"
+TROCA_CABECALHO_INSTANCIA=x-macuxierp-instancia
+
+caminho_do_servico() { # serviço → caminho público respondido por ele
+  case "$1" in
+    *api) printf 'v1/saude\n' ;;
+    *) printf 'login\n' ;;
+  esac
+}
+
+porta_do_servico() { # serviço → porta dentro do contêiner
+  case "$1" in
+    *api) printf '8100\n' ;;
+    *) printf '3100\n' ;;
+  esac
+}
+
+instancia_do_conteiner() { # serviço id → a instância da réplica (vazio = versão sem o cabeçalho ou sem resposta)
+  local url
+  url="http://127.0.0.1:$(porta_do_servico "$1")/$(caminho_do_servico "$1")"
+  docker exec "$2" node -e "fetch('$url').then((r)=>process.stdout.write(r.headers.get('$TROCA_CABECALHO_INSTANCIA')||''),()=>process.exit(1))" 2>/dev/null |
+    tr -dc '0-9a-zA-Z' || true
+}
+
+instancia_pelo_dominio() { # serviço → "<código http> <instância ou ->", por uma chamada ao domínio
+  local url
+  url="$(laco_url_base)/$(caminho_do_servico "$1")"
+  curl -s -o /dev/null -D - -m "$TROCA_LACO_TIMEOUT_S" -w '\n%{http_code}\n' "$url" 2>/dev/null |
+    LC_ALL=C awk -v cab="$TROCA_CABECALHO_INSTANCIA" '
+      { sub(/\r$/, "") }
+      index($0, ":") { k = tolower(substr($0, 1, index($0, ":") - 1)); if (k == cab) { v = substr($0, index($0, ":") + 1); gsub(/[^0-9A-Za-z]/, "", v); inst = v } }
+      NF { ult = $0 }
+      END { if (ult !~ /^[0-9][0-9][0-9]$/) ult = "000"; printf "%s %s\n", ult, (inst == "" ? "-" : inst) }'
+}
+
+da_nova() { # instância_lida velha nova → 0 = a resposta veio da réplica nova
+  # nova sem o cabeçalho (volta atrás para versão sem dreno): conta como nova toda resposta que não for da velha
+  if [ -n "$3" ]; then [ "$1" = "$3" ]; else [ "$1" != "$2" ]; fi
+}
+
+agora_ms() { # relógio em ms (EPOCHREALTIME do bash 5; sem ele, SECONDS)
+  local t="${EPOCHREALTIME:-}"
+  if [ -n "$t" ]; then t="${t/[.,]/}"; printf '%s\n' $((10#$t / 1000)); else printf '%s\n' $((SECONDS * 1000)); fi
+}
+
+esperar_nova() { # serviço velha nova → 0 = a nova foi vista pelo domínio e o prazo do dreno pedido passou
+  local svc="$1" r inst vista=1 ini d
+  ini="$(agora_ms)"
+  while :; do
+    r="$(instancia_pelo_dominio "$svc")"
+    inst="${r#* }"
+    if [ "${r%% *}" = 200 ] && { [ "$inst" != - ] || [ -z "$3" ]; } && da_nova "$inst" "$2" "$3"; then vista=0; fi
+    d=$(($(agora_ms) - ini))
+    [ "$vista" -eq 0 ] && [ "$d" -ge $((TROCA_USR2_S * 1000)) ] && return 0
+    [ "$d" -ge $((TROCA_USR2_MAX_S * 1000)) ] && return 1
+    sleep "$TROCA_CONFERE_PASSO_S"
+  done
+}
+
+conferir_pelo_dominio() { # serviço velha nova → 0 = TROCA_CONFERE_N respostas seguidas, todas 200 e da nova
+  local svc="$1" i=0 ok=0 velha=0 sem=0 r inst
+  while [ "$i" -lt "$TROCA_CONFERE_N" ]; do
+    [ "$i" -gt 0 ] && sleep "$TROCA_CONFERE_PASSO_S"
+    i=$((i + 1))
+    r="$(instancia_pelo_dominio "$svc")"
+    inst="${r#* }"
+    if [ "${r%% *}" != 200 ] || { [ "$inst" = - ] && [ -n "$3" ]; }; then
+      sem=$((sem + 1))
+    elif da_nova "$inst" "$2" "$3"; then
+      ok=$((ok + 1))
+    else
+      velha=$((velha + 1))
+    fi
+  done
+  log "$svc: conferência pelo domínio: $ok de $TROCA_CONFERE_N da nova (da velha: $velha; sem 200 ou sem cabeçalho: $sem)"
+  [ "$ok" -eq "$TROCA_CONFERE_N" ]
+}
+
 # trocar_servico <serviço> [conferência extra da réplica nova: função que recebe o id]
 # 0 = a nova está no ar, a velha saiu e o laço pelo domínio passou (só 200, ou 000 isolado com aviso); 1 = a nova não
-# ficou saudável (foi removida; a velha segue no túnel) ou o laço falhou (000 seguido, ou código diferente de 200 e 000:
-# o implantar.sh volta atrás pelo mesmo caminho).
+# ficou saudável (foi removida; a velha segue no túnel), o laço falhou (000 seguido, ou código diferente de 200 e 000) ou
+# a conferência pela instância viu a velha (ou resposta sem o cabeçalho) depois do disconnect: o implantar.sh volta atrás
+# pelo mesmo caminho. Velha sem o cabeçalho (versão anterior à v0.3.25): sem SIGUSR2 nem conferência, como na v0.3.24.
 trocar_servico() {
-  local svc="$1" extra="${2:-}" velho novo="" id rc=0
+  local svc="$1" extra="${2:-}" velho novo="" id rc=0 inst_velha inst_nova
   velho="$(ids_do_servico "$svc")"
   if [ -z "$velho" ]; then
     log "$svc: sem réplica no ar; sobe direto"
@@ -195,8 +291,27 @@ trocar_servico() {
     laco_encerrar || true
     return 1
   fi
+  inst_velha="$(instancia_do_conteiner "$svc" "$velho")"
+  inst_nova="$(instancia_do_conteiner "$svc" "$novo")"
+  if [ -n "$inst_velha" ]; then
+    # dreno pedido antes do disconnect: Connection: close e keep-alive ocioso fechado, para o cloudflared refazer a conexão
+    docker kill -s USR2 "$velho" >/dev/null 2>&1 || true
+    log "$svc: dreno pedido à réplica velha (instância $inst_velha; nova ${inst_nova:-sem cabeçalho})"
+    if esperar_nova "$svc" "$inst_velha" "$inst_nova"; then
+      log "$svc: instância nova vista pelo domínio (${inst_nova:-sem cabeçalho}); dreno pedido há ${TROCA_USR2_S} s ou mais"
+    else
+      echo "[implantar] $svc: a instância nova não apareceu pelo domínio em ${TROCA_USR2_MAX_S} s; segue, e a conferência decide" >&2
+    fi
+  else
+    echo "[implantar] $svc: aviso: a réplica velha não tem o cabeçalho $TROCA_CABECALHO_INSTANCIA (versão sem dreno); sem SIGUSR2, sem espera e sem conferência pela instância" >&2
+  fi
   log "$svc: nova saudável; a velha sai do túnel e drena ${TROCA_DRENO_S} s"
-  remover_replica "$velho"
+  sair_do_tunel "$velho"
+  if [ -n "$inst_velha" ] && ! conferir_pelo_dominio "$svc" "$inst_velha" "$inst_nova"; then
+    echo "[implantar] $svc: a conferência pelo domínio viu a réplica velha ou resposta sem o cabeçalho depois do disconnect: volta atrás" >&2
+    rc=1
+  fi
+  parar_replica "$velho"
   dc up -d --no-deps --no-recreate --scale "$svc=1" "$svc" >/dev/null || rc=1
   if ! laco_encerrar; then
     echo "[implantar] $svc: o laço pelo domínio falhou durante a troca (000 seguido ou código diferente de 200 e 000): volta atrás" >&2
