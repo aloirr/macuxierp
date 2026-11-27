@@ -3,15 +3,18 @@
  * conforme a linha "Motivos de pausa" de docs/design/resultado-acao/nomes-integracao.md.
  */
 
-/** Texto único de "sem licença" (ERP e FDV): a API usa o mesmo. */
+/** Texto de "sem licença" do ERP (módulo desligado na empresa); a API usa o mesmo. */
 export const MSG_SEM_LICENCA = 'Integração FDV sem licença nesta empresa. Ligue o módulo na aba Empresa.';
+
+/** Recusa do lado do FDV (403 modulo_inativo, pausa `licenca_fdv`): ligar o módulo no ERP não resolve (#777). */
+export const MSG_SEM_LICENCA_FDV = 'A licença do FDV não permite o envio.';
 
 /** Texto para código ou motivo que o catálogo não conhece; nunca ecoa texto do Hub. */
 export const MENSAGEM_ERRO_DESCONHECIDO = 'Erro desconhecido. Fale com a Macuxi.';
 
 export const MENSAGENS_PAUSA: Readonly<Record<string, string>> = {
   credencial: 'O FDV recusou a chave do conector. Use "Trocar chave".',
-  licenca_fdv: MSG_SEM_LICENCA,
+  licenca_fdv: MSG_SEM_LICENCA_FDV,
   licenca_erp: MSG_SEM_LICENCA,
   versao: 'O FDV não aceita mais esta versão do conector. Fale com a Macuxi.',
   envelope: 'O FDV recusou o formato do envio. Fale com a Macuxi.',

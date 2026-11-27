@@ -245,8 +245,7 @@ const idDaRota = (params: Record<string, string>): string => {
 };
 
 const MSG_LOTE_EM_VOO = 'Este cadastro está enviando agora. Espere terminar.';
-const MSG_MODULO_DESLIGADO = MSG_SEM_LICENCA;
-const semModulo = () => erros.regra('RN-CORE-02', MSG_MODULO_DESLIGADO, undefined, { codigo: 'modulo_desligado' });
+const semModulo = () => erros.regra('RN-CORE-02', MSG_SEM_LICENCA, undefined, { codigo: 'modulo_desligado' });
 
 export function criarPluginPlataformaIntegracaoFdv(deps: DependenciasPlataformaIntegracaoFdv): PluginPlataforma {
   const chaveIntegracao = copiarChaveIntegracao(deps.chaveIntegracao);
