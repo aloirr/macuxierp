@@ -1,0 +1,334 @@
+/**
+ * T-0057 (T1): a API de entrada `/entrada/v1` de ponta a ponta — HTTP na API de produção (a chave nasce pelo portal
+ * `/config`) → lote em `cadastros.entrada_lote` → trabalho `TRABALHO_ENTRADA_LOTE` no worker → cadastros
+ * (`gravarLinhas`) → eventos `cadastros.*@1` → espelho e agenda do `integracao-fdv` → dublê do Hub. ADR 0014 §1 a §4;
+ * decisão 34 B (R-20261126-210816-alexandre): só delta, a carga completa responde 422 `CARGA_COMPLETA_NAO_SUPORTADA`.
+ * Tudo com o código de produção do main (E1 #747, C1/C2 #748, E2 #749, C3/C4 #763, E3 #764); o arnês é
+ * `apoio/entrada-v1.ts`. A falta do pepper, a troca e a revogação da chave e a empresa suspensa ficam no
+ * `apps/api/src/entrada.db.test.ts`.
+ * Roteiro manual equivalente: docs/testes/T-0057-thathyany-simulada.md. Dados fictícios. Sem Postgres pula; com
+ * MACUXI_PG_EXIGIR=1 falha.
+ */
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { CABECALHO_CONECTOR_ID_ENTRADA, ChaveEntrada, CODIGO_CARGA_COMPLETA_NAO_SUPORTADA } from '../../packages/platform-sdk/src/index';
+import { PG_DISPONIVEL } from '../../packages/platform-sdk/src/pg-testes';
+import { CorpoLote, CursorEntidade, LoteAceito, LoteResultado, PAYLOADS_HUB, RespostaSinal, VERSAO_CONTRATO_HUB } from '../../packages/platform-sdk/src/hub-v1';
+import {
+  ENTIDADES_F2,
+  envelopeCompleto,
+  envelopeDelta,
+  gerarChaveEntrada,
+  linhasComSensivel,
+  massaEntrada,
+  montarEntradaV1,
+  novaChaveIdempotencia,
+  urlEntrada,
+  type MassaEntrada,
+  type MontagemEntradaV1,
+} from './apoio/entrada-v1';
+import { RelogioDeTeste } from './apoio/relogio';
+
+const INICIO = new Date('2026-11-27T12:00:00.000Z');
+/** O 401 neutro da autenticação de máquina (o mesmo para todo motivo, ADR 0014 §4). */
+const NEUTRO = { codigo: 'NAO_AUTENTICADO', mensagem: 'Credencial de conector inválida' };
+
+describe('T-0057 — a massa fictícia da /entrada/v1 passa no contrato hub-v1 do SDK (sem banco)', () => {
+  it('os 10 cadastros da F2 têm registro, e cada um passa no payload do Hub e no envelope delta', () => {
+    const { registros } = massaEntrada(INICIO);
+    expect(Object.keys(registros).sort()).toEqual([...ENTIDADES_F2].sort());
+    for (const e of ENTIDADES_F2) {
+      for (const r of registros[e]) expect(PAYLOADS_HUB[e].safeParse(r).success, e).toBe(true);
+      expect(CorpoLote.safeParse(envelopeDelta(e, registros[e], INICIO)).success, e).toBe(true);
+    }
+  });
+
+  it('a carga completa usada no caso do 422 é válida pelo contrato (a recusa tem de vir da regra 34 B, não do Zod)', () => {
+    const { registros } = massaEntrada(INICIO);
+    expect(envelopeCompleto('filial', registros.filial, INICIO)).toMatchObject({ modo: 'completo', sessao: { parte: 1, ultimo: true } });
+  });
+
+  it('a chave gerada pelo arnês está no formato `ChaveEntrada` do SDK (32 bytes em base64url)', () => {
+    expect(ChaveEntrada.safeParse(gerarChaveEntrada()).success).toBe(true);
+  });
+});
+
+describe.skipIf(!PG_DISPONIVEL)('T-0057 T1 — /entrada/v1 → cadastros → dublê do Hub (PostgreSQL efêmero)', () => {
+  const relogio = new RelogioDeTeste(INICIO);
+  let m: MontagemEntradaV1;
+  let massa: MassaEntrada;
+  const lote = () => envelopeDelta('produto', massaEntrada(INICIO).registros.produto, INICIO);
+
+  beforeAll(async () => {
+    m = await montarEntradaV1(relogio);
+    massa = massaEntrada(INICIO);
+  }, 180_000);
+  afterAll(async () => {
+    await m?.fechar();
+  });
+
+  describe('autenticação de máquina (ADR 0014 §3 e §4; regra 6)', () => {
+    it('chave certa: 202 LoteAceito, o lote e o trabalho ficam só no tenant da credencial', async () => {
+      const [antesA, antesB] = [await m.trabalhosDaEntrada(m.api.t.A), await m.trabalhosDaEntrada(m.api.t.B)];
+      const r = await m.enviarLote(m.credenciais.A, lote());
+      expect(r.statusCode, r.body).toBe(202);
+      const aceito = LoteAceito.parse(r.json());
+      expect(aceito).toMatchObject({ status: 'recebido', entidade: 'produto', modo: 'delta', recebidos: 1 });
+      expect(aceito.repetido).toBeUndefined();
+      expect((await m.loteNoBanco(aceito.lote_id))?.tenant_id).toBe(m.api.t.A);
+      expect(await m.trabalhosDaEntrada(m.api.t.A)).toBe(antesA + 1);
+      expect(await m.trabalhosDaEntrada(m.api.t.B)).toBe(antesB);
+      const c = await m.chamarEntrada(m.credenciais.A, 'GET', urlEntrada('cursor', { entidade: 'produto' }));
+      expect(c.statusCode, c.body).toBe(200);
+      expect(CursorEntidade.safeParse(c.json()).success).toBe(true);
+    });
+
+    it('JWT do BKO (administrador real do tenant A) é recusado com o mesmo 401 neutro, com ou sem o X-Macuxi-Conector-Id, e nada entra na fila', async () => {
+      const antes = await m.trabalhosDaEntrada(m.api.t.A);
+      const jwt = m.api.auth('A');
+      for (const cabecalhos of [jwt, { ...jwt, [CABECALHO_CONECTOR_ID_ENTRADA]: m.credenciais.A.conectorId }]) {
+        const r = await m.chamarEntrada(null, 'POST', urlEntrada('lotes'), { corpo: lote(), cabecalhos: { ...cabecalhos, 'idempotency-key': novaChaveIdempotencia() } });
+        expect(r.statusCode).toBe(401);
+        expect(r.json()).toEqual(NEUTRO);
+      }
+      expect(await m.trabalhosDaEntrada(m.api.t.A)).toBe(antes);
+    });
+
+    it('sem Authorization, sem X-Macuxi-Conector-Id, chave errada ou conector inexistente: o mesmo 401 neutro (não diz qual falhou)', async () => {
+      const { A } = m.credenciais;
+      const casos: { c: { conectorId: string; chave: string } | null; cabecalhos: Record<string, string> }[] = [
+        { c: null, cabecalhos: {} },
+        { c: null, cabecalhos: { authorization: `Bearer ${A.chave}` } },
+        { c: null, cabecalhos: { [CABECALHO_CONECTOR_ID_ENTRADA]: A.conectorId } },
+        { c: { conectorId: A.conectorId, chave: gerarChaveEntrada() }, cabecalhos: {} },
+        { c: { conectorId: 'tha-nao-existe', chave: A.chave }, cabecalhos: {} },
+      ];
+      for (const [i, k] of casos.entries()) {
+        const r = await m.chamarEntrada(k.c, 'POST', urlEntrada('lotes'), { corpo: lote(), idempotencia: novaChaveIdempotencia(), cabecalhos: k.cabecalhos });
+        expect(r.statusCode, `caso ${i}`).toBe(401);
+        expect(r.json(), `caso ${i}`).toEqual(NEUTRO);
+      }
+    });
+
+    it('chave do tenant B com o X-Macuxi-Conector-Id do tenant A: 401, sem lote nem trabalho em nenhum dos dois', async () => {
+      const antes = [await m.lotesNoBanco(m.api.t.A), await m.lotesNoBanco(m.api.t.B), await m.trabalhosDaEntrada(m.api.t.A), await m.trabalhosDaEntrada(m.api.t.B)];
+      const r = await m.enviarLote({ conectorId: m.credenciais.A.conectorId, chave: m.credenciais.B.chave }, lote());
+      expect(r.statusCode).toBe(401);
+      expect(r.json()).toEqual(NEUTRO);
+      expect([await m.lotesNoBanco(m.api.t.A), await m.lotesNoBanco(m.api.t.B), await m.trabalhosDaEntrada(m.api.t.A), await m.trabalhosDaEntrada(m.api.t.B)]).toEqual(antes);
+    });
+
+    it('chave do tenant A não lê o lote do tenant B: GET /entrada/v1/lotes/:id responde 404 (nem 403), e o B lê o próprio', async () => {
+      const r = await m.enviarLote(m.credenciais.B, lote());
+      expect(r.statusCode, r.body).toBe(202);
+      const { lote_id } = LoteAceito.parse(r.json());
+      const doA = await m.chamarEntrada(m.credenciais.A, 'GET', urlEntrada('lote', { id: lote_id }));
+      expect(doA.statusCode).toBe(404);
+      expect((await m.chamarEntrada(m.credenciais.B, 'GET', urlEntrada('lote', { id: lote_id }))).statusCode).toBe(200);
+    });
+
+    it('tenant sem o cadastros licenciado: 403 MODULO_INATIVO (RN-CORE-02), sem lote nem trabalho', async () => {
+      const r = await m.enviarLote(m.credenciais.S, lote());
+      expect(r.statusCode, r.body).toBe(403);
+      expect(r.json()).toMatchObject({ codigo: 'MODULO_INATIVO' });
+      expect([await m.lotesNoBanco(m.api.t.S), await m.trabalhosDaEntrada(m.api.t.S)]).toEqual([0, 0]);
+    });
+
+    it('a chave dá acesso só a /entrada/v1: com ela, a rota do BKO GET /v1/cadastros/filiais responde 401 (com o JWT, 200)', async () => {
+      expect((await m.app.inject({ method: 'GET', url: '/v1/cadastros/filiais', headers: m.api.auth('A') })).statusCode).toBe(200);
+      const r = await m.chamarEntrada(m.credenciais.A, 'GET', '/v1/cadastros/filiais');
+      expect(r.statusCode).toBe(401);
+      expect(linhasComSensivel([r.body], [m.credenciais.A.chave])).toEqual([]);
+    });
+
+    it('limite de falhas por IP e conector: depois de 20 falhas, 429 com Retry-After, mesmo com a chave certa; o outro conector segue', async () => {
+      const alvo = await m.definirChave(m.api.t.B, 'tha-forca-bruta');
+      for (let i = 0; i < 20; i++) {
+        expect((await m.chamarEntrada({ conectorId: alvo.conectorId, chave: gerarChaveEntrada() }, 'GET', urlEntrada('cursor', { entidade: 'filial' }))).statusCode).toBe(401);
+      }
+      const r = await m.chamarEntrada(alvo, 'GET', urlEntrada('cursor', { entidade: 'filial' }));
+      expect(r.statusCode).toBe(429);
+      expect(r.headers['retry-after']).toBeDefined();
+      expect((await m.chamarEntrada(m.credenciais.A, 'GET', urlEntrada('cursor', { entidade: 'filial' }))).statusCode).toBe(200);
+    });
+  });
+
+  describe('idempotência (ADR 0014 §3; RN-INT-01)', () => {
+    it('POST /lotes sem Idempotency-Key: 400, sem lote criado', async () => {
+      const antes = await m.lotesNoBanco(m.api.t.A);
+      const r = await m.chamarEntrada(m.credenciais.A, 'POST', urlEntrada('lotes'), { corpo: lote() });
+      expect(r.statusCode, r.body).toBe(400);
+      expect(await m.lotesNoBanco(m.api.t.A)).toBe(antes);
+    });
+
+    it('mesma Idempotency-Key e mesmo corpo: 202 com o mesmo lote_id e repetido=true; um lote e um trabalho só', async () => {
+      const chave = novaChaveIdempotencia();
+      const corpo = lote();
+      const [lotes, trabalhos] = [await m.lotesNoBanco(m.api.t.A), await m.trabalhosDaEntrada(m.api.t.A)];
+      const r1 = LoteAceito.parse((await m.enviarLote(m.credenciais.A, corpo, chave)).json());
+      const r2 = await m.enviarLote(m.credenciais.A, corpo, chave);
+      expect(r2.statusCode).toBe(202);
+      expect(LoteAceito.parse(r2.json())).toMatchObject({ lote_id: r1.lote_id, repetido: true });
+      expect([await m.lotesNoBanco(m.api.t.A), await m.trabalhosDaEntrada(m.api.t.A)]).toEqual([lotes + 1, trabalhos + 1]);
+    });
+
+    it('mesma Idempotency-Key com outro corpo: 409, sem ecoar o corpo, e o lote original não muda', async () => {
+      const chave = novaChaveIdempotencia();
+      const r1 = LoteAceito.parse((await m.enviarLote(m.credenciais.A, lote(), chave)).json());
+      const antes = await m.loteNoBanco(r1.lote_id);
+      const outro = envelopeDelta('cliente', massa.registros.cliente, INICIO);
+      const r2 = await m.enviarLote(m.credenciais.A, outro, chave);
+      expect(r2.statusCode).toBe(409);
+      expect(linhasComSensivel([r2.body], massa.sensiveis)).toEqual([]);
+      expect(await m.loteNoBanco(r1.lote_id)).toEqual(antes);
+    });
+
+    it('a mesma Idempotency-Key em outro tenant não colide: dois lotes, um em cada tenant', async () => {
+      const chave = novaChaveIdempotencia();
+      const a = LoteAceito.parse((await m.enviarLote(m.credenciais.A, lote(), chave)).json());
+      const b = await m.enviarLote(m.credenciais.B, lote(), chave);
+      expect(b.statusCode, b.body).toBe(202);
+      const bb = LoteAceito.parse(b.json());
+      expect(bb.lote_id).not.toBe(a.lote_id);
+      expect(bb.repetido).toBeUndefined();
+      expect([(await m.loteNoBanco(a.lote_id))?.tenant_id, (await m.loteNoBanco(bb.lote_id))?.tenant_id]).toEqual([m.api.t.A, m.api.t.B]);
+    });
+  });
+
+  describe('recusa do envelope inteiro (decisão 34 B; ADR 0014 §2)', () => {
+    it('modo completo com sessão válida: 422 CARGA_COMPLETA_NAO_SUPORTADA, sem lote, sem trabalho na fila e sem inativar nada', async () => {
+      const antes = [await m.lotesNoBanco(m.api.t.A), await m.trabalhosDaEntrada(m.api.t.A)];
+      const r = await m.enviarLote(m.credenciais.A, envelopeCompleto('filial', massa.registros.filial, INICIO));
+      expect(r.statusCode, r.body).toBe(422);
+      expect(r.json()).toMatchObject({ codigo: CODIGO_CARGA_COMPLETA_NAO_SUPORTADA });
+      expect([await m.lotesNoBanco(m.api.t.A), await m.trabalhosDaEntrada(m.api.t.A)]).toEqual(antes);
+    });
+
+    it('entidade fora da F2 (titulo) e versão do contrato errada: recusa sem lote criado', async () => {
+      const antes = await m.lotesNoBanco(m.api.t.A);
+      for (const corpo of [{ ...lote(), entidade: 'titulo' }, { ...lote(), versao_contrato: 'v9' }]) {
+        const r = await m.enviarLote(m.credenciais.A, corpo);
+        expect([400, 422], r.body).toContain(r.statusCode);
+      }
+      expect(await m.lotesNoBanco(m.api.t.A)).toBe(antes);
+    });
+
+    it('POST /entrada/v1/sinal grava o sinal e devolve RespostaSinal do conector da credencial, sem política de versão', async () => {
+      const corpo = { versao_contrato: VERSAO_CONTRATO_HUB, conector_id: m.credenciais.A.conectorId, versao_conector: '1.0.0', em: INICIO.toISOString(), fila: [], entidades: [] };
+      const r = await m.chamarEntrada(m.credenciais.A, 'POST', urlEntrada('sinal'), { corpo });
+      expect(r.statusCode, r.body).toBe(200);
+      const s = RespostaSinal.parse(r.json());
+      expect(s.conector_id).toBe(m.credenciais.A.conectorId);
+      expect(s.politica_versao ?? null).toBeNull();
+      const outro = await m.chamarEntrada(m.credenciais.A, 'POST', urlEntrada('sinal'), { corpo: { ...corpo, conector_id: m.credenciais.B.conectorId } });
+      expect(outro.statusCode).toBe(400);
+    });
+  });
+
+  describe('os 10 cadastros da F2 (ADR 0014 §2): lote delta → worker → resultado → cursor → cadastro → Hub', () => {
+    /**
+     * Filial e produto já cadastrados pelo BKO (a entrada atualiza: D1 e D2), e a forma de pagamento só confere o formato e
+     * conta como inalterada (não tem tabela própria; o prazo usa a forma da condição que o BKO criou: D3). Os outros 7 são novos.
+     */
+    // O endereço é uma linha do cliente (adaptarClienteEndereco): o de entrega novo conta como cliente atualizado.
+    const ESPERADO: Partial<Record<(typeof ENTIDADES_F2)[number], 'atualizadas' | 'inalteradas'>> = {
+      filial: 'atualizadas', produto: 'atualizadas', forma_pagamento: 'inalteradas', cliente_endereco: 'atualizadas',
+    };
+    beforeAll(async () => {
+      await m.semearPeloBko(massa);
+    });
+
+    for (const e of ENTIDADES_F2) {
+      const conta = ESPERADO[e] ?? 'novas';
+      it(`${e}: 202 → worker → GET /lotes/:id concluido (${conta}=1) → cursor no registro → corpo do lote zerado`, async () => {
+        const r = await m.enviarLote(m.credenciais.A, envelopeDelta(e, massa.registros[e], INICIO));
+        expect(r.statusCode, r.body).toBe(202);
+        const { lote_id } = LoteAceito.parse(r.json());
+        await m.processarFila();
+        const g = await m.chamarEntrada(m.credenciais.A, 'GET', urlEntrada('lote', { id: lote_id }));
+        expect(g.statusCode, g.body).toBe(200);
+        const res = LoteResultado.parse(g.json());
+        expect([res.status, res.contagens[conta], res.contagens.com_erro], JSON.stringify(res.erros)).toEqual(['concluido', 1, 0]);
+        const reg = massa.registros[e][0]!;
+        const c = CursorEntidade.parse((await m.chamarEntrada(m.credenciais.A, 'GET', urlEntrada('cursor', { entidade: e }))).json());
+        expect(c.cursor).toMatchObject({ external_id: reg.external_id });
+        expect((await m.loteNoBanco(lote_id))?.corpo_nulo).toBe(true);
+      });
+    }
+
+    // D1 a D3 (recado ao gerente, 27/11/2026 00h09): `it.fails` passa enquanto o defeito existir; quando o cadastros corrigir,
+    // o caso fica vermelho e vira `it` (sem a semeadura do BKO no `beforeAll`).
+    const criarSemBko = async (e: 'filial' | 'produto' | 'prazo_pagamento', sufixo: string) => {
+      const reg = { ...massa.registros[e][0]!, external_id: `${massa.registros[e][0]!.external_id}-${sufixo}` };
+      const extra = e === 'prazo_pagamento' ? { forma_external_id: `THA-FOR-NOVA-${sufixo}`, codigo: `N-${sufixo}` } : e === 'produto' ? { sku: `SKU-${sufixo}` } : { codigo: '0003' };
+      const r = LoteAceito.parse((await m.enviarLote(m.credenciais.A, envelopeDelta(e, [{ ...reg, ...extra }], INICIO))).json());
+      await m.processarFila();
+      const res = LoteResultado.parse((await m.chamarEntrada(m.credenciais.A, 'GET', urlEntrada('lote', { id: r.lote_id }))).json());
+      expect([res.status, res.contagens.novas]).toEqual(['concluido', 1]);
+    };
+    it.fails('D1: filial nova só pela entrada (sem o crt no FilialHub) grava', () => criarSemBko('filial', 'D1'));
+    it.fails('D2: produto novo só pela entrada (sem NCM no ProdutoHub, RN-CAD-04) grava', () => criarSemBko('produto', 'D2'));
+    it.fails('D3: o 1º prazo de uma forma nova só pela entrada (lote de formas + lote de prazos) grava', () => criarSemBko('prazo_pagamento', 'D3'));
+
+    it('os 10 gravados saem ao dublê do Hub pelo espelho e pela agenda do integracao-fdv (o cadastro da entrada é o do BKO)', async () => {
+      await m.assentarNoHub();
+      for (const e of ENTIDADES_F2) expect(m.duble.contar('fdv-a', e), e).toBeGreaterThanOrEqual(1);
+    });
+
+    it('cursor por conector: o do B não mostra o avanço do A', async () => {
+      const c = CursorEntidade.parse((await m.chamarEntrada(m.credenciais.B, 'GET', urlEntrada('cursor', { entidade: 'filial' }))).json());
+      expect(c.cursor).toBeNull();
+    });
+
+    const lerLote = async (id: string) => LoteResultado.parse((await m.chamarEntrada(m.credenciais.A, 'GET', urlEntrada('lote', { id }))).json());
+
+    it('reenviar o mesmo registro (outra Idempotency-Key) conta como inalterada', async () => {
+      const r = LoteAceito.parse((await m.enviarLote(m.credenciais.A, envelopeDelta('vendedor', massa.registros.vendedor, INICIO))).json());
+      await m.processarFila();
+      expect((await lerLote(r.lote_id)).contagens).toMatchObject({ inalteradas: 1, novas: 0, atualizadas: 0 });
+    });
+
+    // D4 (recado ao gerente, 27/11/2026 00h12): hoje o registro mais antigo grava (atualizadas=1) e o cursor volta para trás.
+    it.fails('D4: registro com alterado_em mais antigo que o gravado conta como obsoleta, não grava e não recua o cursor', async () => {
+      const reg = massa.registros.vendedor[0]!;
+      const antigo = { ...reg, nome: 'Vendedora com nome antigo', alterado_em: new Date(INICIO.getTime() - 86_400_000).toISOString() };
+      const r = LoteAceito.parse((await m.enviarLote(m.credenciais.A, envelopeDelta('vendedor', [antigo], INICIO))).json());
+      await m.processarFila();
+      const res = await lerLote(r.lote_id);
+      expect(res.contagens).toMatchObject({ obsoletas: 1, novas: 0, atualizadas: 0 });
+      expect(res.cursor).toMatchObject({ alterado_em: reg.alterado_em });
+    });
+
+    it('linha com referência ausente volta em erros[] com indice, external_id, campo e codigo, sem o valor; as válidas gravam; limite_erros corta', async () => {
+      const ok = { ...massa.registros.vendedor[0]!, external_id: `${massa.registros.vendedor[0]!.external_id}-2`, nome: 'Vendedora Ficticia Dois' };
+      const ruins = [1, 2, 3].map((n) => ({ ...ok, external_id: `${ok.external_id}-R${n}`, filial_external_id: `THA-FIL-INEXISTENTE-${n}` }));
+      const r = LoteAceito.parse((await m.enviarLote(m.credenciais.A, envelopeDelta('vendedor', [ok, ...ruins], INICIO))).json());
+      await m.processarFila();
+      const res = LoteResultado.parse((await m.chamarEntrada(m.credenciais.A, 'GET', `${urlEntrada('lote', { id: r.lote_id })}?limite_erros=1`)).json());
+      expect(res.status).toBe('concluido_com_erros');
+      expect([res.contagens.novas, res.contagens.com_erro]).toEqual([1, 3]);
+      expect(res.erros).toHaveLength(1);
+      expect(res.erros_omitidos).toBe(2);
+      expect(res.erros[0]).toMatchObject({ external_id: ruins[0]!.external_id });
+      expect(Object.keys(res.erros[0]!)).toEqual(expect.arrayContaining(['indice', 'external_id', 'campo', 'codigo']));
+      expect(JSON.stringify(res.erros)).not.toContain('THA-FIL-INEXISTENTE');
+    });
+  });
+
+  describe('LGPD e segredos (ADR 0014 §3 e §4; regras 8 e 9)', () => {
+    it('nenhuma linha de log da API e do worker traz a chave nem dado do registro (razão social, CPF, logradouro)', () => {
+      const chaves = Object.values(m.credenciais).map((c) => c.chave);
+      expect(m.logsApi.length).toBeGreaterThan(0);
+      expect(linhasComSensivel(m.logsApi, [...chaves, ...massa.sensiveis])).toEqual([]);
+      expect(linhasComSensivel(m.reg.logs, [...chaves, ...massa.sensiveis])).toEqual([]);
+    });
+
+    it('a resposta de erro não traz a chave; o banco guarda só o HMAC e o prefixo, nunca a chave clara', async () => {
+      const chaves = Object.values(m.credenciais).map((c) => c.chave);
+      const r = await m.enviarLote({ conectorId: m.credenciais.A.conectorId, chave: m.credenciais.B.chave }, lote());
+      expect(linhasComSensivel([r.body, JSON.stringify(r.headers)], chaves)).toEqual([]);
+      const banco = await m.credenciaisNoBanco();
+      expect(banco.length).toBeGreaterThanOrEqual(3);
+      expect(linhasComSensivel(banco, chaves)).toEqual([]);
+    });
+  });
+});
