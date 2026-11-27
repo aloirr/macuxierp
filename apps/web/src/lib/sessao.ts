@@ -23,6 +23,12 @@ export function destinoSeguro(destino: string | null | undefined): string {
   return /^\/(?!\/)/.test(destino) ? destino : '/';
 }
 
+/** Há cookie de sessão do BKO (acesso ou refresh)? Só presença; a validade é conferida em `contexto()`. */
+export async function temSessaoBko(): Promise<boolean> {
+  const jar = await cookies();
+  return Boolean(jar.get(COOKIE_ACESSO)?.value || jar.get(COOKIE_REFRESH)?.value);
+}
+
 export interface Contexto {
   eu: EuResposta;
   /** Filial escolhida (ou única), já resolvida contra /eu. */

@@ -20,7 +20,7 @@ vi.mock('next/headers', () => ({ cookies: async () => ({ get: () => ({ value: 't
 vi.mock('../(shell)/sair', () => ({ sairAction: vi.fn() }));
 vi.mock('@/lib/api', async (orig) => ({ ...(await orig<typeof import('@/lib/api')>()), buscarEu, baixarArquivo}));
 
-import Casca from '../(shell)/layout';
+import { Casca } from '../(shell)/casca';
 import { GET } from '../baixar-arquivo/route';
 import { TrocarSenhaPendente } from '@/lib/troca-pendente';
 

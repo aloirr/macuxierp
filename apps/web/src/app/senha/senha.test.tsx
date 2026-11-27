@@ -98,12 +98,12 @@ describe('ação da troca', () => {
   it('refresh recusado ou API fora depois do 204: apaga os cookies e vai ao /login', async () => {
     trocarSenha.mockResolvedValue({ ok: true });
     renovar.mockResolvedValueOnce(null);
-    await expect(trocarSenhaBkoAction({}, form(ok))).rejects.toThrow('REDIRECT /login');
+    await expect(trocarSenhaBkoAction({}, form(ok))).rejects.toThrow(/^REDIRECT \/$/);
     expect(jar.delete).toHaveBeenCalledWith('mx_acesso');
     expect(jar.delete).toHaveBeenCalledWith('mx_refresh');
     expect(jar.set).not.toHaveBeenCalled();
     renovar.mockRejectedValueOnce(new Error('API fora'));
-    await expect(trocarSenhaBkoAction({}, form(ok))).rejects.toThrow('REDIRECT /login');
+    await expect(trocarSenhaBkoAction({}, form(ok))).rejects.toThrow(/^REDIRECT \/$/);
   });
   it('erro da API não renova e devolve as regras de detalhes.regras', async () => {
     trocarSenha.mockResolvedValue({ ok: false, campos: { senha_nova: 'Um número' }, regras: ['numero'] });

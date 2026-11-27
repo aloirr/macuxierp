@@ -149,7 +149,7 @@ describe('route handlers da aba Cargas (T-0058)', () => {
     estado.cookie = undefined;
     const r = await tratarCarga(new Request('http://portal.invalid/x'), EMP, 'preco', 'modelo');
     expect(r.status).toBe(303);
-    expect(r.headers.get('location')).toContain('/login');
+    expect(new URL(r.headers.get('location')!).pathname).toBe('/');
     expect(r.headers.get('content-disposition')).toBeNull();
   });
   it('422 RN-CORE-02 (MXC04, empresa sem licença): mantém o 422 e a mensagem da API', async () => {

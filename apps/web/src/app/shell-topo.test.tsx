@@ -14,7 +14,7 @@ vi.mock('./(shell)/aviso-senha-trocada', () => ({ AvisoSenhaTrocada: () => null 
 // O layout é importado uma única vez (o mock de sessão lê ctx.valor a cada chamada), sem vi.resetModules.
 let Casca: (p: { children: null }) => Promise<React.ReactElement>;
 beforeAll(async () => {
-  Casca = (await import('./(shell)/layout')).default as typeof Casca;
+  Casca = (await import('./(shell)/casca')).Casca as typeof Casca;
 }, 30_000);
 
 async function topo(eu: typeof EU_FALSO, filial: (typeof EU_FALSO)['filiais'][number]): Promise<string> {

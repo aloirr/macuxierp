@@ -27,7 +27,7 @@ beforeEach(() => Object.assign(estado, { cookie: 'tok', apagados: [], chamadas: 
 
 describe('Sair é POST (server action), nunca GET', () => {
   it('revoga na API, apaga só o cookie do /config e volta ao login', async () => {
-    await expect(sairConfigAcao()).rejects.toThrow('REDIRECT /login');
+    await expect(sairConfigAcao()).rejects.toThrow(/^REDIRECT \/$/);
     expect(estado.chamadas).toEqual(['sair:tok']);
     expect(estado.apagados).toEqual([{ name: 'mx_config', path: '/config' }]);
   });

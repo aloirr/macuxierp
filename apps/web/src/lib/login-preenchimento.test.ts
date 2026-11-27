@@ -1,16 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { CODIGO_SUPERADMIN_LOGIN, ROTA_TELA_LOGIN, urlEntrarPreenchida } from '@macuxierp/platform-sdk';
+import { CODIGO_SUPERADMIN_LOGIN, urlEntrarPreenchida } from '@macuxierp/platform-sdk';
 import { ROTA_ENTRAR } from '@/lib/config/constantes';
-import { destinoSeguro } from '@/lib/sessao';
 import { valoresIniciaisLogin } from './login-preenchimento';
 
 const ini = (fragmento: string, salvo?: string) => valoresIniciaisLogin({ destino: '/', salvo, fragmento });
 
 describe('v0.3.20 B: /config manda ao login com destino da plataforma (R-20261127-061730)', () => {
-  it('o /config vai a /login com destino=/config, aceito pelo destinoSeguro', () => {
-    const u = new URL(ROTA_ENTRAR, 'https://x.invalid');
-    expect(u.pathname).toBe(ROTA_TELA_LOGIN);
-    expect(destinoSeguro(u.searchParams.get('destino'))).toBe('/config');
+  it('o /config sem sessão vai à raiz (v0.3.27, login único em /)', () => {
+    expect(ROTA_ENTRAR).toBe('/');
   });
   it('com destino no /config, o campo Empresa vem com o código da plataforma, nunca o último código do BKO', () => {
     expect(valoresIniciaisLogin({ destino: '/config', salvo: 'AM2808', fragmento: '' })).toEqual({ empresa: CODIGO_SUPERADMIN_LOGIN, email: '' });

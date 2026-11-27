@@ -9,8 +9,6 @@ vi.mock('./esqueci', () => ({ pedirEsqueciAction: vi.fn() }));
 
 import { VisaoLogin } from './formulario';
 import { resultadoErro } from '@/lib/resultado-acao';
-import Login from './page';
-import Entrar from '../config/entrar/page';
 
 const vazio = { empresa: '', email: '', senha: '' };
 
@@ -83,17 +81,13 @@ describe('tela única de login (T-0076)', () => {
     vi.resetModules();
     const situacao = vi.fn();
     vi.doMock('@/lib/esqueci-api', () => ({ lerSituacaoEsqueci: situacao }));
-    const { default: PaginaNova } = await import('./page');
+    const { TelaLogin } = await import('./tela');
     situacao.mockResolvedValue(true);
-    expect(renderToStaticMarkup(await PaginaNova({ searchParams: Promise.resolve({}) }))).toContain('Esqueci a senha');
+    expect(renderToStaticMarkup(await TelaLogin())).toContain('Esqueci a senha');
     situacao.mockResolvedValue(false);
-    const h = renderToStaticMarkup(await PaginaNova({ searchParams: Promise.resolve({}) }));
+    const h = renderToStaticMarkup(await TelaLogin());
     expect(h).not.toContain('Esqueci a senha');
     expect(h).toContain('Acesse sua conta');
     vi.doUnmock('@/lib/esqueci-api');
-  });
-  it('/config/entrar redireciona para /login (favoritos)', () => {
-    expect(() => Entrar()).toThrow('REDIRECT /login');
-    expect(Login).toBeTypeOf('function');
   });
 });
