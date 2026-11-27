@@ -235,6 +235,8 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — plataforma (T-0003, lote 1)
       { c: 'core.empresa.cnpj', d: 'cnpj' },
       { c: 'sefaz_simulador.inutilizacao.cnpj', d: 'cnpj' },
       { c: 'sefaz_simulador.nota.cnpj', d: 'cnpj' },
+      // T-0057 (0071): o hash do corpo do lote da entrada do FDV (idempotência).
+      { c: 'cadastros.entrada_lote.hash_corpo', d: 'sha256_hex' },
       { c: 'cadastros.tabela_oficial_versao.sha256', d: 'sha256_hex' },
       { c: 'core.certificado.impressao_digital', d: 'sha256_hex' },
       { c: 'faturamento.nota_xml.sha256', d: 'sha256_hex' },

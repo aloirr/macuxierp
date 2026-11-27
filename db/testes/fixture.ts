@@ -111,6 +111,13 @@ INSERT INTO cadastros.estoque_movimento (tenant_id, filial_id, produto_id, tipo,
   VALUES ('${id}', '${t.filial}', '${t.produto}', 'entrada', 100000, 'carga inicial');
 INSERT INTO cadastros.consulta_externa (tenant_id, tipo, chave, resposta, fonte)
   VALUES ('${id}', 'cep', '69000000', '{}', 'viacep');
+-- 0071: ver fixtureEntrada
+DO $entrada$
+BEGIN
+  IF to_regclass('cadastros.entrada_sinal') IS NOT NULL THEN
+${fixtureEntrada(t)}
+  END IF;
+END $entrada$;
 `;
 }
 
@@ -523,6 +530,29 @@ ${cliente2}
 INSERT INTO cadastros.cliente_endereco (id, tenant_id, cliente_id, tipo, logradouro, numero, bairro, municipio_ibge, uf, cep)
   VALUES ('${x.endereco}', '${t.id}', '${x.cliente}', 'principal', 'Rua D', '4', 'Centro', '1302603', 'AM', '69000003');
 INSERT INTO cadastros.cliente_contato (id, tenant_id, cliente_id, nome) VALUES ('${x.contato}', '${t.id}', '${x.cliente}', 'Financeiro');
+`;
+}
+
+/**
+ * Massa da entrada do FDV (0071, T-0057; ADR 0014 §8): uma linha em cada tabela cadastros.entrada_*. O fixtureModulos a
+ * inclui só se a 0071 já rodou (os testes de migração antiga o usam antes dela); quem migra depois da massa a chama à
+ * parte. O HMAC é fictício (32 bytes sem segredo).
+ * O conector_id leva o slug (único na plataforma entre as credenciais ativas).
+ */
+export function fixtureEntrada(t: Tenant): string {
+  const id = t.id;
+  const conector = `entrada-${t.slug}`;
+  return `
+INSERT INTO cadastros.entrada_credencial (tenant_id, conector_id, chave_hmac, chave_prefixo)
+  VALUES ('${id}', '${conector}', decode(repeat('ab', 32), 'hex'), 'mxe_abcd');
+INSERT INTO cadastros.entrada_lote (tenant_id, credencial_id, conector_id, entidade, idempotency_key, hash_corpo,
+  corpo, recebidos)
+  SELECT '${id}', c.id, c.conector_id, 'cliente', 'chave-${t.slug}', repeat('e', 64), '{"registros": []}', 1
+  FROM cadastros.entrada_credencial c WHERE c.tenant_id = '${id}';
+INSERT INTO cadastros.entrada_cursor (tenant_id, conector_id, entidade, cursor_alterado_em, cursor_external_id)
+  VALUES ('${id}', '${conector}', 'cliente', '2026-11-26T12:00:00Z', 'CLI-1');
+INSERT INTO cadastros.entrada_sinal (tenant_id, conector_id, ultimo_sinal_em, versao_conector, ip_origem)
+  VALUES ('${id}', '${conector}', now(), '1.5.0', '200.10.20.0/24');
 `;
 }
 
