@@ -4,8 +4,7 @@
  * pelo admin do banco de teste e os atalhos de chamada. Dados fictícios (domínio exemplo.invalid).
  */
 import { createHash } from 'node:crypto';
-import { expect } from 'vitest';
-import { CABECALHO_CSRF_CONFIG, ContaBloqueadaResposta, COOKIE_CONFIG } from '../../packages/platform-sdk/src/index';
+import { CABECALHO_CSRF_CONFIG, COOKIE_CONFIG } from '../../packages/platform-sdk/src/index';
 import type { BancoEfemero } from '../../packages/platform-sdk/src/pg-testes';
 import { ARGON2_RAPIDO, type appPgDeTeste } from '../../apps/api/src/apoio-teste';
 import { gerarHashSenha } from '../../apps/api/src/auth/senha';
@@ -24,20 +23,6 @@ export interface RespostaPortal {
   headers: Record<string, string | string[] | number | undefined>;
   cookies: { name: string; value: string }[];
   json<T = unknown>(): T;
-}
-/** Texto literal do ADR 0012 §6 (não importado da API: o teste confere o valor, não a constante). */
-export const MENSAGEM_UNICA = 'E-mail ou senha inválidos';
-/** ADR 0012 §6: 401 com a mensagem única e sem cookie de sessão. */
-export function esperarRecusaUnica(r: RespostaPortal): void {
-  expect(r.statusCode, r.body).toBe(401);
-  expect(r.json<{ mensagem: string }>().mensagem).toBe(MENSAGEM_UNICA);
-  expect(r.cookies.map((c) => c.name)).not.toContain(COOKIE_CONFIG);
-}
-/** RN-CORE-15 (T-0111): 423 com o corpo `ContaBloqueadaResposta` do SDK e sem cookie de sessão. */
-export function esperarContaBloqueada(r: RespostaPortal): void {
-  expect(r.statusCode, r.body).toBe(423);
-  expect(ContaBloqueadaResposta.parse(r.json())).toEqual(r.json());
-  expect(r.cookies.map((c) => c.name)).not.toContain(COOKIE_CONFIG);
 }
 
 export type MetodoPortal = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
