@@ -12,6 +12,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ALFABETO_SENHA_TEMPORARIA } from '@macuxierp/platform-sdk';
 import { criarBancoEfemero, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ALFABETO_API, envPsqlAdmin, padraoDoFonte, senhaProvisoria, trechoDoFonte } from './apoio-operador-teste';
@@ -40,7 +41,7 @@ describe('superadmin.mjs: cópias presas às fontes (o contêiner não tem node_
       expect(trechoDoFonte(FONTE_SA, inicio, fim)).toBe(trechoDoFonte(FONTE_EMPRESA, inicio, fim));
     }
   });
-  it('ALFABETO com 64 símbolos', () => expect(ALFABETO_API).toHaveLength(64));
+  it('44 B: o alfabeto é o da senha temporária do SDK (48 símbolos)', () => expect(ALFABETO_API).toBe(ALFABETO_SENHA_TEMPORARIA));
   it('RD-1329: o filtro das sessões abertas é uma constante só, usada na contagem e na revogação', () => {
     expect(FONTE_SA.split('revogada_em IS NULL AND deleted_at IS NULL')).toHaveLength(2);
     expect(FONTE_SA.match(/FROM plataforma\.sessao_superadmin WHERE \$\{SESSOES_ABERTAS\};/g)).toHaveLength(2);

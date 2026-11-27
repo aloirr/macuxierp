@@ -102,6 +102,34 @@ export type ContaBloqueadaResposta = z.infer<typeof ContaBloqueadaResposta>;
 export const URL_MACUXI_ERP = 'https://erp.macuxifdv.com.br';
 export const RODAPE_EMAIL_MACUXI_ERP = `Equipe Macuxi ERP · Boa Vista, RR · ${URL_MACUXI_ERP.replace('https://', '')}`;
 
+/** Rota da tela de login do BKO (a tela única, ADR 0018; o `CAMINHO_LOGIN` de `login.ts` é a rota da API). */
+export const ROTA_TELA_LOGIN = '/login';
+
+/**
+ * Link do botão "Abrir o Macuxi ERP" (44 B): a tela de login com o código da empresa e o e-mail preenchidos, no
+ * fragmento (`#codigo=…&email=…`). LGPD: o fragmento não vai ao servidor, nem ao log da Cloudflare, nem ao Referer.
+ * A senha nunca entra no link. Função pura.
+ */
+export function urlEntrarPreenchida(codigo_empresa: string, email: string): string {
+  return `${URL_MACUXI_ERP}${ROTA_TELA_LOGIN}#${new URLSearchParams({ codigo: codigo_empresa, email }).toString()}`;
+}
+
+/** O que a tela de login preenche a partir do fragmento (o código e o e-mail já normalizados como no login). */
+export const PreenchimentoLogin = z.object({ codigo: CodigoEmpresaLogin.optional(), email: EmailUsuario.optional() });
+export type PreenchimentoLogin = z.infer<typeof PreenchimentoLogin>;
+
+/**
+ * Lê o fragmento do link (`location.hash`, com ou sem o `#`): só `codigo` e `email`, cada um só se válido (o inválido
+ * fica de fora, sem erro); o resto é ignorado. A tela limpa o fragmento depois de ler (`history.replaceState`), para o
+ * e-mail não ficar no histórico. Função pura.
+ */
+export function lerPreenchimentoLogin(hash: string): PreenchimentoLogin {
+  const p = new URLSearchParams(hash.replace(/^#/, ''));
+  const codigo = CodigoEmpresaLogin.safeParse(p.get('codigo') ?? '');
+  const email = EmailUsuario.safeParse(p.get('email') ?? '');
+  return { ...(codigo.success ? { codigo: codigo.data } : {}), ...(email.success ? { email: email.data } : {}) };
+}
+
 export interface EmailSenhaTemporaria {
   assunto: string;
   /** Parte `text/plain` (o `email.txt` do design). */
@@ -123,7 +151,9 @@ export function emailSenhaTemporaria(e: { senha: string; validade_horas: number;
   if (!Number.isInteger(e.validade_horas) || e.validade_horas < 1) throw new RangeError('emailSenhaTemporaria: validade_horas precisa ser inteiro ≥ 1');
   if (e.codigo_empresa.trim() === '' || e.email.trim() === '') throw new RangeError('emailSenhaTemporaria: código da empresa e e-mail são obrigatórios');
   const assunto = 'Sua senha temporária do Macuxi ERP';
-  const campos = { codigo_empresa: e.codigo_empresa.trim(), email: e.email.trim(), senha_temporaria: e.senha, url_entrar: `${URL_MACUXI_ERP}/` };
+  const codigo = e.codigo_empresa.trim();
+  const email = e.email.trim();
+  const campos = { codigo_empresa: codigo, email, senha_temporaria: e.senha, url_entrar: urlEntrarPreenchida(codigo, email) };
   const aviso = `Vale por ${e.validade_horas} horas e serve para entrar uma vez só. Ela também desbloqueia a conta.`;
   const texto = [
     'Sua senha temporária',

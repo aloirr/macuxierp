@@ -5,7 +5,7 @@
  *
  *  - argumento inválido: sai 2 e não chama o docker;
  *  - sem --confirmar: chama só a simulação (sem --confirmar no empresa.mjs), sem senha no ambiente e sem imprimir senha;
- *  - com --confirmar: a senha (16 caracteres do alfabeto da API, com maiúscula, minúscula, dígito e especial, T-0052) vai só por `-e` (o
+ *  - com --confirmar: a senha (18 caracteres do alfabeto do SDK, com maiúscula, minúscula e dígito, 44 B) vai só por `-e` (o
  *    valor nunca no argv), e o terminal a mostra só quando o contêiner responde `estado: usuario-criado`;
  *  - nome da empresa (de MEI pode ser dado pessoal), e-mail e nome da pessoa também só pelo ambiente (-e), nunca no
  *    argv nem na saída; o script vai pelo stdin.
@@ -27,25 +27,25 @@ import { afterAll, describe, expect, it } from 'vitest';
 const PRODUCAO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'scripts', 'deploy', 'producao');
 const OPERADOR_SH = join(PRODUCAO, 'operador.sh');
 const EMAIL = 'admin@exemplo.invalid';
-/** As 4 classes do gerador do operador.sh (iguais às da API: o apps/api/src/operador-senha.test.ts trava). */
+/** As 3 classes do gerador do operador.sh (44 B: iguais às do SDK; o apps/api/src/operador-senha.test.ts trava). */
 const FONTE_OPERADOR = readFileSync(OPERADOR_SH, 'utf8');
-const CLASSES_SH = ['MAIUSCULAS', 'MINUSCULAS', 'DIGITOS', 'SIMBOLOS'].map((nome) => {
+const CLASSES_SH = ['MAIUSCULAS', 'MINUSCULAS', 'DIGITOS'].map((nome) => {
   const m = new RegExp(`^${nome}='([^']+)'$`, 'm').exec(FONTE_OPERADOR);
   if (!m) throw new Error(`${nome} não encontrado em operador.sh`);
   return m[1]!;
 });
 const ALFABETO_SH = CLASSES_SH.join('');
 
-/** Senha provisória (T-0052): 16 do alfabeto do operador.sh, com maiúscula, minúscula, dígito e especial. */
+/** Senha provisória (44 B): 18 do alfabeto do operador.sh (só letras e números), com maiúscula, minúscula e dígito. */
 function conferirSenhaProvisoria(senha: string): void {
-  expect(senha).toHaveLength(16);
+  expect(senha).toHaveLength(18);
   expect([...senha].every((c) => ALFABETO_SH.includes(c))).toBe(true);
   for (const classe of CLASSES_SH) expect([...senha].some((c) => classe.includes(c))).toBe(true);
 }
 
 describe('operador.sh: alfabeto da senha', () => {
-  it('ALFABETO do operador.sh é a soma das 4 classes', () => {
-    expect(FONTE_OPERADOR).toMatch(/^ALFABETO="\$MAIUSCULAS\$MINUSCULAS\$DIGITOS\$SIMBOLOS"$/m);
+  it('ALFABETO do operador.sh é a soma das 3 classes, sem especial', () => {
+    expect(FONTE_OPERADOR).toMatch(/^ALFABETO="\$MAIUSCULAS\$MINUSCULAS\$DIGITOS"$/m);
   });
 });
 
@@ -230,7 +230,7 @@ describe('operador.sh criar-empresa com um docker falso', () => {
     const r = roda([...base, '--confirmar'], resposta, saida);
     expect(r.status).toBe(esperado);
     const senha = r.amb.SENHA!;
-    expect(senha).toHaveLength(16);
+    expect(senha).toHaveLength(18);
     expect(r.saida).not.toContain(senha);
     expect(r.saida).not.toMatch(/Senha provisória/);
   });
@@ -321,7 +321,7 @@ describe('operador.sh criar-superadmin e superadmin com um docker falso (T-0050,
     const r = roda([...criar, '--confirmar'], resposta, saida);
     expect(r.status).toBe(esperado);
     const senha = r.amb.SENHA!;
-    expect(senha).toHaveLength(16);
+    expect(senha).toHaveLength(18);
     expect(r.saida).not.toContain(senha);
     expect(r.saida).not.toMatch(/Senha provisória/);
   });
@@ -405,7 +405,7 @@ describe('operador.sh criar-superadmin e superadmin com um docker falso (T-0050,
     const r = roda([...redefinir, '--confirmar'], resposta, saida);
     expect(r.status).toBe(esperado);
     const senha = r.amb.SENHA!;
-    expect(senha).toHaveLength(16);
+    expect(senha).toHaveLength(18);
     expect(r.saida).not.toContain(senha);
     expect(r.saida).not.toMatch(/[Ss]enha provisória/);
   });
