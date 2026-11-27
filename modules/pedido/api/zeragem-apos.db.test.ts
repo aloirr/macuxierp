@@ -4,10 +4,9 @@
  * sessão de superadmin. O seed de `integracao_fdv.pedido_recebido` e de `faturamento.pedido_a_faturar` é do admin (mesmo padrão
  * dos db tests do banco). Sem Postgres o teste pula (falha com `MACUXI_PG_EXIGIR=1`).
  */
-import { randomUUID } from 'node:crypto';
 import type { Transacao } from '@macuxierp/platform-sdk';
 import { AuditoriaPg, LicencasPg, OutboxPg, type BancoPg } from '@macuxierp/platform-sdk/pg';
-import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
+import { comoConfig, criarBancoEfemero, criarTenant, PG_DISPONIVEL, semearSessaoSuperadmin, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { RelogioFixo } from '@macuxierp/platform-sdk/testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { CAMINHOS_ZERAR_PEDIDOS } from '../contracts';
@@ -18,7 +17,6 @@ import { CadastrosMemoria } from './memoria';
 import { criarRecebedorFdv } from './recebedor';
 import { criarPluginPlataformaPedidoZerar } from './zeragem';
 
-const HASH = '$argon2id$v=19$m=65536,t=3,p=4$c2FsdGZpY3RpY2lv$aGFzaGZpY3RpY2lv';
 const AGORA = new Date('2026-11-21T15:00:00Z'); // hora-fixa-ok: instante do relógio do recebedor; o now() do SQL só valida a sessão e nunca é comparado
 
 describe.skipIf(!PG_DISPONIVEL)('porta aposZerarPedidos no banco (0065)', () => {
@@ -36,12 +34,7 @@ describe.skipIf(!PG_DISPONIVEL)('porta aposZerarPedidos no banco (0065)', () => 
       const ok = (await q('SELECT to_regprocedure($1) IS NOT NULL AS ok', [f]))[0]!.ok;
       expect(ok, `${f} ausente no banco`).toBe(true);
     }
-    await q(`DO $$ BEGIN IF NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) THEN GRANT macuxierp_config TO CURRENT_USER; END IF; EXCEPTION WHEN OTHERS THEN NULL; END $$`);
-    sessao = randomUUID();
-    const sa = randomUUID();
-    await q(`INSERT INTO plataforma.superadmin (id, email, nome, senha_hash, deve_trocar_senha, ativo) VALUES ($1, 'sa-pedido-apos@plataforma.teste', 'Superadmin Ficticio', $2, false, true)`, [sa, HASH]);
-    await q(`INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_em, ultimo_uso_em) -- hora-fixa-ok: now() só da sessão
-      VALUES ($1, $2, encode(sha256(convert_to($3::text, 'UTF8')), 'hex'), now() + interval '8 hours', now())`, [sessao, sa, sessao]);
+    sessao = (await semearSessaoSuperadmin(efemero.admin)).sessao_id;
     prepararCadastros(cad, { saldo: 1_000_000_000 });
   }, 120_000);
   afterAll(async () => {
@@ -62,26 +55,16 @@ describe.skipIf(!PG_DISPONIVEL)('porta aposZerarPedidos no banco (0065)', () => 
     return { T, id, receber };
   }
 
-  /** Executa a rota de zerar do plugin numa transação como macuxierp_config; `commit` falso desfaz no fim. */
-  async function zerar(T: string, apos: AposZerarPedidos, commit = true) {
-    const c = await efemero.admin.connect();
-    try {
-      await c.query('BEGIN');
-      await c.query('SET LOCAL ROLE macuxierp_config');
-      await c.query(`SET LOCAL macuxierp.sessao_superadmin = '${sessao}'`);
-      const tx = { consultar: async (sql: string, p: readonly unknown[] = []) => (await c.query(sql, [...p])).rows } as unknown as Transacao;
+  /** Executa a rota de zerar do plugin numa transação como macuxierp_config (SDK, RD-2261). */
+  async function zerar(T: string, apos: AposZerarPedidos) {
+    return comoConfig(efemero.admin, sessao, async (consultar) => {
+      const tx = { consultar } as unknown as Transacao;
       const plugin = criarPluginPlataformaPedidoZerar({ aposZerar: apos, faturamento: { pedidosComNotaOuTitulo: async () => ({ comNota: [], comTitulo: [] }) } });
       const rota = plugin.rotas.find((r) => r.caminho === CAMINHOS_ZERAR_PEDIDOS.zerar)!;
       const ctx = { sessao: { superadmin_id: 'a', sessao_id: sessao }, tx, request_id: 'req-db', agora: AGORA, auditar: async () => {} };
       const r = await rota.executar(ctx, { corpo: rota.corpo!.parse({ frase: 'autorizo zerar os dados' }), params: { id: T } } as never);
-      await c.query(commit ? 'COMMIT' : 'ROLLBACK');
       return r.corpo as { apagados: { tabela: string; quantidade: number }[] };
-    } catch (e) {
-      await c.query('ROLLBACK');
-      throw e;
-    } finally {
-      c.release();
-    }
+    });
   }
 
   it('RN-CAD-10: zerar com a porta SQL descarta o a_faturar (cancelado) e devolve as contagens da 0065', async () => {
