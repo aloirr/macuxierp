@@ -62,6 +62,8 @@ Todo texto de tela, portal, PDF, e-mail ou mensagem que o usuário **não usa pa
 - Aviso de dado desatualizado repetido em vários cartões → um único aviso global (ex.: fila da SEFAZ ou do Hub).
 - Mesmos componentes reimplementados em telas diferentes (pedir componente comum ao dono do shell).
 - Telas horizontais e destaque no cabeçalho (R-20261127-110345; referência `docs/design/telas-horizontais.md`). São achados: a pilha vertical de cartões que caberiam lado a lado; o rótulo ou cabeçalho igual ao valor (fora do `rotuloDestaque`, sem peso e caixa-alta diferentes, ou destacado só pela cor); cor ou espaço fora dos tokens do `packages/ui`.
+- MENOS É MAIS (Alexandre, R-20261127-174851). São achados: a sobra lateral vazia, a pilha vertical do que caberia lado a lado, o campo curto ocupando a linha inteira, o dado só de leitura em caixa de campo, o aviso em faixa quando caberia num selo e o tamanho fora dos tokens.
+- Botões embaixo e juntos (Alexandre, 27/11/2026 17h58, regra de marca e design). São achados: o botão em mais de um lugar no mesmo bloco, o botão no cabeçalho ou no meio do bloco, e a ação da página fora da barra do rodapé.
 
 ### D. Código
 - Duplicação: `pnpm dlx jscpd --min-tokens 50 --reporters markdown <pasta>` (só leitura; se faltar a ferramenta no repositório, peça ao engenheiro-software como devDependency).
