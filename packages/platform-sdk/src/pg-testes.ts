@@ -134,3 +134,49 @@ export async function criarTenant(admin: pg.Pool, slug: string, modulos: readonl
   for (const m of modulos) await admin.query('INSERT INTO plataforma.tenant_modulo (tenant_id, modulo) VALUES ($1, $2)', [id, m]);
   return id;
 }
+
+/**
+ * RD-2261: um superadmin ativo (sem trocar senha) e uma sessão válida por 8 h, gravados pelo admin. Hash de senha fictício:
+ * o teste não faz login, usa a sessão direto pelo `comoConfig`.
+ */
+export async function semearSessaoSuperadmin(admin: pg.Pool): Promise<{ superadmin_id: string; sessao_id: string }> {
+  const superadmin_id = randomUUID();
+  const sessao_id = randomUUID();
+  await admin.query(
+    `INSERT INTO plataforma.superadmin (id, email, nome, senha_hash, deve_trocar_senha, ativo)
+     VALUES ($1, $2, 'Superadmin Ficticio', '$argon2id$v=19$m=19456,t=2,p=1$ZmljdGljaW8$ZmljdGljaW9maWN0aWNpb2ZpY3RpY2lvZmljdGljaW8', false, true)`,
+    [superadmin_id, `sa-${superadmin_id.slice(0, 8)}@plataforma.teste`],
+  );
+  await admin.query(
+    `INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_em, ultimo_uso_em)
+     VALUES ($1::uuid, $2, encode(sha256(convert_to($1::text, 'UTF8')), 'hex'), now() + interval '8 hours', now())`,
+    [sessao_id, superadmin_id],
+  );
+  return { superadmin_id, sessao_id };
+}
+
+/**
+ * RD-2261: uma transação no papel `macuxierp_config` com a sessão do superadmin (o que o `comPlataforma` da apps/api faz),
+ * para chamar as funções `portal_*` nos testes. COMMIT no fim; ROLLBACK e a exceção repassada no erro.
+ */
+export async function comoConfig<R>(
+  admin: pg.Pool,
+  sessaoId: string,
+  fn: (consultar: (sql: string, parametros?: readonly unknown[]) => Promise<Record<string, unknown>[]>) => Promise<R>,
+): Promise<R> {
+  const c = await admin.connect();
+  try {
+    await c.query('BEGIN');
+    await c.query(`DO $$ BEGIN IF NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) THEN GRANT macuxierp_config TO CURRENT_USER; END IF; EXCEPTION WHEN OTHERS THEN NULL; END $$`);
+    await c.query('SET LOCAL ROLE macuxierp_config');
+    await c.query("SELECT set_config('macuxierp.sessao_superadmin', $1, true)", [sessaoId]);
+    const r = await fn(async (sql, parametros = []) => (await c.query(sql, parametros as unknown[])).rows);
+    await c.query('COMMIT');
+    return r;
+  } catch (e) {
+    await c.query('ROLLBACK');
+    throw e;
+  } finally {
+    c.release();
+  }
+}
