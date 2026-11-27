@@ -9,7 +9,7 @@ vi.mock('next/headers', () => ({ cookies: vi.fn() }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
 import { acoesDaLinhaFdv, habilitadasApos, linhasCadastros, type LinhaCadastroFdv } from '@/lib/config/integracao-fdv';
-import { AbaIntegracao } from './aba-integracao';
+import { AbaIntegracao, DialogoTrocarChave } from './aba-integracao';
 
 const ID = '11111111-1111-4111-8111-111111111111';
 const ENT: readonly string[] = ENTIDADES_ENVIO_FDV;
@@ -54,7 +54,8 @@ describe('aba Integração do /config (T-0056)', () => {
     expect(h).not.toMatch(/>Zerar<|>Desligar<|>Ligar<|min-width:\s*480px/); // Zerar é perigo no menu, nunca solto na linha (marca, botao-acoes)
     expect(h).not.toContain('botao-perigo-contorno');
     expect(h).not.toContain('Reenviar tudo');
-    expect(h).toContain('Corrija a credencial do conector.');
+    expect(h).toContain('Use &quot;Trocar chave&quot;.');
+    expect(h).not.toContain('credencial do conector');
     expect(h).toMatch(/>Log<\/button>/); // Produtos está em dia
     const clientes = linhasCadastros(dados(), 'America/Manaus').find((l) => l.entidade === 'cliente')!;
     expect(clientes.pausada).toBe(true); // credencial é motivo de pausa: Tentar de novo na frente
@@ -100,7 +101,9 @@ describe('aba Integração do /config (T-0056)', () => {
   });
   it('sem credencial: ligar e testar desabilitados', () => {
     const h = render(dados({}, false));
-    expect(h).toContain('Nenhuma credencial cadastrada');
+    expect(h).toContain('Nenhuma chave salva. Informe o código e a chave do conector.');
+    expect(h).toMatch(/<button[^>]*>Salvar chave<\/button>/);
+    expect(h).not.toContain('credencial');
     expect(h).toMatch(/<button[^>]*disabled=""[^>]*>Testar conexão/);
     const l = linhasCadastros(dados({}, false), 'America/Manaus')[0]!;
     expect(acoesDaLinhaFdv(l, { bloqueado: false, semCredencial: true, licenciado: true }).menu.find((x) => x.chave === 'ligar')?.desabilitado).toBe(true);
@@ -113,8 +116,36 @@ describe('aba Integração do /config (T-0056)', () => {
   });
   it('sem a licença do módulo: aviso e escritas desabilitadas', () => {
     const h = render(dados({ modulo_licenciado: false }));
-    expect(h).toContain('não está licenciado');
-    expect(h).toMatch(/<button[^>]*disabled=""[^>]*>Trocar credencial/);
+    expect(h).toContain('Integração FDV sem licença nesta empresa. Ligue o módulo na aba Empresa.');
+    expect(h).toMatch(/<button[^>]*disabled=""[^>]*>Trocar chave/);
+  });
+  it('36 A: ficha da Conexão sem "Último uso" (o Monitor tem o "Último sinal"); botões com um nome por ação', () => {
+    const h = render();
+    expect(h).not.toContain('Último uso');
+    expect(h).toContain('<dt>Chave</dt>');
+    expect(h).toContain('<dt>Criada em</dt>');
+    expect(h).toMatch(/>Trocar chave<\/button>/);
+    expect(h).not.toContain('Trocar credencial');
+    expect(h).toContain('Monitor indisponível agora.');
+    expect(h).not.toContain('Use Atualizar');
+  });
+  it('36 A: coluna Situação em Ligado / Desligado', () => {
+    const h = render();
+    expect(h).not.toMatch(/>Ligada<|>Desligada</);
+  });
+  it('36 A: a confirmação de Trocar chave (cenário B, seção A): destrutiva, sem texto, aviso fixo', () => {
+    const h = renderToStaticMarkup(<DialogoTrocarChave aoConfirmar={() => undefined} aoCancelar={() => undefined} />);
+    expect(h).toContain('Trocar a chave do conector do FDV?');
+    expect(h).toContain('A chave atual para de funcionar agora. Quem usa a chave antiga fica sem enviar até receber a nova.');
+    expect(h).toContain('>Trocar chave</button>');
+    expect(h).toContain('>Cancelar</button>');
+    expect(h).toContain('data-destrutivo="true"');
+    expect(h).not.toContain('<textarea');
+    expect(h).toContain('role="dialog"');
+  });
+  it('36 A: a ficha não abre a confirmação sozinha e salvar a 1ª chave não a pede', () => {
+    expect(render()).not.toContain('Trocar a chave do conector do FDV?');
+    expect(render(dados({}, false))).not.toContain('Trocar a chave do conector do FDV?');
   });
   it('sem a carga completa e sem "Zerar dados" na tela', () => {
     const h = render();

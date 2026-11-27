@@ -8,13 +8,14 @@ import {
   type LinhaEnvioLog, type LinhaErroLog, type LinhaRecebidoLog,
 } from '@macuxierp/integracao-fdv/web';
 import { baixarCsv } from '@/lib/baixar-csv';
+import { ROTULOS_FDV } from '@/lib/config/operacao-fdv';
 import { lerLogFdv, type ResultadoLogFdv } from '@/app/(shell)/[modulo]/[...pagina]/acoes-log-fdv';
 
 /** Texto do resumo de erros: "1 erro aberto" / "N erros abertos". */
 export const textoErrosAbertos = (n: number): string => `${n} ${n === 1 ? 'erro aberto' : 'erros abertos'}`;
 
 /** Rótulo do botão que recarrega o Log quando a leitura falha. */
-export const ROTULO_TENTAR_DE_NOVO = 'Tentar de novo';
+export const ROTULO_TENTAR_DE_NOVO = ROTULOS_FDV.tentarDeNovo;
 
 /** Falha de leitura com o botão "Tentar de novo" ao lado: o convite já está no botão, então o texto não o repete. */
 export const TEXTO_FALHA_CARGA_LOG = 'Não foi possível carregar o Log.';

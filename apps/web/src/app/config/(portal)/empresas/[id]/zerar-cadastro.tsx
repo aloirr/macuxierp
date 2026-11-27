@@ -1,9 +1,9 @@
 'use client';
-import { AVISO_ZERAR_INATIVA_FDV, CODIGO_ZERAGEM_BLOQUEADA, FRASE_ZERAR_DADOS, type CadastroZerarPortal, type EntidadeEnvioFdv, type ZeragemPlataformaResposta } from '@macuxierp/platform-sdk';
+import { CODIGO_ZERAGEM_BLOQUEADA, FRASE_ZERAR_DADOS, type CadastroZerarPortal, type EntidadeEnvioFdv, type ZeragemPlataformaResposta } from '@macuxierp/platform-sdk';
 import { useState } from 'react';
 import { ConfirmarComFrase } from '@/components/confirmar-com-frase';
 import { AVISO_ZERAR, AVISO_LIMITE_FDV, TEXTO_ANTES_DE_ZERAR, bloqueiosDeTextos, pedirPreviaZerar, pedirZerar, textoLevaJunto, textoSemChave, textosAnulados, textosBloqueios, textosMantidos } from '@/lib/config/cargas';
-import { cadastroDoZerar, textoInativacaoFdv, textoZerarJuntos } from '@/lib/config/operacao-fdv';
+import { TEXTO_INATIVA_NO_FDV, cadastroDoZerar, textoInativacaoFdv, textoZerarJuntos } from '@/lib/config/operacao-fdv';
 import { ListaMantidos, usePreviaZerar } from './previa-zerar';
 
 /**
@@ -68,7 +68,7 @@ export function ZerarCadastro({ empresaId, entidade, rotulo, aoFechar, aoZerar, 
         return undefined;
       }}
       aoFechar={aoFechar}
-      aviso={<><span>{AVISO_ZERAR}</span><br /><span data-testid="aviso-fdv">{AVISO_ZERAR_INATIVA_FDV}</span></>}
+      aviso={<><span>{AVISO_ZERAR}</span><br /><span data-testid="aviso-fdv">{TEXTO_INATIVA_NO_FDV}</span></>}
       tomAviso="erro"
       bloqueio={bloqueios.length > 0 ? <ul className="faixa-erro lista-simples sem-margem" role="alert" aria-label="Zerar bloqueado">{bloqueios.map((t) => <li key={t}>{t}</li>)}</ul> : undefined}
     >

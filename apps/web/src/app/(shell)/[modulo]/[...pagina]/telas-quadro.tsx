@@ -13,6 +13,7 @@ import { matrizDePerfis } from '@/lib/telas/core';
 import { VistaAmbienteFiscal, VistaPerfis } from '@/components/core/vistas';
 import { VistaBandeira } from '@/components/faturamento/vista-bandeira';
 import { TEXTO_SEM_PERMISSAO } from '@/lib/telas/comum';
+import { FalhaIndisponivel } from '@/components/falha-indisponivel';
 
 /**
  * Quadros com componente próprio (T-0087, T-0088): perfis e permissões, ambiente fiscal e bandeira da NF-e simulada por filial. Carregam da
@@ -25,7 +26,7 @@ function falhaDoQuadro(e: unknown): React.ReactElement {
   if (e instanceof NaoAutenticado) redirect('/sessao/renovar');
   if (e instanceof TrocarSenhaPendente) redirect(ROTA_SENHA);
   if (e instanceof SemPermissao) return <p className="erro" role="alert">{TEXTO_SEM_PERMISSAO}</p>;
-  if (e instanceof ApiIndisponivel) return <p className="erro" role="alert">Não foi possível carregar agora. Tente de novo em instantes.</p>;
+  if (e instanceof ApiIndisponivel) return <FalhaIndisponivel requestId={e.requestId} />;
   throw e;
 }
 

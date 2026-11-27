@@ -6,6 +6,7 @@ import { ROTULO_AMBIENTE } from '@macuxierp/integracao-fdv/web';
 import type { AcaoMenu, MenuAcoesProps } from '@macuxierp/ui';
 import { ConfigurarIntegracaoPlataformaEntrada, ENTIDADES_ENVIO_FDV, LIMITE_REGISTROS_LOTE_FDV, MOTIVOS_PAUSA_FDV, type EntidadeEnvioFdv, type IntegracaoFdvPlataforma } from '@macuxierp/platform-sdk';
 import { acaoNoPortal } from '../integracao-fdv-textos';
+import { ROTULOS_FDV } from './operacao-fdv';
 import { linhaBaseFdv, type LinhaBaseFdv } from '../integracao-fdv';
 
 /** Valor inicial do campo "Registros por lote" quando a empresa ainda não tem configuração: o teto do SDK (ADR 0013, §10). */
@@ -15,7 +16,7 @@ export const LIMITE_INICIAL_FDV = LIMITE_REGISTROS_LOTE_FDV;
 export function validarLimiteLote(texto: string): { ok: true; valor: number } | { ok: false; erro: string } {
   const t = texto.trim();
   const r = ConfigurarIntegracaoPlataformaEntrada.shape.limite_registros_lote.safeParse(/^\d+$/.test(t) ? Number(t) : Number.NaN);
-  return r.success ? { ok: true, valor: r.data } : { ok: false, erro: `Informe um número inteiro de 1 a ${LIMITE_REGISTROS_LOTE_FDV}.` };
+  return r.success ? { ok: true, valor: r.data } : { ok: false, erro: `Informe um número de 1 a ${LIMITE_REGISTROS_LOTE_FDV.toLocaleString('pt-BR')}.` };
 }
 
 export interface LinhaCadastroFdv extends LinhaBaseFdv {
@@ -96,7 +97,7 @@ export function menuDaLinha(a: AcoesDaLinha, fazer: Readonly<Record<string, () =
 export function acoesDaLinhaFdv(l: LinhaCadastroFdv, o: { bloqueado: boolean; semCredencial: boolean; licenciado: boolean }): AcoesDaLinha {
   const todas: ItemAcaoLinha[] = [
     { chave: 'ligar', rotulo: l.ligada ? 'Desligar' : 'Ligar', desabilitado: o.bloqueado || o.semCredencial },
-    { chave: 'retomar', rotulo: 'Tentar de novo', oculto: !l.pausada, desabilitado: o.bloqueado },
+    { chave: 'retomar', rotulo: ROTULOS_FDV.tentarDeNovo, oculto: !l.pausada, desabilitado: o.bloqueado },
     { chave: 'reprocessar', rotulo: rotuloComLote(l.loteEmVoo, 'Reprocessar'), desabilitado: o.bloqueado || o.semCredencial || l.loteEmVoo },
     { chave: 'log', rotulo: 'Log', desabilitado: !o.licenciado },
     { chave: 'zerar', rotulo: 'Zerar', perigo: true, desabilitado: o.bloqueado },

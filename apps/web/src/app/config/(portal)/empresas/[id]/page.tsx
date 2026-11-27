@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
 import { randomUUID } from 'node:crypto';
 import { redirect } from 'next/navigation';
-import { codigoExibido, destinoErroEmpresa } from '@/lib/config/empresa';
+import { codigoExibido, destinoErroEmpresa, lerApoio } from '@/lib/config/empresa';
 import { lerEmpresa, lerIntegracaoFdv, lerMonitorFdv } from '@/lib/config/api';
 import { lerCargas } from '@/lib/config/cargas-api';
+import { CodigoDoErro } from '@/components/codigo-do-erro';
 import { ConfigNaoAutenticado } from '@/lib/config/erros';
 import { exigirTokenConfig, ROTA_ENCERRAR, ROTA_SENHA } from '@/lib/config/sessao';
 import { MANIFESTOS } from '@/lib/manifestos';
@@ -32,22 +33,20 @@ export default async function Empresa({ params, searchParams }: { params: Promis
       <>
         <h1>Empresa</h1>
         <p className="erro">{d.texto}</p>
-        <a className="mx-botao-secundario" href={naoAchou ? '/config' : `/config/empresas/${encodeURIComponent(id)}`}>{naoAchou ? 'Voltar às empresas' : 'Tentar de novo'}</a>
+        <CodigoDoErro id={d.requestId} />
+        <a className="mx-botao-secundario" href={naoAchou ? '/config' : `/config/empresas/${encodeURIComponent(id)}`}>{naoAchou ? 'Voltar às empresas' : 'Recarregar'}</a>
       </>
     );
   }
-  /** Leitura de apoio da aba: sessão vencida encerra; qualquer outra falha deixa a aba seguir sem o dado (Monitor, integração, cargas). */
-  const lerOuNada = async <T,>(ler: () => Promise<T>): Promise<T | null> => {
-    try {
-      return await ler();
-    } catch (e) {
-      if (e instanceof ConfigNaoAutenticado) redirect(ROTA_ENCERRAR);
-      return null;
-    }
+  /** Leitura de apoio da aba: sessão vencida encerra; qualquer outra falha deixa a aba seguir sem o dado, cada uma com o id da própria falha. */
+  const ler = async <T,>(f: () => Promise<T>) => {
+    const r = await lerApoio(f);
+    if (r.naoAutenticado) redirect(ROTA_ENCERRAR);
+    return r;
   };
-  const integracao = naIntegracao || naCarga ? await lerOuNada(() => lerIntegracaoFdv(token, id)) : null;
-  const monitor = naIntegracao ? await lerOuNada(() => lerMonitorFdv(token, id)) : null;
-  const cargas = naCarga ? await lerOuNada(() => lerCargas(token, id)) : null;
+  const { valor: integracao, requestId: idIntegracao } = naIntegracao || naCarga ? await ler(() => lerIntegracaoFdv(token, id)) : { valor: null, requestId: undefined };
+  const monitor = naIntegracao ? (await ler(() => lerMonitorFdv(token, id))).valor : null;
+  const cargas = naCarga ? (await ler(() => lerCargas(token, id))).valor : null;
   const base = `/config/empresas/${encodeURIComponent(id)}`;
   const deps = MANIFESTOS.map((m) => ({ id: m.id, depende: m.depende }));
   return (
@@ -71,8 +70,9 @@ export default async function Empresa({ params, searchParams }: { params: Promis
           <AbaIntegracao empresaId={empresa.id} dados={integracao} fuso={empresa.fuso} monitor={monitor} />
         ) : (
           <>
-            <p className="erro" role="alert">Não foi possível carregar a integração. Tente de novo.</p>
-            <a className="mx-botao-secundario" href={`${base}?aba=integracao`}>Tentar de novo</a>
+            <p className="erro" role="alert">Não foi possível carregar a integração.</p>
+            <CodigoDoErro id={idIntegracao} />
+            <a className="mx-botao-secundario" href={`${base}?aba=integracao`}>Recarregar</a>
           </>
         )
       ) : (

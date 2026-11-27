@@ -79,7 +79,7 @@ describe('chamadas do navegador ao Zerar pedidos', () => {
     expect((vistos[0]?.headers as Record<string, string>)['idempotency-key']).toBe(CHAVE);
   });
   it('mensagem de sucesso', () => {
-    expect(textoPedidosZerados({ apagados: 5, mantidos: 3 })).toBe('Pedidos zerados: 5. Mantidos: 3 (com nota ou título).');
+    expect(textoPedidosZerados({ apagados: 5, mantidos: 3 })).toBe('Pedidos zerados: 5. Mantidos: 3.');
     expect(textoPedidosZerados({ apagados: 0, mantidos: 0 })).toBe('Pedidos zerados: 0.');
   });
 });

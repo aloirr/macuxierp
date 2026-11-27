@@ -10,6 +10,7 @@ import { DetalheGenerico } from './detalhe-generico';
 import { FormularioGenerico } from './formulario-generico';
 import { ListaGenerica } from './lista-generica';
 import { TEXTO_SEM_PERMISSAO } from '@/lib/telas/comum';
+import { FalhaIndisponivel } from '@/components/falha-indisponivel';
 
 const UUID = z.string().uuid();
 
@@ -71,7 +72,7 @@ export async function TelaGenerica({ tela, titulo, rotaDaPagina, rota, params, b
       const q = new URLSearchParams(recomecarLista(Object.fromEntries(busca))).toString();
       redirect(q ? `${rota}?${q}` : rota);
     }
-    if (e instanceof ApiIndisponivel || e instanceof DadosInvalidos) return <Falha texto="Não foi possível carregar agora. Tente de novo em instantes." {...(tela.tipo === 'detalhe' ? { titulo } : {})} />;
+    if (e instanceof ApiIndisponivel || e instanceof DadosInvalidos) return <FalhaIndisponivel requestId={e instanceof ApiIndisponivel ? e.requestId : undefined} {...(tela.tipo === 'detalhe' ? { titulo } : {})} />;
     throw e;
   }
 }

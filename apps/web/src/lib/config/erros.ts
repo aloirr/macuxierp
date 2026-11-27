@@ -11,6 +11,10 @@ export class ConfigSemPermissao extends Error {
 }
 export class ConfigIndisponivel extends Error {
   override readonly name = 'ConfigIndisponivel' as const;
+  /** `request_id` do 5xx (corpo ou `x-request-id`), mostrado na tela de indisponível. */
+  constructor(mensagem?: string, readonly requestId?: string) {
+    super(mensagem);
+  }
 }
 export class ConfigMuitasTentativas extends Error {
   override readonly name = 'ConfigMuitasTentativas' as const;

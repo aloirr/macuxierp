@@ -30,6 +30,7 @@ import { ContatoRevelado, FichaReceitaPlanaMascarada, ResultadoReceitaPlana, typ
 import { z } from 'zod';
 import { buscarNaApi } from '../api';
 import { sinalDeBloqueioNaResposta } from '../login-regras';
+import { idDaRequisicao } from '../request-id';
 import { type DetalhesErro, ConfigContaBloqueada, ConfigIndisponivel, ConfigMuitasTentativas, ConfigNaoAutenticado, ConfigSemPermissao, ErroPlataforma } from './erros';
 
 /** Cliente das rotas `/v1/plataforma/*` (ADR 0012). Só no servidor: o token da sessão nunca chega ao navegador. */
@@ -63,6 +64,7 @@ export async function chamar(metodo: string, caminho: string, p: Pedido = {}): P
 export async function recusar(r: Response): Promise<never> {
   if (r.status === 401) throw new ConfigNaoAutenticado();
   if (r.status === 429) throw new ConfigMuitasTentativas();
+  const requestId = await idDaRequisicao(r); // clona: o corpo segue legível abaixo
   let corpo: { codigo?: unknown; mensagem?: unknown; campos?: Record<string, unknown>; detalhes?: { codigo?: unknown; bloqueios?: unknown } } = {};
   try {
     corpo = (await r.json()) as typeof corpo;
@@ -84,7 +86,7 @@ export async function recusar(r: Response): Promise<never> {
     if (Array.isArray(d?.bloqueios)) detalhes.bloqueios = d.bloqueios.filter((b): b is string => typeof b === 'string' && /^[a-z_]{1,40}:[a-z_]{1,40}$/.test(b));
     throw new ErroPlataforma(r.status, codigo, campos, m, detalhes);
   }
-  throw new ConfigIndisponivel(`HTTP ${r.status}`);
+  throw new ConfigIndisponivel(`HTTP ${r.status}`, requestId);
 }
 
 export async function validado<S extends z.ZodTypeAny>(r: Response, schema: S): Promise<z.infer<S>> {
