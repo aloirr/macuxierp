@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import pg from 'pg';
+import type { Transacao } from './banco';
 import { BancoPg } from './pg';
 
 /**
@@ -179,4 +180,11 @@ export async function comoConfig<R>(
   } finally {
     c.release();
   }
+}
+
+/** RD-2349: o mesmo `comoConfig`, entregando uma `Transacao` do SDK (o que os repositórios dos módulos recebem). */
+export function comoConfigTx<R>(admin: pg.Pool, sessaoId: string, fn: (tx: Transacao) => Promise<R>): Promise<R> {
+  return comoConfig(admin, sessaoId, (consultar) =>
+    fn({ consultar: <L = Record<string, unknown>>(sql: string, parametros?: readonly unknown[]) => consultar(sql, parametros) as Promise<L[]> }),
+  );
 }

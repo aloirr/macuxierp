@@ -3,7 +3,7 @@
  * de superadmin e da transação no papel `macuxierp_config` para os testes de banco. Dados fictícios.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { comoConfig, criarBancoEfemero, criarTenant, PG_DISPONIVEL, semearSessaoSuperadmin, type BancoEfemero } from './pg-testes';
+import { comoConfig, comoConfigTx, criarBancoEfemero, criarTenant, PG_DISPONIVEL, semearSessaoSuperadmin, type BancoEfemero } from './pg-testes';
 
 describe.skipIf(!PG_DISPONIVEL)('pg-testes: sessão de superadmin e transação como macuxierp_config (RD-2261)', () => {
   let b: BancoEfemero;
@@ -38,5 +38,12 @@ describe.skipIf(!PG_DISPONIVEL)('pg-testes: sessão de superadmin e transação 
   it('comoConfig desfaz a transação no erro e repassa a exceção', async () => {
     const s = await semearSessaoSuperadmin(b.admin);
     await expect(comoConfig(b.admin, s.sessao_id, (consultar) => consultar('SELECT 1/0'))).rejects.toThrow(/division by zero/);
+  });
+
+  it('RD-2349: comoConfigTx entrega uma Transacao do SDK (para os repositórios que pedem tx)', async () => {
+    const s = await semearSessaoSuperadmin(b.admin);
+    const t = await criarTenant(b.admin, 'rd2349-a', ['core']);
+    const r = await comoConfigTx(b.admin, s.sessao_id, async (tx) => (await tx.consultar<{ r: unknown }>('SELECT cadastros.portal_entrada_ler($1::uuid) AS r', [t]))[0]!.r);
+    expect(r).toEqual({ credenciais: [], ultimo_sinal: null, lotes: [] });
   });
 });
