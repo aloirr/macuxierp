@@ -1,30 +1,22 @@
 /**
- * T-0057 C2 (ADR 0014 §1 e §2): adaptadores puros dos 10 payloads do Hub (`hub-v1` do SDK) para a linha da carga, o mesmo
- * formato que `gravarLinhas` recebe. Cada payload vira o `Registro` de células do kit (a mesma forma do CSV) e passa por
- * `mapearLinha`: as regras RN-CAD-01/02/03/09/15/16/17 são as da carga, sem cópia. Só `ativo`, os booleanos, o dinheiro em
- * centavos e as quantidades mudam de forma (número do Hub → texto da célula). Só o delta é adaptado (RN-INT-06): o envelope de
- * carga completa é recusado com 422, e a recusa é do lote inteiro, sem lote criado.
+ * T-0057 C2 (ADR 0014 §1 e §2): adaptadores puros dos payloads do Hub (`hub-v1`) para a linha da carga, que passa por `mapearLinha`.
  *
  * Simplificações assumidas (o desenho não fecha estes pontos, vale o mais simples):
  * - a forma de pagamento sozinha não vira linha da carga: `adaptarForma` a entrega ao contexto, que completa o prazo (RN-CAD-09);
- * - `ativo` do endereço do cliente e da forma não têm destino na carga e são ignorados; `ativo` do estoque também;
+ * - `ativo` do endereço do cliente, da forma e do estoque não tem destino na carga e é ignorado;
  * - `ClienteHub.formas_pagamento` e `deposito_*` não têm destino na carga (o layout do kit os ignora).
  */
-import { PAYLOADS_HUB, type ClienteEnderecoHub, type ClienteHub, type EstoqueHub, type FilialHub, type FormaPagamentoHub, type PrazoPagamentoHub, type PrecoHub, type ProdutoHub, type ProdutoUnidadeHub, type VendedorHub } from '@macuxierp/platform-sdk/hub-v1';
+import { ENTIDADES_ENVIO_FDV } from '@macuxierp/platform-sdk';
+import {
+  PAYLOADS_HUB, type ClienteEnderecoHub, type ClienteHub, type CorpoLote, type EstoqueHub, type FilialHub, type FormaPagamentoHub,
+  type PrazoPagamentoHub, type PrecoHub, type ProdutoHub, type ProdutoUnidadeHub, type VendedorHub,
+} from '@macuxierp/platform-sdk/hub-v1';
 import type { EntidadeCarga, LinhasCarga } from '../../contracts';
-import { DICIONARIO_TPAG, TPAG_RECUSADO, errosDeZod, mapearLinha, type ContextoMapeamento, type ErroLinha, type Registro } from '../carga';
-
-/** As 10 entidades da F2 que a `/entrada/v1` adapta (`ENTIDADES_ENVIO_FDV` do SDK). */
-export const ENTIDADES_ENTRADA = Object.keys(PAYLOADS_HUB) as (keyof typeof PAYLOADS_HUB)[];
-
-/** Forma de pagamento já conhecida (do lote ou do banco), pelo `external_id` do Hub. */
-export interface FormaConhecida {
-  codigo: string;
-  nome: string;
-}
+import { errosDeZod, mapearLinha, tpagDaForma, type ContextoMapeamento, type ErroLinha, type Registro } from '../carga';
 
 export interface ContextoAdaptacao extends ContextoMapeamento {
-  formas: ReadonlyMap<string, FormaConhecida>;
+  /** Forma de pagamento já conhecida (do lote ou do banco), pelo `external_id` do Hub. */
+  formas: ReadonlyMap<string, Pick<FormaPagamentoHub, 'codigo' | 'nome'>>;
 }
 
 export type Adaptacao<E extends EntidadeCarga> = { ok: true; linha: LinhasCarga[E] } | { ok: false; erros: ErroLinha[] };
@@ -61,18 +53,9 @@ export const adaptarFilial = (p: FilialHub, indice: number, ctx: ContextoMapeame
 export const adaptarVendedor = (p: VendedorHub, indice: number, ctx: ContextoMapeamento): Adaptacao<'vendedor'> =>
   mapear('vendedor', { external_id: p.external_id, nome: p.nome, ativo: sim(p.ativo), filial_external_id: p.filial_external_id }, indice, ctx);
 
-/** RN-CAD-09: a forma só tem o tPag da NF-e pelo dicionário (Dinheiro, PIX, Cartão e Boleto); o resto vira tPag recusado. */
-export interface FormaAdaptada {
-  external_id: string;
-  codigo: string;
-  nome: string;
-  tpag: string;
-  ativo: boolean;
-}
-export const adaptarForma = (p: FormaPagamentoHub): { ok: true; forma: FormaAdaptada } => ({
-  ok: true,
-  forma: { external_id: p.external_id, codigo: p.codigo, nome: p.nome, tpag: DICIONARIO_TPAG[p.codigo.toUpperCase()] ?? TPAG_RECUSADO, ativo: p.ativo },
-});
+/** RN-CAD-09: a forma tem o tPag da NF-e pelo dicionário do `mapear.ts`; o que não está nele vira tPag recusado. */
+export type FormaAdaptada = Pick<FormaPagamentoHub, 'external_id' | 'codigo' | 'nome' | 'ativo'> & { tpag: string };
+export const adaptarForma = (p: FormaPagamentoHub): FormaAdaptada => ({ external_id: p.external_id, codigo: p.codigo, nome: p.nome, tpag: tpagDaForma(p.codigo), ativo: p.ativo });
 
 /** RN-CAD-09 e RN-CAD-15: o prazo é a condição de pagamento (`parcelas_dias` "28/56", à vista "0"), com a forma do contexto. */
 export const adaptarPrazoPagamento = (p: PrazoPagamentoHub, indice: number, ctx: ContextoAdaptacao): Adaptacao<'condicao_pagamento'> => {
@@ -93,17 +76,17 @@ export const adaptarProdutoUnidade = (p: ProdutoUnidadeHub, indice: number, ctx:
     external_id: p.external_id, produto_external_id: p.produto_external_id, unidade: p.unidade, fator: decimal(p.fator), ean: p.ean, ativo: sim(p.ativo),
   }, indice, ctx);
 
-/** RN-CAD-06 e RN-CAD-11: preço em centavos por tabela, vigência e filial (sem filial vale para a filial padrão). */
+/** RN-CAD-06 e RN-CAD-11: preço em centavos por tabela, vigência e filial (sem filial a referência não é preenchida e a gravação aplica a regra da filial padrão, como no `mapear.ts`). */
 export const adaptarPreco = (p: PrecoHub, indice: number, ctx: ContextoMapeamento): Adaptacao<'preco'> =>
   mapear('preco', {
     external_id: p.external_id, tabela_external_id: p.tabela_external_id, tabela_nome: p.tabela_nome, vigencia_inicio: p.vigencia_inicio, vigencia_fim: p.vigencia_fim,
     produto_external_id: p.produto_external_id, preco_cents: texto(p.preco_cents), filial_external_id: p.filial_external_id, ativo: sim(p.ativo),
   }, indice, ctx);
 
-/** RN-CAD-07: saldo por filial; o negativo só passa na gravação com a permissão (a carga já trata). O depósito não tem destino. */
+/** RN-CAD-07: saldo por filial; o negativo só passa na gravação com a permissão (a carga já trata).  */
 export const adaptarEstoque = (p: EstoqueHub, indice: number, ctx: ContextoMapeamento): Adaptacao<'estoque'> =>
   mapear('estoque', {
-    external_id: p.external_id, deposito_external_id: p.deposito_external_id, produto_external_id: p.produto_external_id, saldo: decimal(p.saldo), filial_external_id: p.filial_external_id,
+    external_id: p.external_id, produto_external_id: p.produto_external_id, saldo: decimal(p.saldo), filial_external_id: p.filial_external_id,
   }, indice, ctx);
 
 /** RN-CAD-01, RN-CAD-02 e RN-CAD-03 (documento, IE e município); RN-CAD-16: `prazo_medio_max_dias` é o prazo médio do cliente. */
@@ -149,21 +132,21 @@ export interface LoteAdaptado {
   formas: FormaAdaptada[];
 }
 
-export interface EnvelopeEntrada {
-  entidade: string;
-  modo: 'completo' | 'delta';
-  registros: readonly unknown[];
-}
+export type EnvelopeEntrada = Pick<CorpoLote, 'entidade' | 'modo'> & { registros: readonly unknown[] };
 
-const ENTIDADE_DA_CARGA: Readonly<Record<keyof typeof PAYLOADS_HUB, EntidadeCarga | null>> = {
-  filial: 'filial', vendedor: 'vendedor', forma_pagamento: null, prazo_pagamento: 'condicao_pagamento', produto: 'produto',
-  produto_unidade: 'produto_unidade', preco: 'preco', estoque: 'estoque', cliente: 'cliente', cliente_endereco: 'cliente',
+type AdaptadorLinha = (p: never, indice: number, ctx: ContextoAdaptacao) => Adaptacao<EntidadeCarga>;
+/** Entidade do Hub → entidade da carga e adaptador; a forma não tem linha própria (`adaptarForma`). */
+const TABELA: Readonly<Record<Exclude<(typeof ENTIDADES_ENVIO_FDV)[number], 'forma_pagamento'>, { entidade: EntidadeCarga; adaptar: AdaptadorLinha }>> = {
+  filial: { entidade: 'filial', adaptar: adaptarFilial },
+  vendedor: { entidade: 'vendedor', adaptar: adaptarVendedor },
+  prazo_pagamento: { entidade: 'condicao_pagamento', adaptar: adaptarPrazoPagamento },
+  produto: { entidade: 'produto', adaptar: adaptarProduto },
+  produto_unidade: { entidade: 'produto_unidade', adaptar: adaptarProdutoUnidade },
+  preco: { entidade: 'preco', adaptar: adaptarPreco },
+  estoque: { entidade: 'estoque', adaptar: adaptarEstoque },
+  cliente: { entidade: 'cliente', adaptar: adaptarCliente },
+  cliente_endereco: { entidade: 'cliente', adaptar: adaptarClienteEndereco },
 };
-
-const ADAPTADORES = {
-  filial: adaptarFilial, vendedor: adaptarVendedor, prazo_pagamento: adaptarPrazoPagamento, produto: adaptarProduto, produto_unidade: adaptarProdutoUnidade,
-  preco: adaptarPreco, estoque: adaptarEstoque, cliente: adaptarCliente, cliente_endereco: adaptarClienteEndereco,
-} as const;
 
 /**
  * Valida cada registro pelo Zod do SDK e o adapta. Recusa o envelope inteiro (a API responde 422, sem lote criado) quando é
@@ -171,11 +154,14 @@ const ADAPTADORES = {
  */
 export function adaptarLote(envelope: EnvelopeEntrada, ctx: ContextoAdaptacao): RecusaEnvelope | LoteAdaptado {
   if (envelope.modo === 'completo') {
-    return { ok: false, status: 422, codigo: 'carga_completa_nao_suportada', motivo: 'A carga completa não é adaptada: envie só o delta (RN-INT-06)' };
+    return { ok: false, status: 422, codigo: 'carga_completa_nao_suportada', motivo: 'Carga completa não aceita: envie só as alterações (delta)' };
   }
-  const chave = ENTIDADES_ENTRADA.find((e) => e === envelope.entidade);
+  const chave = ENTIDADES_ENVIO_FDV.find((e) => e === envelope.entidade);
   if (chave === undefined) {
-    return { ok: false, status: 422, codigo: 'entidade_fora_da_fase', motivo: 'Entidade fora da fase: só os 10 cadastros da F2 entram pela entrada' };
+    return {
+      ok: false, status: 422, codigo: 'entidade_fora_da_fase',
+      motivo: 'Entidade não aceita: envie filial, vendedor, forma e prazo de pagamento, produto, unidade, preço, estoque, cliente ou endereço do cliente',
+    };
   }
   const schema = PAYLOADS_HUB[chave];
   const formas: FormaAdaptada[] = [];
@@ -184,14 +170,11 @@ export function adaptarLote(envelope: EnvelopeEntrada, ctx: ContextoAdaptacao): 
     const v = schema.safeParse(bruto);
     if (!v.success) {
       resultados.push({ ok: false, erros: errosDeZod(numeroDaLinha(indice), v.error.issues) });
-      return;
+    } else if (chave === 'forma_pagamento') {
+      formas.push(adaptarForma(v.data as FormaPagamentoHub));
+    } else {
+      resultados.push((TABELA[chave].adaptar as (p: unknown, i: number, c: ContextoAdaptacao) => Adaptacao<EntidadeCarga>)(v.data, indice, ctx));
     }
-    if (chave === 'forma_pagamento') {
-      formas.push(adaptarForma(v.data as FormaPagamentoHub).forma);
-      return;
-    }
-    const adaptar = ADAPTADORES[chave] as (p: unknown, i: number, c: ContextoAdaptacao) => Adaptacao<EntidadeCarga>;
-    resultados.push(adaptar(v.data, indice, ctx));
   });
-  return { ok: true, entidade: ENTIDADE_DA_CARGA[chave], resultados, formas };
+  return { ok: true, entidade: chave === 'forma_pagamento' ? null : TABELA[chave].entidade, resultados, formas };
 }

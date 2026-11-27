@@ -19,11 +19,9 @@ import {
 } from '../domain';
 import { estadoVazio, novoLoteId, podeCarregar } from './carga-entidades';
 import { lerCsvDoLayout, reativarPorPadrao } from './carga-reativar';
-import { gravarLinhas } from './carga-gravar';
+import { gravarLinhas, type Linha } from './carga-gravar';
 import type { Dependencias } from './portas';
 import { dataIso } from './util';
-
-type Linha = LinhasCarga[EntidadeCarga];
 
 const COLUNAS_UF: Partial<Record<EntidadeCarga, string>> = { filial: 'uf', cliente: 'endereco.uf' };
 const CODIGO_CSV = { CSV_COLUNA_AUSENTE: 'CARGA_OBRIGATORIO' } as const;
@@ -159,7 +157,7 @@ export async function executarCarga(deps: Dependencias, c: ContextoRota, modo: M
   }
 
   // 4. Referências e gravação na ordem D13 (C1 da T-0057: o mesmo caminho do worker do lote da `/entrada/v1`).
-  await gravarLinhas(st, arquivos.map((a) => ({ entidade: a.entidade, nome: a.nome, linhas: a.linhas, formas: a.formas, resultado: a.resultado })), rel);
+  await gravarLinhas(st, arquivos, rel);
 
   if (st.gravar) {
     await c.auditar({

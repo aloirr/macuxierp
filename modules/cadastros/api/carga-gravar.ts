@@ -14,7 +14,7 @@ import { tratarCartaoSemParcelas } from './formas-recusadas';
 import type { Repositorios, TabelaChave } from './portas';
 import { violacaoExternalId } from './util';
 
-type Linha = LinhasCarga[EntidadeCarga];
+export type Linha = LinhasCarga[EntidadeCarga];
 
 /** Onde os erros por linha vão: o relatório da carga ou o resultado do lote (quem chama decide). */
 export interface DestinoErros {
