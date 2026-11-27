@@ -227,8 +227,8 @@ describe('aba Integração do /config (T-0056)', () => {
 describe('v0.3.18 A2: Monitor com o último código e a próxima tentativa', () => {
   it('Código em fonte de código no Monitor, "—" quando não houver', () => {
     const sinal = { ultimo_envio_em: '2026-11-27T14:00:00.000Z', ultimo_aceito_em: null, ultimo_http: 401, parado_por_versao: false, ultimo_codigo: 'credencial_invalida' };
-    expect(render(dados({ ultimo_sinal: sinal }), monitor())).toContain('<dt>Código</dt><dd><code>credencial_invalida</code></dd>');
-    expect(render(dados(), monitor())).not.toContain('<dt>Código</dt>');
+    expect(render(dados({ ultimo_sinal: sinal }), monitor())).toContain('<dt>Código da última recusa</dt><dd><code>credencial_invalida</code></dd>');
+    expect(render(dados(), monitor())).not.toContain('<dt>Código da última recusa</dt>');
   });
   it('próxima tentativa da pausa por credencial, no fuso da empresa; só quando vier', () => {
     const d = dados();

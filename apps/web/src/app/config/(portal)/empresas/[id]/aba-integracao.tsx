@@ -271,7 +271,7 @@ export function BlocoMonitor({ monitor, fuso, ultimoCodigo }: { monitor: Monitor
       <div><dt>Situação</dt><dd><SeloTom tom={v.situacao.tom}>{v.situacao.texto}</SeloTom></dd></div>
       <div><dt>Versão</dt><dd>{v.versao}</dd></div>
       <div><dt>Último sinal</dt><dd>{v.ultimoSinal}</dd></div>
-      {v.codigo ? <div><dt>Código</dt><dd><code>{v.codigo}</code></dd></div> : null}
+      {v.codigo ? <div><dt>Código da última recusa</dt><dd><code>{v.codigo}</code></dd></div> : null}
       <div><dt>Fila</dt><dd>{v.fila}</dd></div>
     </dl>
   );
