@@ -6,6 +6,7 @@ import { CampoSenha, ResultadoAcao, useResultado, type Resultado } from '@macuxi
 import { resultadoErro } from '@/lib/resultado-acao';
 import { TEXTOS_ESQUECI } from '@/lib/esqueci-resultado';
 import { gravarCodigoDoLogin, lerCodigoSalvo } from '@/lib/codigo-salvo';
+import { valoresIniciaisLogin } from '@/lib/login-preenchimento';
 import { primeiroVazio, TEXTOS_BLOQUEIO, TEXTOS_LOGIN as T, validarCampos, type CampoLogin, type ErrosLogin } from '@/lib/login-regras';
 import { entrarAction, type EstadoLogin } from './entrar';
 
@@ -81,12 +82,14 @@ export function FormularioLogin({ destino, esqueciDisponivel = false }: { destin
   function focar(nome: CampoLogin | undefined) {
     if (nome) (raiz.current?.querySelector(`[name="${nome}"]`) as HTMLInputElement | null)?.focus();
   }
-  // Volta com o código lembrado; o foco abre no primeiro campo vazio.
+  // Valores iniciais (v0.3.20): o link do e-mail (fragmento), o /config (código da plataforma) ou o código lembrado do BKO.
+  // O fragmento sai da barra de endereço logo depois de lido; o foco abre no primeiro campo vazio.
   useEffect(() => {
-    const salvo = lerCodigoSalvo();
-    if (salvo) setValores((v) => ({ ...v, empresa: v.empresa || salvo }));
-    focar(primeiroVazio(['empresa', 'email'], { empresa: salvo ?? '', email: '' }));
-  }, []);
+    const ini = valoresIniciaisLogin({ destino, salvo: lerCodigoSalvo(), fragmento: window.location.hash });
+    if (window.location.hash) window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    setValores((v) => ({ ...v, empresa: v.empresa || ini.empresa, email: v.email || ini.email }));
+    focar(primeiroVazio(['empresa', 'email'], ini));
+  }, [destino]);
 
   function aplicar(r: EstadoLogin) {
     if (r.entrou) {
