@@ -127,7 +127,7 @@ export interface MassaEntrada {
 }
 
 /** CNPJ com a raiz da empresa do `montarApiPg` e a ordem dada (a filial é da mesma empresa). */
-const cnpjDaEmpresa = (ordem: string): string => comDv(CNPJ_EMPRESA_PG.slice(0, 8) + ordem, cnpjValido);
+export const cnpjDaEmpresa = (ordem: string): string => comDv(CNPJ_EMPRESA_PG.slice(0, 8) + ordem, cnpjValido);
 
 /** `alterado_em` crescente a partir de `base`, 1 s por registro (o cursor anda na ordem). */
 export function massaEntrada(base: Date): MassaEntrada {
