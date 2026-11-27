@@ -191,8 +191,12 @@ export type CadastroIntegracaoFdv = z.infer<typeof CadastroIntegracaoFdv>;
 export const CadastroIntegracaoFdvPlataforma = CadastroIntegracaoFdv.extend({ lote_em_voo: z.boolean() });
 export type CadastroIntegracaoFdvPlataforma = z.infer<typeof CadastroIntegracaoFdvPlataforma>;
 
-/** As pausas que a sondagem de 30 min retoma sozinha (25 B). */
-const MOTIVOS_COM_SONDAGEM_FDV: ReadonlySet<string> = new Set(['credencial', 'licenca_fdv']);
+/**
+ * As pausas que a sondagem de 30 min retoma sozinha (25 B). Fonte única (RD-2409): o domain do integracao-fdv importa daqui, e o
+ * refine da leitura (`proxima_tentativa_em`) usa a mesma lista.
+ */
+export const MOTIVOS_SONDAVEIS_FDV = Object.freeze(['credencial', 'licenca_fdv'] as const satisfies readonly (typeof MOTIVOS_PAUSA_FDV)[number][]);
+const MOTIVOS_COM_SONDAGEM_FDV: ReadonlySet<string> = new Set(MOTIVOS_SONDAVEIS_FDV);
 
 /** Os 10 cadastros da F2, um por linha, na ordem de `ENTIDADES_ENVIO_FDV` (a tela não precisa ordenar nem completar). */
 function conferirCadastros(cadastros: readonly CadastroIntegracaoFdv[], ctx: z.RefinementCtx, ligadaEsperada?: (e: EntidadeEnvioFdv) => boolean): void {

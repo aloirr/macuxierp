@@ -22,6 +22,7 @@ export * from './cifra';
 export * from './certificado-icp';
 export * from './certificado-origem';
 export * from './paginas';
+export * from './ler-ate-teto';
 export * from './portal-config';
 export * from './portal-integracao';
 export * from './portal-integracao-operacao';

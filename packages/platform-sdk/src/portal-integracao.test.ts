@@ -23,6 +23,7 @@ import {
   RespostaTestarPlataforma,
   StatusIntegracaoFdvTenant,
   UltimoSinalFdv,
+  MOTIVOS_SONDAVEIS_FDV,
   falhaEnvioFdv,
   integracaoFdvLigada,
 } from './portal-integracao';
@@ -295,5 +296,13 @@ describe('RD-2319 (36 A): sem "último uso" na Integração do portal', () => {
   it('a leitura não tem ultimo_uso_em: o campo que vier a mais é descartado (a tela mostra o último sinal)', () => {
     const lido = IntegracaoFdvPlataforma.parse({ ...comCredencial, ultimo_uso_em: AGORA });
     expect(lido).not.toHaveProperty('ultimo_uso_em');
+  });
+});
+
+describe('RD-2409: fonte única dos motivos sondáveis', () => {
+  it('são credencial e licenca_fdv, todos motivos de pausa, e congelados', () => {
+    expect(MOTIVOS_SONDAVEIS_FDV).toEqual(['credencial', 'licenca_fdv']);
+    for (const m of MOTIVOS_SONDAVEIS_FDV) expect(MOTIVOS_PAUSA_FDV).toContain(m);
+    expect(Object.isFrozen(MOTIVOS_SONDAVEIS_FDV)).toBe(true);
   });
 });

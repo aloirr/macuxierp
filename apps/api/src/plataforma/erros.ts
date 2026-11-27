@@ -11,6 +11,7 @@ import {
   MENSAGENS_CARGA_PORTAL,
   SQLSTATES_CARGA_PORTAL,
 } from '@macuxierp/platform-sdk';
+import { MSG_SEM_LICENCA } from '@macuxierp/integracao-fdv/contracts';
 
 /** SQLSTATE próprio da 0033: sessão de superadmin inválida (revogada, vencida, ociosa, inativa ou troca pendente). */
 export const SQLSTATE_SESSAO_INVALIDA = 'MXS01';
@@ -23,8 +24,7 @@ const SQLSTATE_SEM_LICENCA_FDV = 'MXI04';
 
 const MENSAGEM_CREDENCIAL_MUDOU = 'A credencial mudou; recarregue a página.';
 const MENSAGEM_ESTADO_MUDOU = 'O estado mudou; recarregue a página.';
-/** Texto do bloqueio por motivo (36 A, RD-2324); sem motivo conhecido, vale o da licença. */
-const MENSAGEM_SEM_LICENCA_FDV = 'Integração FDV sem licença nesta empresa. Ligue o módulo na aba Empresa.';
+/** Texto do bloqueio por motivo (36 A, RD-2324): sem motivo conhecido, vale o da licença do ERP, do catálogo da integração (RD-2340). */
 const MENSAGEM_EMPRESA_INATIVA_FDV = 'A empresa precisa estar ativa.';
 
 /**
@@ -63,7 +63,7 @@ export function erroDaPlataforma(e: unknown): unknown {
       return new ErroApi(409, 'CONFLITO', MENSAGEM_ESTADO_MUDOU, undefined, codigoDoDetalhe(e, CODIGOS_ESTADO_MUDOU));
     case SQLSTATE_SEM_LICENCA_FDV: {
       const motivo = codigoDoDetalhe(e, CODIGOS_SEM_LICENCA);
-      const texto = motivo?.codigo === 'empresa_inativa' ? MENSAGEM_EMPRESA_INATIVA_FDV : MENSAGEM_SEM_LICENCA_FDV;
+      const texto = motivo?.codigo === 'empresa_inativa' ? MENSAGEM_EMPRESA_INATIVA_FDV : MSG_SEM_LICENCA;
       return new ErroApi(422, 'RN-CORE-02', texto, undefined, motivo);
     }
     // Cargas do portal (T-0058, ADR 0013, adendo de 23/11/2026). MXC01: código fixo do contrato
