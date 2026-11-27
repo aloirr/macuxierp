@@ -10,14 +10,14 @@
  * - Corrida no documento (índice único): vira `documento_ja_cadastrado`, sem abortar a transação (SAVEPOINT).
  */
 import {
-  auditar, criarEvento, type ClienteParaErpFdv, type DecisaoPreCadastroFdv, type DestinoAuditoria, type ErroCampoClienteFdv, type Outbox, type Relogio, type Transacao,
+  auditar, type ClienteParaErpFdv, type DecisaoPreCadastroFdv, type DestinoAuditoria, type ErroCampoClienteFdv, type Outbox, type Relogio, type Transacao,
 } from '@macuxierp/platform-sdk';
 import { ClienteDados } from '../contracts';
 import {
   chavesDoPreCadastroFdv, erroPreCadastroFdv, motivoDaRecusaFdv, validarPreCadastroFdv, vendedorExternoFdv, vincularVendedorFdv,
   type CodigoPreCadastroFdv, type ConferenciaVendedorFdv, type ContextoPreCadastroFdv, type Violacao,
 } from '../domain';
-import { eventoCliente } from './eventos';
+import { eventoCliente, gravarProntoNaOutbox } from './eventos';
 import type { Dependencias } from './portas';
 import { validarClienteNovo } from './validar-cliente';
 
@@ -104,7 +104,7 @@ export function criarCriadorClienteFdv(d: DependenciasCriadorClienteFdv): Criado
 
       const requestId = `fdv-cliente-${pre.cliente_uuid}`;
       const ev = await eventoCliente(r, criado);
-      await d.outbox.gravar(tx, criarEvento({ nome: ev.nome, tenant_id: tenant, agregado_id: ev.agregado_id, ator: 'sistema', request_id: requestId, payload: ev.payload }, agora));
+      await gravarProntoNaOutbox(d.outbox, tx, { tenant_id: tenant, request_id: requestId }, ev, agora);
       await auditar(d.auditoria, tx, { tenant_id: tenant, usuario_id: null, request_id: requestId }, {
         acao: 'cliente.criar', entidade: 'cliente', entidade_id: criado.id,
         depois: { origem: 'fdv_pre_cadastro', cliente_uuid: pre.cliente_uuid, limite_credito_centavos: 0, vendedor_vinculado: dados.vendedor_id !== null },

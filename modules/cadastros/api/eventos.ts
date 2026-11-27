@@ -2,7 +2,7 @@
  * Montagem dos payloads dos eventos `cadastros.*` (validados contra `EVENTOS`). Usada pelas rotas (que publicam pelo
  * `ContextoRota`) e pela carga inicial (que grava na outbox pelo worker): o mesmo evento nos dois caminhos.
  */
-import type { ContextoRota } from '@macuxierp/platform-sdk';
+import { criarEvento, type ContextoRota, type EnvelopeEvento, type Outbox, type Transacao } from '@macuxierp/platform-sdk';
 import {
   EVENTOS, type Cliente, type Filial, type PrecoItemComChave, type Produto, type TabelaPreco, type NomeEventoCadastros,
 } from '../contracts';
@@ -77,4 +77,9 @@ export async function republicarItensDaTabela(c: ContextoRota, r: Repositorios, 
     for (const i of pagina.itens) await publicarPronto(c, eventoPreco(i, t));
     cursor = pagina.proximo_cursor ?? undefined;
   } while (cursor);
+}
+
+/** Grava o evento pronto na outbox da transação do consumidor, herdando tenant e request_id do evento que o causou (ator `sistema`). */
+export async function gravarProntoNaOutbox(outbox: Outbox, tx: Transacao, causa: Pick<EnvelopeEvento, 'tenant_id' | 'request_id'>, ev: EventoPronto, agora: Date): Promise<void> {
+  await outbox.gravar(tx, criarEvento({ nome: ev.nome, tenant_id: causa.tenant_id, agregado_id: ev.agregado_id, ator: 'sistema', request_id: causa.request_id, payload: ev.payload }, agora));
 }
