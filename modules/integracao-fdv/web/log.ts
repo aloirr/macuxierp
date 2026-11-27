@@ -4,7 +4,7 @@
  * colunas (registro, nome curto, campo, motivo, ação e "Corrigir"), os textos dos estados e o caminho do CSV. Motivo e ação
  * vêm do catálogo da API (voz A0), nunca da mensagem do Hub. A permissão só esconde botão: a proteção real é a da API.
  */
-import { CAMINHOS_INTEGRACAO_FDV_TENANT, type ClienteRecebidoFdv, type EnvioLogFdv, type EntidadeEnvioFdv, type LogCadastroFdvTenant, type OrigemEnvioFdv } from '@macuxierp/platform-sdk';
+import { CAMINHOS_INTEGRACAO_FDV_TENANT, type ClienteRecebidoFdv, type EnvioLogFdv, type EntidadeEnvioFdv, type LogCadastroFdvTenant, type OrigemEnvioFdv, type SituacaoClienteRecebidoFdv } from '@macuxierp/platform-sdk';
 import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
 import { paraCsv, type ColunaCsv } from '@macuxierp/platform-sdk/listas';
 import { motivoDaRecusaCliente } from '../domain/recebidos-log';
@@ -91,6 +91,17 @@ export const nomeDoCsvDoLog = (entidade: EntidadeEnvioFdv): string => `erros-${e
 export const TITULO_SECAO_RECEBIDOS_LOG = 'Recebidos do FDV';
 export const TEXTO_VAZIO_RECEBIDOS_LOG = 'Nenhum pré-cadastro recebido ainda.';
 export const NOME_CSV_RECEBIDOS_LOG = 'recebidos-fdv.csv';
+export const ROTULO_BAIXAR_RECEBIDOS = 'Baixar recebidos (.csv)';
+
+/** Aviso quando há mais recebidos do que a lista traz (mesmo texto do BKO; a frase do arquivo completo entra quando o botão baixar o arquivo completo). */
+export const textoRecebidosForaDaLista = (mostrados: number, total: number): string => `Mostrando os ${mostrados} mais recentes de ${total}.`;
+
+/** Última linha do arquivo quando passou do teto: o arquivo parou nos mais recentes (texto curto, sem jargão). */
+export const textoRecebidosCortados = (naoPassaDe: number): string => `Aviso: o arquivo traz só os ${naoPassaDe} recebidos mais recentes.`;
+
+/** Caminho do arquivo completo dos recebidos (relativo à origem da API); o navegador baixa direto e a API aplica perfil e licença. */
+export const caminhoDoRecebidosCsv = (situacao?: SituacaoClienteRecebidoFdv): string =>
+  `/v1${CAMINHOS_INTEGRACAO_FDV_TENANT.clientesRecebidos}/exportar${situacao ? `?situacao=${situacao}` : ''}`;
 
 export interface LinhaRecebidoLog {
   situacao: string;
@@ -118,8 +129,8 @@ export const linhasDeRecebidosLog = (recebidos: readonly ClienteRecebidoFdv[], f
     vendedor: c.vendedor_external_id ?? TEXTO_SEM_VALOR,
     recebidoEm: formatarDataHora(c.recebido_em, fuso),
     revisao: c.revisao,
-    motivo: motivoDoRecebidoLog(c),
-    retorno: c.retorno ? ROTULO_RETORNO_CLIENTE[c.retorno] : '',
+    motivo: motivoDoRecebidoLog(c) || TEXTO_SEM_VALOR,
+    retorno: c.retorno ? ROTULO_RETORNO_CLIENTE[c.retorno] : TEXTO_SEM_VALOR,
   }));
 
 export const colunasDeRecebidosLog: readonly { id: keyof LinhaRecebidoLog; titulo: string }[] = [

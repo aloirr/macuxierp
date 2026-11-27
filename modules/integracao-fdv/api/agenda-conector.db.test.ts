@@ -10,7 +10,7 @@ import { jsonCanonico } from '../domain';
 import { criarAgendaConector } from './agenda-conector';
 import { mais } from './conector-comum';
 import {
-  AGORA, CHAVE_CLARA, admSql, ciclo, criarCredencial, cursorEntidade, ErroClienteHub, espelho, hubDuble, ok, payloadProduto, recusa, retentavel, U,
+  AGORA, CHAVE_CLARA, admSql, ciclo, criarCredencial, cursorEntidade, ErroClienteHub, espelho, hubDuble, ok, payloadProduto, recusa, retentavel, TEMPO_PREPARO_MS, U,
 } from './apoio-conector-teste';
 
 const agenda = criarAgendaConector({ outbox: new OutboxPg() });
@@ -20,7 +20,8 @@ const LOTE_ID = '5b1d7c42-9a3e-4f68-8c10-2e7a94d3b6f1';
 const aceito = (id = LOTE_ID, repetido = false) => ({ lote_id: id, status: 'recebido', entidade: 'produto', modo: 'delta', recebidos: 3, repetido, consulta: `/integracao/v1/lotes/${id}` });
 const resultado = (status: string, extra: Record<string, unknown> = {}) => ({ lote_id: LOTE_ID, entidade: 'produto', modo: 'delta', status, contagens: { recebidas: 3, com_erro: 0, novas: 3 }, erros: [], ...extra });
 
-describe.skipIf(!PG_DISPONIVEL)('agenda do conector no PostgreSQL real', { timeout: 20_000 }, () => {
+
+describe.skipIf(!PG_DISPONIVEL)('agenda do conector no PostgreSQL real', { timeout: 60_000 }, () => {
   let efemero: BancoEfemero;
   let banco: BancoPg;
   let adm: ReturnType<typeof admSql>;
@@ -51,10 +52,10 @@ describe.skipIf(!PG_DISPONIVEL)('agenda do conector no PostgreSQL real', { timeo
     efemero = await criarBancoEfemero();
     adm = admSql(efemero);
     banco = efemero.banco('macuxierp_worker', 6);
-  });
+  }, TEMPO_PREPARO_MS);
   afterAll(async () => {
     await efemero?.remover();
-  });
+  }, TEMPO_PREPARO_MS);
 
   describe('reservar (SKIP LOCKED, tenant_id, pausada, posse)', () => {
     it('reserva só o vencido e não pausado, adia para a posse e não reserva de novo; ignora as colunas da T-0016', async () => {
