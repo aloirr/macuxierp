@@ -6,7 +6,8 @@ import type { PaginaBase } from '@macuxierp/platform-sdk/paginas';
 import { definirPaginaLista, type ColunaLista } from '@macuxierp/platform-sdk/listas';
 import { Uuid } from '@macuxierp/cadastros/contracts';
 import { z } from 'zod';
-import { formatarCentavos } from '@macuxierp/platform-sdk/formatar';
+import { FUSO_PADRAO } from '@macuxierp/platform-sdk';
+import { formatarCentavos, formatarDataHora } from '@macuxierp/platform-sdk/formatar';
 import { OrigemPedido, PedidoLista, StatusPedido } from '../contracts';
 
 /** Linha da lista; `cliente_documento` só vem no CSV de quem pode ver o documento (nunca para o vendedor). */
@@ -17,11 +18,25 @@ const DATA = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 export const COLUNA_DOCUMENTO = 'cliente_documento';
 
-const colunasPedidos: readonly ColunaLista<ItemListaPedido>[] = [
+export const ROTULO_STATUS: Readonly<Record<StatusPedido, string>> = {
+  recebido: 'Recebido',
+  em_analise: 'Em análise',
+  aprovado: 'Aprovado',
+  recusado: 'Recusado',
+  faturado_parcial: 'Faturado parcial',
+  faturado: 'Faturado',
+  cancelado: 'Cancelado',
+};
+
+/** Tipo da coluna para o shell (o `ColunaLista` do sdk ainda não tem `tipo`; mesmo formato do faturamento). */
+type ColunaPedido = ColunaLista<ItemListaPedido> & { tipo?: 'texto' | 'numero' | 'dinheiro' | 'data' | 'status' };
+
+/** O `valor` serve ao CSV (e ao descritor); a tela formata a linha em `linhaDaTela`, no fuso do tenant. */
+const colunasPedidos: readonly ColunaPedido[] = [
   { id: 'numero', titulo: 'Número', valor: (p) => p.numero },
   { id: 'origem', titulo: 'Origem', valor: (p) => p.origem },
-  { id: 'status', titulo: 'Status', valor: (p) => p.status },
-  { id: 'emitido_em', titulo: 'Emitido em (UTC)', valor: (p) => p.emitido_em },
+  { id: 'status', titulo: 'Status', tipo: 'status', valor: (p) => ROTULO_STATUS[p.status] },
+  { id: 'emitido_em', titulo: 'Emitido em', tipo: 'data', valor: (p) => formatarDataHora(p.emitido_em, FUSO_PADRAO) },
   { id: 'cliente_razao_social', titulo: 'Cliente', valor: (p) => p.cliente_razao_social },
   { id: COLUNA_DOCUMENTO, titulo: 'Documento do cliente', valor: (p) => p.cliente_documento },
   { id: 'filial_id', titulo: 'Filial', valor: (p) => p.filial_id },

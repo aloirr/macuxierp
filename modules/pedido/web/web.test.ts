@@ -72,6 +72,18 @@ describe('páginas do BKO do pedido', () => {
   });
 });
 
+describe('descritor da lista: tipos das colunas (MC-0201)', () => {
+  it('RN-PED-02: status é coluna de status com rótulo e emitido_em é data no fuso, sem (UTC) no título e sem ISO cru', () => {
+    const col = (id: string) => paginaPedidos.colunas.find((c) => c.id === id) as { titulo: string; tipo?: string; valor: (p: ItemListaPedido) => unknown };
+    expect(col('status').tipo).toBe('status');
+    expect(col('status').valor(item)).toBe('Em análise');
+    expect(col('emitido_em').tipo).toBe('data');
+    expect(col('emitido_em').titulo).not.toContain('UTC');
+    expect(col('emitido_em').valor(item)).toBe(linhaDaTela(item, 'America/Manaus').emitido_em);
+    expect(String(col('emitido_em').valor(item))).not.toContain('T');
+  });
+});
+
 describe('formatação', () => {
   it('centavos em R$, Qtd4 em quantidade, bp em %', () => {
     expect(semEspacoDuro(formatarCentavos(5))).toBe('R$ 0,05');

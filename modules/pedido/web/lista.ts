@@ -9,17 +9,9 @@ import { FONTE_CLIENTE, FONTE_FILIAL, FONTE_VENDEDOR } from './fontes';
 import { podeVerDocumentoCliente } from '../domain/privacidade';
 import { OrigemPedido, StatusPedido } from '../contracts';
 import { formatarCentavos, formatarDataHora } from '@macuxierp/platform-sdk/formatar';
-import { COLUNA_DOCUMENTO, paginaPedidos, type ItemListaPedido } from './paginas';
+import { COLUNA_DOCUMENTO, ROTULO_STATUS, paginaPedidos, type ItemListaPedido } from './paginas';
 
-export const ROTULO_STATUS: Readonly<Record<StatusPedido, string>> = {
-  recebido: 'Recebido',
-  em_analise: 'Em análise',
-  aprovado: 'Aprovado',
-  recusado: 'Recusado',
-  faturado_parcial: 'Faturado parcial',
-  faturado: 'Faturado',
-  cancelado: 'Cancelado',
-};
+export { ROTULO_STATUS };
 
 export const ROTULO_ORIGEM: Readonly<Record<OrigemPedido, string>> = { fdv: 'Macuxi FDV', bko: 'Manual' };
 

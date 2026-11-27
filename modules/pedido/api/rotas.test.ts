@@ -623,7 +623,7 @@ describe('CSV (RF-PED-05)', () => {
     const g = await t.chamar('GET', '/pedidos/exportar', { sessao: gerente });
     expect(g.status).toBe(200);
     expect(g.cabecalhos).toMatchObject({ 'content-type': 'text/csv; charset=utf-8', 'content-disposition': 'attachment; filename="pedidos.csv"' });
-    expect(g.corpo.startsWith('﻿Número;Origem;Status;Emitido em (UTC);Cliente;Documento do cliente;')).toBe(true);
+    expect(g.corpo.startsWith('﻿Número;Origem;Status;Emitido em;Cliente;Documento do cliente;')).toBe(true);
     expect(g.corpo).toContain(CPF_DO_CLIENTE);
     expect(g.corpo).toContain('10,00');
     expect(g.corpo.trim().split('\r\n')).toHaveLength(3);
