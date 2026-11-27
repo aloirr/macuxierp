@@ -10,7 +10,9 @@
  */
 import { z } from 'zod';
 import { ConectorIdHub, ENTIDADES_HUB_F2, EstadoLoteHub, Instante, ModoLote, VersaoSemver, type EntidadeHub } from './hub-v1';
+import type { Transacao } from './banco';
 import { CABECALHO_IDEMPOTENCIA, PADRAO_CHAVE_IDEMPOTENCIA } from './idempotencia';
+import type { ContextoRota, EntradaRota, RespostaRota, RotaModulo } from './rotas';
 
 export const PREFIXO_ENTRADA = '/entrada/v1';
 
@@ -110,3 +112,49 @@ export const PortalEntradaLeitura = z
   })
   .strict();
 export type PortalEntradaLeitura = z.infer<typeof PortalEntradaLeitura>;
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Rotas da `/entrada/v1` (E2): o módulo dono (cadastros) declara as rotas; a apps/api autentica a máquina e abre a
+// transação no tenant da credencial. Sem sessão de usuário nem JWT: o "perfil" é o `conector_entrada` (ADR 0014 §3).
+// ---------------------------------------------------------------------------------------------------------------------
+
+/** O módulo que responde pela entrada e cuja licença a rota exige (regra 6). */
+export const MODULO_ENTRADA = 'cadastros' as const;
+
+/** Quem chamou, depois da autenticação (o HMAC da chave conferido). */
+export interface ConectorAutenticado {
+  tenant_id: string;
+  credencial_id: string;
+  conector_id: string;
+}
+
+/** O `ContextoRota` sem sessão de usuário: a `tx` tem o `app.tenant_id` da credencial (RLS). */
+export interface ContextoEntrada extends Pick<ContextoRota, 'tx' | 'request_id' | 'agora' | 'enfileirar'> {
+  conector: ConectorAutenticado;
+}
+
+export type CaminhoEntrada = (typeof CAMINHOS_ENTRADA)[keyof typeof CAMINHOS_ENTRADA];
+
+export interface RotaEntrada<TC = unknown, TQ = unknown> extends Pick<RotaModulo<TC, TQ>, 'corpo' | 'consulta'> {
+  metodo: 'GET' | 'POST';
+  caminho: CaminhoEntrada;
+  executar(c: ContextoEntrada, e: EntradaRota<TC, TQ>): Promise<RespostaRota>;
+}
+
+/** Ajuda de tipo, como o `definirRota`: infere corpo e consulta dos schemas e devolve a rota "apagada" para a API. */
+export function definirRotaEntrada<TC = undefined, TQ = undefined>(r: RotaEntrada<TC, TQ>): RotaEntrada {
+  return r as unknown as RotaEntrada;
+}
+
+/** A credencial guardada, lida antes de haver tenant (B1: `cadastros.entrada_autenticar`). Nunca vai a log. */
+export interface CredencialEntradaArmazenada {
+  tenant_id: string;
+  credencial_id: string;
+  /** HMAC-SHA256(pepper, chave) em hex minúsculo (64). */
+  chave_hmac: string;
+}
+
+/** Porta da autenticação: credencial ativa (não revogada) do `conector_id`, ou `null`. */
+export interface PortaCredencialEntrada {
+  buscar(tx: Transacao, conectorId: string): Promise<CredencialEntradaArmazenada | null>;
+}

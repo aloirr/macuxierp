@@ -43,7 +43,6 @@ import {
   QUANTIDADE_MAXIMA_ARQUIVOS,
   pode,
   temFuso,
-  trabalhoDoModulo,
   type Banco,
   type ContextoRota,
   type DestinoAuditoria,
@@ -71,9 +70,10 @@ import { registrarSemEnvio } from './auth/esqueci-log';
 import type { EnvioEmail } from './email/porta';
 import { bloqueiaPorTrocaDeSenha, CorpoTrocaSenha, corpoTrocarSenha } from './auth/troca-senha';
 import { diagnosticoBanco } from './erro-banco';
-import { entradaDaChamada, responder } from './execucao-rota';
+import { enfileirarDoModulo, entradaDaChamada, responder } from './execucao-rota';
 import { lerMultipart } from './multipart';
 import { ipDoCliente } from './plataforma/ip-cliente';
+import { montarEntrada, type DependenciasEntrada } from './entrada/montar';
 import { EMPRESA_PLATAFORMA, LimitePorChave, novosLimitesEsqueci, type LimitesEsqueci } from './plataforma/limite-ip';
 import { montarPlataforma, responderLoginPlataforma, traduzido, type DependenciasPlataformaApi } from './plataforma/rotas';
 import type { ServicoPlataforma } from './plataforma/servico';
@@ -116,6 +116,8 @@ export interface DependenciasApp {
    * `repoCore` grava a temporária do tenant (`emitirSenhaTemporaria` do core, RN-CORE-13); produção: o `RepositorioCoreSql` dos módulos.
    */
   esqueci?: { envio: EnvioEmail; limites?: LimitesEsqueci; repoCore: Pick<RepositorioCore, 'emitirSenhaTemporaria'> };
+  /** `/entrada/v1` (T-0057, ADR 0014 §3): rotas do cadastros e a autenticação de máquina. Ausente = não montada. */
+  entrada?: DependenciasEntrada;
   /** Opções do pino; `false` desliga (testes). */
   logger?: boolean | Record<string, unknown>;
 }
@@ -336,6 +338,7 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
   });
 
   for (const plugin of d.modulos) montarModulo(app, plugin, d);
+  if (d.entrada) montarEntrada(app, d.entrada, { banco: d.banco, licencas: d.licencas, trabalhos: d.trabalhos, relogio: d.relogio, segredoBff });
   return app;
 }
 
@@ -412,12 +415,7 @@ async function executarRota(req: FastifyRequest, reply: FastifyReply, rota: Rota
         auditar: async (dados) => {
           await auditar(d.auditoria, tx, { tenant_id: sessao.tenant_id, usuario_id: sessao.usuario_id, request_id: req.id }, dados, agora);
         },
-        enfileirar: async (pedido) => {
-          if (!trabalhoDoModulo(modulo, pedido.tipo)) {
-            throw new Error(`${modulo} enfileirando trabalho fora do próprio módulo: ${pedido.tipo}`);
-          }
-          return d.trabalhos.enfileirar(tx, { ...pedido, tenant_id: sessao.tenant_id });
-        },
+        enfileirar: enfileirarDoModulo(modulo, d.trabalhos, tx, sessao.tenant_id),
       };
       const e = entradaDaChamada(req, rota, entrada);
       const chave = rota.idempotencia ? chaveDoPedido(e.cabecalhos, rota.idempotencia) : null;

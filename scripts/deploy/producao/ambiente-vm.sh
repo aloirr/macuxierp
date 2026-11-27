@@ -4,8 +4,9 @@
 #
 #   bash ambiente-vm.sh <usuario-de-deploy>
 #
-#   1. gerados.env: senhas dos papéis, segredo do JWT e prova do BFF (MACUXIERP_SEGREDO_BFF, T-0050), gerados UMA vez
-#      (openssl rand), cada um só se faltar; nunca regenerados;
+#   1. gerados.env: senhas dos papéis, segredo do JWT, prova do BFF (MACUXIERP_SEGREDO_BFF, T-0050) e o pepper da
+#      entrada (MACUXIERP_PEPPER_ENTRADA, ADR 0014, emenda de 26/11), gerados UMA vez (openssl rand), cada um só se
+#      faltar; nunca regenerados;
 #   2. .env: criado se faltar; MACUXIERP_CHAVE_A1 e MACUXIERP_CHAVE_INTEGRACAO geradas (openssl rand -hex 32) SÓ se
 #      faltarem ou estiverem vazias. Valor presente NUNCA é trocado (perder a chave do A1 é irreversível);
 #   3. banco.env, admin.env e segredos.env: copiados a cada publicação da configuração de produção do FDV, na mesma VM
@@ -45,6 +46,7 @@ acrescentar MACUXIERP_SENHA_WORKER "$(openssl rand -hex 32)"
 acrescentar MACUXIERP_SENHA_LEITURA "$(openssl rand -hex 32)"
 acrescentar MACUXIERP_JWT_SEGREDO "$(openssl rand -hex 48)"
 acrescentar MACUXIERP_SEGREDO_BFF "$(openssl rand -hex 32)"
+acrescentar MACUXIERP_PEPPER_ENTRADA "$(openssl rand -hex 32)"
 dono_600 "$GERADOS"
 
 # ---------- 2. .env: chaves mestras ----------
