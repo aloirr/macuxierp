@@ -6,6 +6,7 @@ import {
   ACOES_FDV_SO_DO_PORTAL,
   AmbienteIntegracaoFdv,
   CAMINHOS_INTEGRACAO_FDV_PLATAFORMA,
+  CadastroIntegracaoFdv,
   CadastroIntegracaoFdvPlataforma,
   ConfigurarIntegracaoPlataformaEntrada,
   DefinirCredencialPlataformaEntrada,
@@ -20,6 +21,7 @@ import {
   RespostaRetomadaFdv,
   RespostaTestarPlataforma,
   StatusIntegracaoFdvTenant,
+  UltimoSinalFdv,
   falhaEnvioFdv,
   integracaoFdvLigada,
 } from './portal-integracao';
@@ -262,5 +264,25 @@ describe('contratos da Integração FDV no portal /config (ADR 0013, T-0056)', (
     expect(sdk.CadastroIntegracaoFdvPlataforma).toBe(CadastroIntegracaoFdvPlataforma);
     expect(sdk.RespostaAceitoFdv).toBe(RespostaAceitoFdv);
     expect(sdk.RespostaRetomadaFdv).toBe(RespostaRetomadaFdv);
+  });
+});
+
+describe('v0.3.18 (25 B, integração A2): último código do sinal e próxima tentativa da pausa', () => {
+  it('UltimoSinalFdv aceita ultimo_codigo (código do Hub, lower_snake) ou null; sem ele, segue válido', () => {
+    const sinal = { ultimo_envio_em: AGORA, ultimo_aceito_em: null, ultimo_http: 401, parado_por_versao: false };
+    expect(UltimoSinalFdv.parse({ ...sinal, ultimo_codigo: 'credencial_invalida' })).toMatchObject({ ultimo_codigo: 'credencial_invalida' });
+    expect(UltimoSinalFdv.parse({ ...sinal, ultimo_codigo: null }).ultimo_codigo).toBeNull();
+    expect(UltimoSinalFdv.safeParse(sinal).success).toBe(true);
+    expect(UltimoSinalFdv.safeParse({ ...sinal, ultimo_codigo: 'Mensagem do Hub' }).success).toBe(false);
+  });
+
+  it('proxima_tentativa_em só com a pausa credencial ou licenca_fdv (a sondagem de 30 min)', () => {
+    const comTentativa = (motivo: 'licenca_fdv' | 'erros_por_linha') =>
+      comCredencial.cadastros.map((c) =>
+        c.entidade === 'filial' ? { ...c, falha: { motivo, acao: ACAO_SUGERIDA_POR_MOTIVO_FDV[motivo] }, proxima_tentativa_em: AGORA } : c,
+      );
+    expect(CadastroIntegracaoFdv.parse({ entidade: 'filial', ligada: true, ultimo_envio_em: AGORA, falha: { motivo: 'credencial', acao: 'corrigir_credencial' }, proxima_tentativa_em: AGORA })).toMatchObject({ proxima_tentativa_em: AGORA });
+    expect(IntegracaoFdvPlataforma.safeParse({ ...comCredencial, cadastros: comTentativa('licenca_fdv') }).success).toBe(true);
+    expect(IntegracaoFdvPlataforma.safeParse({ ...comCredencial, cadastros: comTentativa('erros_por_linha') }).success).toBe(false);
   });
 });

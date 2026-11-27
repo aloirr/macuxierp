@@ -199,17 +199,18 @@ export const LogCadastroFdvTenant = LogCadastroFdvBase.extend({
     .max(LIMITE_ERROS_LOG_FDV),
   /**
    * T-0110: os pré-cadastros recebidos do FDV (só no Log de `cliente`), os mais recentes, até `LIMITE_RECEBIDOS_LOG_FDV`;
-   * documento só mascarado (LGPD, `ClienteRecebidoFdv`). Opcionais nesta versão (expand): ausente = nenhum recebido.
+   * documento só mascarado (LGPD, `ClienteRecebidoFdv`). Sempre presentes na saída desde a v0.3.18 (5b, o contract do expand
+   * da T-0110): quem consome conta com eles; ausentes na entrada valem `[]` e 0 (fora do Log de cliente é sempre isso).
    */
-  recebidos: z.array(ClienteRecebidoFdv).max(LIMITE_RECEBIDOS_LOG_FDV).optional(),
-  total_recebidos: Contagem.optional(),
+  recebidos: z.array(ClienteRecebidoFdv).max(LIMITE_RECEBIDOS_LOG_FDV).default([]),
+  total_recebidos: Contagem.default(0),
 }).superRefine((l, ctx) => {
   if (l.erros.length > l.total_erros) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['erros'], message: 'Os itens não passam do total' });
-  const recebidos = l.recebidos ?? [];
-  if (recebidos.length > (l.total_recebidos ?? 0)) {
+  const recebidos = l.recebidos;
+  if (recebidos.length > l.total_recebidos) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['recebidos'], message: 'Os recebidos não passam do total' });
   }
-  if (l.entidade !== 'cliente' && (recebidos.length > 0 || (l.total_recebidos ?? 0) > 0)) {
+  if (l.entidade !== 'cliente' && (recebidos.length > 0 || l.total_recebidos > 0)) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['recebidos'], message: 'Recebidos só no Log de cliente' });
   }
 });

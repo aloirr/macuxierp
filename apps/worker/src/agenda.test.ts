@@ -95,6 +95,18 @@ describe('rodarAgendas', () => {
     expect(linhas.filter((l) => l.devolvidos).map(({ agenda, devolvidos }) => ({ agenda, devolvidos }))).toEqual([{ agenda: 'integracao-fdv.teste', devolvidos: 1 }]);
   });
 
+  it('v0.3.18 (integração A2): cada item recebe ctx.log filho com agenda, tarefa e tenant_id', async () => {
+    const { log, linhas } = logGravador();
+    const a = agendaMemoria([{ tenant_id: T1, tarefa: 'envio', chave: 'cliente' }]);
+    a.agenda.executar = async (_item, ctx) => {
+      ctx.log?.warn({ entidade: 'cliente', motivo: 'credencial' }, 'cadastro pausado');
+    };
+    await rodarAgendas([a.agenda], { banco: new BancoMemoria(), licencas: licencas([T1]), hub, decifrarCredencial, relogio: new RelogioFixo(INICIO), log });
+    expect(linhas.filter((l) => l.msg === 'cadastro pausado')).toEqual([
+      expect.objectContaining({ agenda: 'integracao-fdv.teste', tarefa: 'envio', tenant_id: T1, entidade: 'cliente', motivo: 'credencial', level: 40 }),
+    ]);
+  });
+
   it('tenant sem licença do módulo: semLicenca na transação dele, sem executar', async () => {
     const a = agendaMemoria([
       { tenant_id: T1, tarefa: 'envio', chave: 'cliente' },

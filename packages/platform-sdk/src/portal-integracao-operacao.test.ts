@@ -78,22 +78,24 @@ describe('Log por cadastro (R-20261124-085515, ADR 0013)', () => {
 
   it('BKO: o registro, o motivo, a ação e o link Corrigir (nulo quando apagado)', () => {
     const erro = { registro_external_id: 'V-01', nome_curto: 'Ana', campo: 'filial_external_id', codigo: 'referencia_ausente', motivo_texto: 'Filial não existe no FDV', acao_texto: 'Carregue Filiais antes', corrigir_href: '/cadastros/vendedores/V-01' };
-    const l = { ...base, erros: [erro, { ...erro, registro_external_id: 'V-02', corrigir_href: null }] };
+    const l = { ...base, erros: [erro, { ...erro, registro_external_id: 'V-02', corrigir_href: null }], recebidos: [], total_recebidos: 0 };
     expect(LogCadastroFdvTenant.parse(l)).toEqual(l);
     expect(LogCadastroFdvTenant.safeParse({ ...l, total_erros: 1 }).success).toBe(false);
     expect(LogCadastroFdvTenant.safeParse({ ...l, erros: Array(LIMITE_ERROS_LOG_FDV + 1).fill(erro), total_erros: 500 }).success).toBe(false);
   });
 
-  it('T-0110: recebidos do FDV só no Log de cliente, até LIMITE_RECEBIDOS_LOG_FDV e sem passar do total; ausentes = versão anterior', () => {
+  it('T-0110: recebidos do FDV só no Log de cliente, até LIMITE_RECEBIDOS_LOG_FDV e sem passar do total; sempre presentes na saída desde a v0.3.18 (5b)', () => {
     const recebido = {
       id: '0d6b6a4e-3c1f-4b8e-9d2a-5f7e8c9a1b2c', cliente_uuid: '1e7c7b5f-4d2a-4c9f-8e3b-6a8f9dab2c3d', codigo_fdv: '12345',
       razao_social: 'Mercadinho Ficticio Ltda', documento_mascarado: '11.444.777/****-**', vendedor_external_id: null,
       recebido_em: '2026-11-26T10:00:00-04:00', revisao: 1, situacao: 'recebido', motivo: null, erros: [], cliente_id: null, retorno: null,
     };
-    const cli = { ...base, entidade: 'cliente', total_erros: 0, motivo: null, erros: [] };
+    const cli = { ...base, entidade: 'cliente', total_erros: 0, motivo: null, erros: [], recebidos: [], total_recebidos: 0 };
     const l = { ...cli, recebidos: [recebido], total_recebidos: 7 };
     expect(LogCadastroFdvTenant.parse(l)).toEqual(l);
     expect(LogCadastroFdvTenant.parse(cli)).toEqual(cli);
+    const { recebidos: _r, total_recebidos: _t, ...semRecebidos } = cli;
+    expect(LogCadastroFdvTenant.parse(semRecebidos)).toMatchObject({ recebidos: [], total_recebidos: 0 });
     expect(LogCadastroFdvTenant.safeParse({ ...l, total_recebidos: 0 }).success).toBe(false);
     expect(LogCadastroFdvTenant.safeParse({ ...l, recebidos: Array(LIMITE_RECEBIDOS_LOG_FDV + 1).fill(recebido), total_recebidos: 900 }).success).toBe(false);
     expect(LogCadastroFdvTenant.safeParse({ ...l, entidade: 'vendedor' }).success).toBe(false);
