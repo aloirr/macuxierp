@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import { ComEsqueciSenha, PainelEsqueciVisao, estadoDe } from './esqueci-senha';
+import { ComEsqueciSenha, PainelEsqueciVisao, estadoDe, retornoDe } from './esqueci-senha';
 import { FormularioLogin } from '@/app/login/formulario';
 import { validarCampos } from '@/lib/login-regras';
 
@@ -11,6 +11,11 @@ vi.mock('@/app/login/esqueci', () => ({ pedirEsqueciAction: vi.fn() }));
 const form = { fase: 'form', erros: {} } as const;
 
 describe('painel Esqueci a senha (RN-CORE-13)', () => {
+  it('36 A: o erro do envio fica logo abaixo do botão, não no topo do formulário', () => {
+    const h = renderToStaticMarkup(<PainelEsqueciVisao estado={estadoDe({ tipo: 'erro', texto: 'x' })} resultado={retornoDe({ tipo: 'erro', texto: 'Não foi possível enviar. Tente de novo.' })} />);
+    expect(h.indexOf('Não foi possível enviar. Tente de novo.')).toBeGreaterThan(h.indexOf('</button>'));
+    expect(h).not.toContain('class="erro"');
+  });
   it('confirmação (T-0111) neutra, em aviso verde com role=status, sem formulário e com "Voltar para entrar"', () => {
     const h = renderToStaticMarkup(<PainelEsqueciVisao estado={estadoDe({ tipo: 'ok' })} />);
     expect(h).toContain('role="status"');
@@ -20,7 +25,7 @@ describe('painel Esqueci a senha (RN-CORE-13)', () => {
     expect(h).toContain('Voltar para entrar');
   });
   it('limite: mostra o texto da API e mantém o formulário', () => {
-    const h = renderToStaticMarkup(<PainelEsqueciVisao estado={estadoDe({ tipo: 'limite', texto: 'Muitas tentativas. Tente de novo em 3 minutos.' })} />);
+    const h = renderToStaticMarkup(<PainelEsqueciVisao estado={estadoDe({ tipo: 'limite', texto: 'x' })} resultado={retornoDe({ tipo: 'limite', texto: 'Muitas tentativas. Tente de novo em 3 minutos.' })} />);
     expect(h).toContain('Muitas tentativas. Tente de novo em 3 minutos.');
     expect(h).toContain('<form');
     expect(h).toContain('Enviar senha temporária');

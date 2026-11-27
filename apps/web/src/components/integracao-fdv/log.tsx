@@ -3,11 +3,10 @@ import { useEffect, useState } from 'react';
 import { Chip, Dialogo, TabelaDensa, type ColunaTabela } from '@macuxierp/ui';
 import type { ClienteRecebidoFdv, EntidadeEnvioFdv, LogCadastroFdvTenant } from '@macuxierp/platform-sdk';
 import {
-  NOME_CSV_RECEBIDOS_LOG, ROTULO_BAIXAR_ERROS, ROTULO_CORRIGIR, ROTULO_ENTIDADE, TEXTO_ESTADO_LOG, TEXTO_LEGENDA_ERROS_LOG, TEXTO_VAZIO_RECEBIDOS_LOG, TITULO_SECAO_RECEBIDOS_LOG,
-  colunasDeErrosLog, colunasDeRecebidosLog, csvDeRecebidosLog, errosForaDaListaLog, linhasDeEnviosLog, linhasDeErrosLog, linhasDeRecebidosLog, textoErrosForaDaLista,
+  ROTULO_BAIXAR_ERROS, ROTULO_BAIXAR_RECEBIDOS, ROTULO_CORRIGIR, ROTULO_ENTIDADE, TEXTO_ESTADO_LOG, TEXTO_LEGENDA_ERROS_LOG, TEXTO_VAZIO_RECEBIDOS_LOG, TITULO_SECAO_RECEBIDOS_LOG,
+  colunasDeErrosLog, colunasDeRecebidosLog, errosForaDaListaLog, linhasDeEnviosLog, linhasDeErrosLog, linhasDeRecebidosLog, textoErrosForaDaLista, textoRecebidosForaDaLista,
   type LinhaEnvioLog, type LinhaErroLog, type LinhaRecebidoLog,
 } from '@macuxierp/integracao-fdv/web';
-import { baixarCsv } from '@/lib/baixar-csv';
 import { ROTULOS_FDV } from '@/lib/config/operacao-fdv';
 import { lerLogFdv, type ResultadoLogFdv } from '@/app/(shell)/[modulo]/[...pagina]/acoes-log-fdv';
 
@@ -50,8 +49,8 @@ const TEXTO_LOG_SEM_PERMISSAO = 'Seu perfil não pode ver o Log desta integraç�
 /** Caminho do download no shell (o token é httpOnly: o arquivo passa pelo proxy `/baixar-erros-fdv`). */
 export const caminhoDoDownloadErros = (entidade: EntidadeEnvioFdv): string => `/baixar-erros-fdv?entidade=${encodeURIComponent(entidade)}`;
 
-/** Aviso quando há mais recebidos do que a lista traz: só o fato, sem prometer arquivo (o CSV sai do que está na tela). */
-export const textoRecebidosForaDaLista = (mostrados: number, total: number): string => `Mostrando os ${mostrados} mais recentes de ${total}.`;
+/** Download do arquivo completo dos recebidos (decisão 21 A) pelo proxy do shell; no corte, a última linha do arquivo avisa. */
+const CAMINHO_DOWNLOAD_RECEBIDOS = '/baixar-recebidos-fdv';
 
 /** Seção "Recebidos do FDV" do Log de clientes: aceito, recusado com motivo e reenviado (RN-INF-09). */
 export function SecaoRecebidosLog({ recebidos, total, fuso }: { recebidos: readonly ClienteRecebidoFdv[]; total: number; fuso: string }) {
@@ -73,7 +72,7 @@ export function SecaoRecebidosLog({ recebidos, total, fuso }: { recebidos: reado
           <>
             <div className="resumo-log">
               <h3>{TITULO_SECAO_RECEBIDOS_LOG}</h3>
-              <button type="button" className="mx-botao-secundario" onClick={() => baixarCsv(NOME_CSV_RECEBIDOS_LOG, csvDeRecebidosLog(recebidos, fuso))}>Baixar recebidos (.csv)</button>
+              <a className="mx-botao-secundario" href={CAMINHO_DOWNLOAD_RECEBIDOS}>{ROTULO_BAIXAR_RECEBIDOS}</a>
             </div>
             <div className="tabela-rolavel com-sinal-rolagem legenda-so-leitor"><TabelaDensa colunas={colunas} linhas={linhas} chaveLinha={(l) => `${l.cliente}|${l.recebidoEm}|${l.revisao}|${l.situacao}`} textoVazio={TEXTO_VAZIO_RECEBIDOS_LOG} legenda={TITULO_SECAO_RECEBIDOS_LOG} /></div>
           </>

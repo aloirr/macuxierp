@@ -49,6 +49,16 @@ describe('contratos do módulo', () => {
     const un = { external_id: 'u', ativo: true, produto_external_id: 'p', unidade: 'CX', padrao: true };
     expect(ProdutoUnidadeHub.safeParse({ ...un, fator: 12 }).success).toBe(true);
     expect(ProdutoUnidadeHub.safeParse({ ...un, fator: '12' }).success).toBe(false);
+    // T-0097 (RN-INF-07, aditivo ADR 0076 do FDV): fração com até 4 casas; 5 casas e zero não
+    expect(ProdutoUnidadeHub.safeParse({ ...un, fator: 1.2345 }).success).toBe(true);
+    expect(ProdutoUnidadeHub.safeParse({ ...un, fator: 0.0001 }).success).toBe(true);
+    expect(ProdutoUnidadeHub.safeParse({ ...un, fator: 1.23456 }).success).toBe(false);
+    expect(ProdutoUnidadeHub.safeParse({ ...un, fator: 0 }).success).toBe(false);
+    const retorno = (quantidade: number) => ({ versao_contrato: 'v1', pedido_uuid: '11111111-1111-4111-8111-111111111111', status: 'faturado_total', ocorrido_em: '2026-11-21T18:00:00.000Z', itens_faturados: [{ sequencia: 1, produto_external_id: 'P001', quantidade, valor_cents: 10 }] });
+    expect(c.RetornoErp.safeParse(retorno(2.5)).success).toBe(true);
+    expect(c.RetornoErp.safeParse(retorno(0.0001)).success).toBe(true);
+    expect(c.RetornoErp.safeParse(retorno(1.23456)).success).toBe(false);
+    expect(c.casasAte4(Number.NaN)).toBe(false);
     const es = { external_id: 'e', ativo: true, deposito_external_id: 'd', produto_external_id: 'p', filial_external_id: 'f' };
     expect(EstoqueHub.safeParse({ ...es, saldo: -1.5 }).success).toBe(true);
     expect(EstoqueHub.safeParse({ ...es, saldo: '1.5' }).success).toBe(false);

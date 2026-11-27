@@ -16,7 +16,7 @@ const ENT: readonly string[] = ENTIDADES_ENVIO_FDV;
 const dados = (extra: Record<string, unknown> = {}, com = true) =>
   IntegracaoFdvPlataforma.parse({
     empresa_id: ID, modulo_licenciado: true,
-    credencial_id: com ? ID : null, conector_id: com ? 'erp-1' : null, ambiente: com ? 'teste' : null, chave_prefixo: com ? 'abcd1234' : null, criada_em: com ? '2026-11-23T12:00:00.000Z' : null, ultimo_uso_em: null,
+    credencial_id: com ? ID : null, conector_id: com ? 'erp-1' : null, ambiente: com ? 'teste' : null, chave_prefixo: com ? 'abcd1234' : null, criada_em: com ? '2026-11-23T12:00:00.000Z' : null,
     entidades_habilitadas: com ? ['produto', 'cliente'] : [], limite_registros_lote: com ? 500 : null, ultimo_sinal: null,
     cadastros: ENT.map((entidade) => ({ entidade, ligada: com && (entidade === 'produto' || entidade === 'cliente'), ultimo_envio_em: null, falha: entidade === 'cliente' && com ? { motivo: 'credencial', acao: 'corrigir_credencial' } : null, lote_em_voo: false })),
     ...extra,
@@ -115,6 +115,24 @@ describe('aba Integração do /config (T-0056)', () => {
     const msg = nova.indexOf('Nenhum cadastro ligado.');
     expect(nova.indexOf('<table', msg)).toBeGreaterThan(msg);
     expect(render()).not.toContain('Nenhum cadastro ligado');
+  });
+  it('36 A: cada botão com retorno tem o ResultadoAcao depois dele e nada de mensagem solta no topo', () => {
+    const h = render(dados(), monitor());
+    const depois = (rotulo: string) => {
+      const i = h.indexOf(`>${rotulo}</button>`);
+      expect(i, rotulo).toBeGreaterThan(0);
+      return h.indexOf('data-resultado-acao', i);
+    };
+    // Atualizar: abaixo do cabeçalho do Monitor; Testar conexão e Trocar chave: abaixo da fila; Salvar e Zerar: logo depois
+    expect(depois('Atualizar')).toBeLessThan(h.indexOf('data-testid="monitor"'));
+    expect(depois('Testar conexão')).toBeLessThan(h.indexOf('<h2 id="h-env">'));
+    expect(depois('Trocar chave')).toBe(depois('Testar conexão')); // fila de dois botões: os resultados vêm depois dela, na ordem dos botões
+    expect(depois('Salvar')).toBeLessThan(h.indexOf('<table', h.indexOf('<h2 id="h-env">')));
+    expect(depois('Zerar pedidos não faturados')).toBeGreaterThan(h.indexOf('Zerar pedidos não faturados'));
+    const topo = h.slice(0, h.indexOf('<h2 id="h-monitor">'));
+    expect(topo).not.toMatch(/class="erro"|aviso-sucesso/);
+    expect(h).not.toMatch(/<p class="(faixa-aviso|erro)"[^>]*role="(status|alert)">(Chave|Conexão|Limite)/);
+    expect((h.match(/data-resultado-acao/g) ?? []).length).toBeGreaterThanOrEqual(7);
   });
   it('sem a licença do módulo: aviso e escritas desabilitadas', () => {
     const h = render(dados({ modulo_licenciado: false }));

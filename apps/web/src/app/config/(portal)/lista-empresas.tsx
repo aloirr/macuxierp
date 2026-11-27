@@ -1,6 +1,7 @@
 'use client';
 import type { EmpresaPlataforma } from '@macuxierp/platform-sdk';
-import { TabelaDensa, type ColunaTabela } from '@macuxierp/ui';
+import { ResultadoAcao, TabelaDensa, useResultado, type ColunaTabela } from '@macuxierp/ui';
+import { resultadoErro } from '@/lib/resultado-acao';
 import { acumularPagina } from '@macuxierp/ui/paginacao';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -27,7 +28,7 @@ export function ListaEmpresas({ empresas, vazio, proximo = null, busca = '' }: {
   const router = useRouter();
   const [linhas, setLinhas] = useState(empresas);
   const [cursor, setCursor] = useState(proximo);
-  const [erro, setErro] = useState('');
+  const [resultado, chaveResultado, mostrar, limpar] = useResultado(); // 36 A: abaixo da tabela, onde fica o "Carregar mais"
   const [pendente, iniciar] = useTransition();
   const carregarMais = () => {
     if (!cursor) return;
@@ -36,9 +37,9 @@ export function ListaEmpresas({ empresas, vazio, proximo = null, busca = '' }: {
       if (r.ok) {
         setLinhas((atuais) => acumularPagina(atuais, r.valor.itens, (e) => e.id));
         setCursor(r.valor.proximo_cursor);
-        setErro('');
+        limpar();
       } else {
-        setErro(r.erro || 'Não foi possível carregar mais. Tente de novo.');
+        mostrar(resultadoErro(r.erro || 'Não foi possível carregar mais. Tente de novo.'));
       }
     });
   };
@@ -69,7 +70,7 @@ export function ListaEmpresas({ empresas, vazio, proximo = null, busca = '' }: {
         aoCarregarMais={carregarMais}
       />
     </div>
-    {erro && <p className="erro" role="alert">{erro}</p>}
+    <ResultadoAcao resultado={resultado} chave={chaveResultado} />
     </>
   );
 }

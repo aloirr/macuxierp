@@ -8,6 +8,7 @@ vi.mock('./entrar', () => ({ entrarAction: vi.fn() }));
 vi.mock('./esqueci', () => ({ pedirEsqueciAction: vi.fn() }));
 
 import { VisaoLogin } from './formulario';
+import { resultadoErro } from '@/lib/resultado-acao';
 import Login from './page';
 import Entrar from '../config/entrar/page';
 
@@ -47,7 +48,7 @@ describe('tela única de login (T-0076)', () => {
   it('estados: carregando, erro de login (role alert, neutro), erro de campo por aria', () => {
     expect(renderToStaticMarkup(<VisaoLogin destino="/" valores={vazio} pendente />)).toMatch(/disabled=""[^>]*>Entrando…/);
     expect(renderToStaticMarkup(<VisaoLogin destino="/" valores={vazio} pendente />)).toContain('aria-busy="true"');
-    const e = renderToStaticMarkup(<VisaoLogin destino="/" valores={vazio} erroLogin="Empresa, e-mail ou senha incorretos." />);
+    const e = renderToStaticMarkup(<VisaoLogin destino="/" valores={vazio} resultado={resultadoErro('Empresa, e-mail ou senha incorretos.')} />);
     expect(e).toContain('role="alert"');
     expect(e).toContain('Empresa, e-mail ou senha incorretos.');
     const c = renderToStaticMarkup(<VisaoLogin destino="/" valores={vazio} erros={{ empresa: 'Informe o código da empresa.', senha: 'Informe a senha.' }} />);
@@ -55,6 +56,14 @@ describe('tela única de login (T-0076)', () => {
     expect(c).toContain('aria-describedby="login-erro-empresa"');
     expect(c).toContain('aria-invalid="true"');
     expect(c).toContain('Informe a senha.');
+  });
+  it('36 A: o erro do Entrar fica logo abaixo do botão, no ResultadoAcao, e não no topo do formulário', () => {
+    const h = renderToStaticMarkup(<VisaoLogin destino="/" valores={vazio} resultado={resultadoErro('Empresa, e-mail ou senha incorretos.')} />);
+    const botao = h.indexOf('>Entrar</button>');
+    expect(botao).toBeGreaterThan(0);
+    expect(h.indexOf('Empresa, e-mail ou senha incorretos.')).toBeGreaterThan(botao);
+    expect(h).not.toContain('class="erro"');
+    expect(h).toMatch(/<div role="alert"[^>]*><div style=[^>]*><span>Empresa, e-mail ou senha incorretos\.<\/span>/);
   });
   it('a senha nunca vem preenchida do servidor; o código lembrado preenche', () => {
     const h = renderToStaticMarkup(<VisaoLogin destino="/" valores={{ empresa: 'AM2808', email: '', senha: '' }} />);
