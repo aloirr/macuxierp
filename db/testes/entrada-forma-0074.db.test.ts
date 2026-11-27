@@ -1,7 +1,7 @@
 /**
  * T-0057 (v0.3.18), migração 0074: cadastros.entrada_forma guarda a forma de pagamento do lote /entrada/v1 para o
- * prazo_pagamento que chega depois (RN-CAD-09). App e worker com SELECT, INSERT e UPDATE (sem DELETE) e o único
- * (tenant_id, external_id) do upsert. Motivo em docs/banco/README.md (0074). Dados fictícios.
+ * prazo_pagamento que chega depois (RN-CAD-09). Worker com SELECT, INSERT e UPDATE (sem DELETE) e o único
+ * (tenant_id, external_id) do upsert; app só SELECT desde a 0075 (v0.3.19). Motivo em docs/banco/README.md (0074). Dados fictícios.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -23,9 +23,11 @@ import {
 import { fixtureModulos, fixturePlataforma, novoTenant, type Tenant } from './fixture.ts';
 
 const MIGRACAO = fileURLToPath(new URL('../migrations/0074_cadastros_entrada_forma.sql', import.meta.url));
+const MIGRACAO_0075 = fileURLToPath(new URL('../migrations/0075_cadastros_entrada_forma_app_leitura.sql', import.meta.url));
 const A = novoTenant('forma-0074-a');
 const B = novoTenant('forma-0074-b');
 const WORKER = (t: Tenant) => ({ papel: 'macuxierp_worker', tenant: t.id });
+const APP = (t: Tenant) => ({ papel: 'macuxierp_app', tenant: t.id });
 
 /** O upsert do worker: chave (tenant_id, external_id), a mesma da busca do prazo_pagamento. */
 const upsert = (ext: string, nome: string, conector = 'entrada-forma-0074-a') =>
@@ -36,7 +38,7 @@ const upsert = (ext: string, nome: string, conector = 'entrada-forma-0074-a') =>
 
 describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — cadastros.entrada_forma (T-0057, 0074)', () => {
   let banco: BancoDeTeste;
-  /** Privilégios de app, worker e leitura na tabela: SIU, SIU e S, sem DELETE nem TRUNCATE. */
+  /** Privilégios de app, worker e leitura na tabela: S (0075), SIU e S, sem DELETE nem TRUNCATE. */
   const PRIV = () => ['macuxierp_app', 'macuxierp_worker', 'macuxierp_leitura'].map((p) => privilegiosDe(banco.conexao, p, 'cadastros.entrada_forma'));
 
   beforeAll(() => {
@@ -48,8 +50,12 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — cadastros.entrada_forma (T-
 
   afterAll(() => banco?.remover());
 
-  it('privilégios: app e worker SIU, leitura S; ninguém com DELETE nem TRUNCATE', () => {
-    expect(PRIV()).toEqual(['SIU', 'SIU', 'S']);
+  it('privilégios: app S (0075), worker SIU, leitura S; ninguém com DELETE nem TRUNCATE', () => {
+    expect(PRIV()).toEqual(['S', 'SIU', 'S']);
+  });
+
+  it('0075: o upsert do app dá 42501 (quem grava é o worker)', () => {
+    recusaDetalhada(banco.conexao, upsert('FP-APP', 'Boleto'), '42501', /permission denied/, APP(A));
   });
 
   it('o worker grava pelo upsert e o reenvio da mesma forma atualiza a linha (único tenant_id, external_id)', () => {
@@ -102,9 +108,10 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — cadastros.entrada_forma (T-
     expect(privilegiosDe(banco.conexao, 'macuxierp_worker', 'cadastros.cliente')).toBe('SIU');
   });
 
-  it('a 0074 roda de novo sem erro, sem ampliar privilégio e com um único índice de external_id', () => {
+  it('a 0074 e a 0075 rodam de novo sem erro, sem ampliar privilégio e com um único índice de external_id', () => {
     rodarScript(banco.conexao, readFileSync(MIGRACAO, 'utf8'), { transacao: true });
-    expect(PRIV()).toEqual(['SIU', 'SIU', 'S']);
+    rodarScript(banco.conexao, readFileSync(MIGRACAO_0075, 'utf8'), { transacao: true });
+    expect(PRIV()).toEqual(['S', 'SIU', 'S']);
     const idx = consultar<{ i: string }>(
       banco.conexao,
       `SELECT indexname AS i FROM pg_indexes WHERE schemaname = 'cadastros' AND tablename = 'entrada_forma' ORDER BY 1`,
