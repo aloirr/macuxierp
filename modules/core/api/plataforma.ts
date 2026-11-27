@@ -308,12 +308,11 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
         return semCache(ok);
       },
     }),
-    // RN-CORE-16 (v0.3.24): Ficha editável. A ação é a da 'atualizar_receita' enquanto o SDK não ganha
-    // 'plataforma.empresa.salvar_ficha' e 'plataforma.empresa.trocar_cnpj' (lista fechada; pedido ao engenheiro-software).
+    // RN-CORE-16 (v0.3.24): Ficha editável. Salvar usa 'salvar_ficha'; situação e troca do CNPJ usam 'trocar_cnpj'; a prévia da Receita segue 'atualizar_receita'.
     definirRotaPlataforma({
       metodo: ROTAS_FICHA.salvar.metodo,
       caminho: rotaFicha(ROTAS_FICHA.salvar),
-      acao: 'plataforma.empresa.atualizar_receita',
+      acao: 'plataforma.empresa.salvar_ficha',
       corpo: EdicaoFicha,
       async executar(c, { corpo, params }) {
         const id = idDoParam(params);
@@ -368,7 +367,7 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
       transacoes: 'por_etapa',
       metodo: ROTAS_FICHA.situacaoCnpj.metodo,
       caminho: rotaFicha(ROTAS_FICHA.situacaoCnpj),
-      acao: 'plataforma.empresa.ver',
+      acao: 'plataforma.empresa.trocar_cnpj',
       async executar(c, { params }) {
         const id = idDoParam(params);
         const atual = await c.comPlataforma((tx) => repo.lerEmpresa(tx, id));
@@ -391,7 +390,7 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
       transacoes: 'por_etapa',
       metodo: ROTAS_FICHA.trocarCnpj.metodo,
       caminho: rotaFicha(ROTAS_FICHA.trocarCnpj),
-      acao: 'plataforma.empresa.atualizar_receita',
+      acao: 'plataforma.empresa.trocar_cnpj',
       corpo: TrocaCnpj,
       async executar(c, { corpo, params }) {
         const id = idDoParam(params);
