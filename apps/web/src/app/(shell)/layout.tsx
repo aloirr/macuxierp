@@ -28,7 +28,7 @@ export default async function Casca({ children }: { children: ReactNode }) {
         <span className="nome-topo" title={nome}>{nome}</span>
         {eu.filiais.length > 1 && <a className="so-largo" href="/filial">Trocar filial</a>}
         <span className="espaco" />
-        <span className="so-largo">{eu.usuario.nome} ({eu.usuario.perfil})</span>
+        <span className="so-largo nome-usuario">{eu.usuario.nome} ({eu.usuario.perfil})</span>
         <LinkTrocarSenha className="so-largo" />
         <BotaoSair />
       </header>

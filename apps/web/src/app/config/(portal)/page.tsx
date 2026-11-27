@@ -42,9 +42,11 @@ export default async function Empresas({ searchParams }: { searchParams: Promise
           {busca && <a href="/config">Limpar</a>}
         </form>
       </div>
+      <div className="cartao-tabela">
       <ListaEmpresas key={busca} empresas={pagina.itens} vazio={vazio} proximo={pagina.proximo_cursor} busca={busca} />
       <div className="barra-acoes">
         <a className="mx-botao" href="/config/empresas/nova">+ Criar empresa</a>
+      </div>
       </div>
     </>
   );
