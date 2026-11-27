@@ -44,7 +44,6 @@ const semCredencial = {
   ambiente: null,
   chave_prefixo: null,
   criada_em: null,
-  ultimo_uso_em: null,
   entidades_habilitadas: [],
   limite_registros_lote: null,
   cadastros: cadastrosPortal([]),
@@ -262,5 +261,12 @@ describe('contratos da Integração FDV no portal /config (ADR 0013, T-0056)', (
     expect(sdk.CadastroIntegracaoFdvPlataforma).toBe(CadastroIntegracaoFdvPlataforma);
     expect(sdk.RespostaAceitoFdv).toBe(RespostaAceitoFdv);
     expect(sdk.RespostaRetomadaFdv).toBe(RespostaRetomadaFdv);
+  });
+});
+
+describe('RD-2319 (36 A): sem "último uso" na Integração do portal', () => {
+  it('a leitura não tem ultimo_uso_em: o campo que vier a mais é descartado (a tela mostra o último sinal)', () => {
+    const lido = IntegracaoFdvPlataforma.parse({ ...comCredencial, ultimo_uso_em: AGORA });
+    expect(lido).not.toHaveProperty('ultimo_uso_em');
   });
 });
