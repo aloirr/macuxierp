@@ -125,7 +125,14 @@ async function ligarOuDesligar(acao) {
 
 /** Situação por cadastro como a tela mostra: [rótulo da 1ª célula, texto do selo], na ordem das linhas com selo (a tabela de clientes recebidos fica de fora). */
 const selos = (p) =>
-  p.locator('tbody tr').evaluateAll((trs) => trs.filter((tr) => tr.querySelector('.selo')).map((tr) => [tr.querySelector('td,th')?.textContent?.trim() ?? '', tr.querySelector('.selo')?.textContent?.trim() ?? '']));
+  p.locator('tbody tr').evaluateAll((trs) =>
+    trs.filter((tr) => tr.querySelector('.selo')).map((tr) => {
+      // Desde o #840 o /config põe o "Último envio" (.envio-sob-nome) na 1ª célula; o BKO não tem, então o rótulo é lido sem ele.
+      const celula = tr.querySelector('td,th')?.cloneNode(true);
+      celula?.querySelectorAll('.envio-sob-nome').forEach((el) => el.remove());
+      return [celula?.textContent?.trim() ?? '', tr.querySelector('.selo')?.textContent?.trim() ?? ''];
+    }),
+  );
 const textoSelos = (l) => l.map(([r, s]) => `${r}=${s}`).join(', ');
 
 /** O BKO (recarregado) mostra, cadastro a cadastro, o mesmo que o portal e o `GET /v1/integracao-fdv/status`; Produtos = `esperado`. */
