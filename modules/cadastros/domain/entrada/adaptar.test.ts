@@ -83,13 +83,13 @@ describe('T-0057 C2: adaptadores do hub-v1 só convertem a forma (a regra é do 
 
   it('RN-INT-06: o envelope de carga completa não é adaptado (a API responde 422)', () => {
     expect(adaptarLote({ entidade: 'filial', modo: 'completo', registros: [filial] }, ctx)).toEqual({
-      ok: false, status: 422, codigo: 'carga_completa_nao_suportada', motivo: 'Carga completa não aceita: envie só as alterações (delta)',
+      ok: false, status: 422, codigo: 'CARGA_COMPLETA_NAO_SUPORTADA', motivo: 'Carga completa não aceita: envie só as alterações (delta)',
     });
   });
 
-  it('ADR 0014 §2: titulo e nota ficam fora da fase (422 entidade_fora_da_fase)', () => {
+  it('ADR 0014 §2: titulo e nota ficam fora da fase (422 ENTIDADE_FORA_DA_FASE)', () => {
     expect(adaptarLote({ entidade: 'titulo', modo: 'delta', registros: [] }, ctx)).toEqual({
-      ok: false, status: 422, codigo: 'entidade_fora_da_fase',
+      ok: false, status: 422, codigo: 'ENTIDADE_FORA_DA_FASE',
       motivo: 'Entidade não aceita: envie filial, vendedor, forma e prazo de pagamento, produto, unidade, preço, estoque, cliente ou endereço do cliente',
     });
   });
