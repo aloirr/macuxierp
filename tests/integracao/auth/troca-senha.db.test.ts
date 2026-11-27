@@ -91,11 +91,11 @@ describe.skipIf(!PG_DISPONIVEL)('T-0052 (RN-CORE-10): troca obrigatória e regra
   });
 
   describe('portal: 1º administrador com a senha provisória', () => {
-    it('POST /primeiro-admin grava deve_trocar_senha = true; a senha entregue cumpre a regra e entra no login', async () => {
+    it('POST /primeiro-admin grava deve_trocar_senha = true; a senha entregue segue o formato da temporária e entra no login', async () => {
       const r = await p.pedir('POST', `/v1/plataforma/empresas/${empresa}/primeiro-admin`, { token: tokenSa, corpo: { email: EMAIL_ADM, nome: 'Pessoa Fictícia T-0052' }, chave: randomUUID() });
       expect(r.statusCode).toBe(201);
       ({ usuario_id: usuario, senha_provisoria: provisoria } = r.json<{ usuario_id: string; senha_provisoria: string }>());
-      expect(regrasDescumpridas(provisoria)).toEqual([]);
+      expect(senhaTemporariaNoFormato(provisoria)).toBe(true); // 44 B: 18 caracteres, sem os ambíguos, isenta do "especial"
       expect(await flag(usuario)).toBe(true);
       expect((await entrar(provisoria)).statusCode).toBe(200);
     });
@@ -138,13 +138,6 @@ describe.skipIf(!PG_DISPONIVEL)('T-0052 (RN-CORE-10): troca obrigatória e regra
       expect(r.json()).toMatchObject({ codigo: 'VALIDACAO', mensagem: MENSAGEM_SENHA_FORA_DA_REGRA, detalhes: { regras: ['caracteres', 'numero', 'especial'] } });
     });
 
-    it('nova igual à atual: 400 VALIDACAO em campos.senha_nova', async () => {
-      const t = acesso(await entrar(provisoria));
-      const r = await trocar(t, { senha_atual: provisoria, senha_nova: provisoria });
-      expect(r.statusCode).toBe(400);
-      expect(r.json()).toEqual({ codigo: 'VALIDACAO', mensagem: 'Dados inválidos', campos: { senha_nova: MENSAGEM_SENHA_IGUAL } });
-    });
-
     it('sem corpo e sem sessão: 400 VALIDACAO e 401 NAO_AUTENTICADO', async () => {
       const t = acesso(await entrar(provisoria));
       const semCorpo = await trocar(t, {});
@@ -166,6 +159,14 @@ describe.skipIf(!PG_DISPONIVEL)('T-0052 (RN-CORE-10): troca obrigatória e regra
       expect((await entrar(OITO)).statusCode).toBe(200);
     });
 
+    // A atual cumpre a regra (a provisória, no formato da temporária, não tem o "especial", e a regra vem antes da igualdade).
+    it('nova igual à atual: 400 VALIDACAO em campos.senha_nova', async () => {
+      const t = acesso(await entrar(OITO));
+      const r = await trocar(t, { senha_atual: OITO, senha_nova: OITO });
+      expect(r.statusCode).toBe(400);
+      expect(r.json()).toEqual({ codigo: 'VALIDACAO', mensagem: 'Dados inválidos', campos: { senha_nova: MENSAGEM_SENHA_IGUAL } });
+    });
+
     it('troca sem o cookie de refresh (sem sessão corrente): todas as sessões do usuário caem', async () => {
       const a = await entrar(OITO);
       const r = await trocar(acesso(a), { senha_atual: OITO, senha_nova: OITO_ACENTO });
@@ -181,7 +182,7 @@ describe.skipIf(!PG_DISPONIVEL)('T-0052 (RN-CORE-10): troca obrigatória e regra
       const r = await p.pedir('POST', `/v1/plataforma/empresas/${empresa}/primeiro-admin/senha`, { token: tokenSa, chave: randomUUID() });
       expect(r.statusCode).toBe(200);
       const nova = r.json<{ senha_provisoria: string }>().senha_provisoria;
-      expect(regrasDescumpridas(nova)).toEqual([]);
+      expect(senhaTemporariaNoFormato(nova)).toBe(true);
       expect(await flag(usuario)).toBe(true);
 
       const login = await entrar(nova);
