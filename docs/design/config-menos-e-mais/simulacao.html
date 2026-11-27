@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>Config — simulação "menos é mais"</title>
+<link rel="stylesheet" href="../../../packages/ui/src/tokens.css">
+<style>
+/* PROPOSTA de tokens únicos (R-20261127-174851). Só proposta: vão ao packages/ui depois do "aprovado" do Alexandre. */
+:root{
+  --p-colunas:12; --p-vao:16px; --p-margem:24px;          /* grade de 12 colunas */
+  --p-campo:34px;                                           /* altura única de campo e de botão */
+  --p-texto:var(--mx-tamanho-pequeno);                      /* 13 px: texto, campo e tabela */
+  --p-rotulo:var(--mx-tamanho-micro);                       /* 12 px: rótulo e cabeçalho de tabela */
+  --p-titulo-cartao:var(--mx-tamanho-base);                 /* 15 px */
+  --p-titulo-tela:var(--mx-tamanho-grande);                 /* 20 px */
+  --p-espaco:12px;                                          /* espaço único entre campos e linhas */
+  --p-cartao-pad:16px; --p-canto:8px;                       /* cartão único */
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--mx-cor-perola);font-family:var(--mx-fonte-texto);font-size:var(--p-texto);color:var(--mx-cor-grafite);line-height:1.4}
+.topo{background:var(--mx-cor-grafite);height:48px;display:flex;align-items:center;gap:12px;padding:0 var(--p-margem);color:var(--mx-cor-branco)}
+.topo img{height:22px}
+.selo-plat{border:1px solid var(--mx-cor-azul-claro);border-radius:10px;padding:1px 7px;font-size:var(--mx-tamanho-micro);font-weight:600}
+a{color:var(--mx-cor-azul-noite)}
+.topo a{color:var(--mx-cor-branco)}
+.topo .dir{margin-left:auto;display:flex;gap:12px;align-items:center}
+main{padding:var(--p-margem)}
+.grade{display:grid;grid-template-columns:repeat(var(--p-colunas),minmax(0,1fr));gap:var(--p-vao)}
+.c1{grid-column:span 1}.c2{grid-column:span 2}.c3{grid-column:span 3}.c4{grid-column:span 4}.c5{grid-column:span 5}.c6{grid-column:span 6}.c8{grid-column:span 8}.c12{grid-column:span 12}
+.cabeca{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:var(--p-espaco)}
+h1{font-size:var(--p-titulo-tela);font-weight:700;margin:0;color:var(--mx-cor-azul-noite)}
+.apoio{color:var(--mx-cor-texto-apoio)}
+.cod{font-family:var(--mx-fonte-codigo);font-size:var(--p-texto)}
+.acoes{margin-left:auto;display:flex;gap:8px}
+.selo{font-size:var(--mx-tamanho-micro);font-weight:600;padding:2px 8px;border-radius:10px;white-space:nowrap}
+.ok{background:var(--mx-cor-ativo-fundo);color:var(--mx-cor-ativo-texto)}
+.neutro{background:var(--mx-cor-nevoa);color:var(--mx-cor-texto-secundario)}
+.aviso{background:var(--mx-cor-aviso-fundo);color:var(--mx-cor-aviso-texto)}
+.erro{background:var(--mx-cor-erro-fundo);color:var(--mx-cor-erro-texto)}
+.abas{display:flex;gap:24px;border-bottom:1px solid var(--mx-cor-borda-tabela);margin:0 0 var(--p-vao)}
+.abas a{padding:8px 0;color:var(--mx-cor-grafite);text-decoration:none}
+.abas a.at{font-weight:600;border-bottom:3px solid var(--mx-cor-azul-noite)}
+.cartao{background:var(--mx-cor-branco);border:1px solid var(--mx-cor-borda-tabela);border-radius:var(--p-canto);padding:var(--p-cartao-pad);min-width:0}
+.cartao h2{font-size:var(--p-titulo-cartao);font-weight:700;color:var(--mx-cor-rotulo-destaque);margin:0 0 var(--p-espaco);display:flex;align-items:center;gap:8px}
+.cartao h2 .dir{margin-left:auto;font-weight:400}
+label,dt,th{font-size:var(--p-rotulo);font-weight:600;color:var(--mx-cor-rotulo-destaque);text-transform:uppercase;letter-spacing:.04em}
+.campo{display:flex;flex-direction:column;gap:4px;min-width:0}
+input,select{height:var(--p-campo);border:1px solid var(--mx-cor-borda-campo);border-radius:6px;padding:0 10px;font:inherit;background:var(--mx-cor-branco);color:var(--mx-cor-grafite);width:100%}
+.ro{height:var(--p-campo);display:flex;align-items:center;gap:8px;font-family:var(--mx-fonte-codigo)}
+.ro a{font-family:var(--mx-fonte-texto)}
+.btn,.btn2{height:var(--p-campo);padding:0 14px;border-radius:6px;font:inherit;font-weight:600;cursor:pointer;white-space:nowrap}
+.btn{background:var(--mx-cor-azul-noite);color:var(--mx-cor-branco);border:1px solid var(--mx-cor-azul-noite)}
+.btn2{background:var(--mx-cor-branco);color:var(--mx-cor-azul-noite);border:1px solid var(--mx-cor-borda-campo)}
+.btn[disabled]{opacity:.5}
+dl{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--p-espaco) var(--p-vao);margin:0}
+dd{margin:2px 0 0;overflow-wrap:anywhere}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--mx-cor-borda-tabela);border-radius:12px;padding:2px 10px;background:var(--mx-cor-nevoa)}
+.chip b{font-family:var(--mx-fonte-codigo);font-weight:600}
+table{width:100%;border-collapse:collapse;background:var(--mx-cor-branco)}
+th{text-align:left;padding:8px 10px;background:var(--mx-cor-nevoa);border-bottom:1px solid var(--mx-cor-borda-tabela);white-space:nowrap}
+td{padding:7px 10px;white-space:nowrap;border-bottom:1px solid var(--mx-cor-borda-tabela);vertical-align:middle}
+td.quebra,td:first-child{white-space:normal}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+.tabela{padding:0;overflow:hidden}
+.tabela h2{padding:var(--p-cartao-pad) var(--p-cartao-pad) 0;min-height:var(--p-campo)}
+.lista{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.lista li{display:flex;align-items:center;gap:8px}
+.barra{position:static;/* na tela real: sticky bottom:0 */margin:var(--p-vao) calc(-1*var(--p-margem)) calc(-1*var(--p-margem));padding:10px var(--p-margem);background:var(--mx-cor-branco);border-top:1px solid var(--mx-cor-borda-tabela);display:flex;gap:8px;justify-content:flex-end;align-items:center}
+.busca{width:320px}
+.tela{display:none}.tela:target{display:block}
+.linha{display:flex;gap:8px;align-items:flex-end}
+.mini{font-size:var(--mx-tamanho-micro)}
+</style></head><body>
+<header class="topo"><img src="../../marca/ativos/2026-11-22-v1/macuxi-erp-a-negativo-grafite.svg" alt="Macuxi ERP"><span class="selo-plat">Plataforma</span><a href="#lista">Empresas</a><span class="dir">Superadmin Fictício <button class="btn2" style="height:30px">Sair</button></span></header>
+
+<!-- 1. LISTA DE EMPRESAS -->
+<main id="lista" class="tela">
+ <div class="cabeca"><h1>Empresas</h1><span class="apoio">6 empresas</span>
+  <div class="acoes"><input class="busca" placeholder="Buscar por nome, código ou CNPJ"><button class="btn">Criar empresa</button></div></div>
+ <div class="cartao tabela"><table>
+  <thead><tr><th>Empresa</th><th>Código</th><th>CNPJ</th><th>Situação</th><th>Módulos</th><th>Força de vendas</th><th>Criada em</th></tr></thead>
+  <tbody>
+   <tr><td>Comercial Igarapé Fictício Ltda</td><td class="cod">igarape-ficticio</td><td class="cod">98.765.432/0001-98</td><td><span class="selo ok">Ativa</span></td><td>Cadastros · Pedidos · Integração FDV</td><td><span class="selo ok">Ligada</span></td><td>12/11/2026</td></tr>
+   <tr><td>Distribuidora Rio Negro Fictícia Ltda</td><td class="cod">rio-negro-ficticia</td><td class="cod">98.765.433/0001-32</td><td><span class="selo ok">Ativa</span></td><td class="quebra">Cadastros · Pedidos · Faturamento · Fiscal · Integração FDV</td><td><span class="selo ok">Ligada</span></td><td>03/10/2026</td></tr>
+   <tr><td>Atacado Tarumã Exemplo S.A.</td><td class="cod">taruma-exemplo</td><td class="cod">98.765.434/0001-13</td><td><span class="selo ok">Ativa</span></td><td>Cadastros · Pedidos</td><td><span class="selo aviso">Sem contato há 2 h</span></td><td>21/10/2026</td></tr>
+   <tr><td>Mercantil Solimões Teste ME</td><td class="cod">solimoes-teste</td><td class="cod">98.765.435/0001-02</td><td><span class="selo neutro">Suspensa</span></td><td>Cadastros</td><td><span class="selo neutro">Desligada</span></td><td>30/09/2026</td></tr>
+   <tr><td>Empório Ponta Negra Fictício</td><td class="cod">ponta-negra</td><td class="cod">98.765.436/0001-85</td><td><span class="selo ok">Ativa</span></td><td>Cadastros · Pedidos · Integração FDV</td><td><span class="selo erro">Falha no envio</span></td><td>18/11/2026</td></tr>
+   <tr><td>Casa Aleixo Exemplo Ltda</td><td class="cod">aleixo-exemplo</td><td class="cod">98.765.437/0001-66</td><td><span class="selo ok">Ativa</span></td><td>Cadastros · Pedidos · Faturamento · Fiscal</td><td><span class="selo neutro">Desligada</span></td><td>25/11/2026</td></tr>
+  </tbody></table></div>
+</main>
+
+<!-- cabeçalho comum das telas da empresa -->
+<template id="cab"><div class="cabeca"><h1>Comercial Igarapé Fictício Ltda</h1><span class="cod apoio">igarape-ficticio</span><span class="selo ok">Ativa</span><span class="selo neutro">Igual à Receita</span>
+ <div class="acoes"><button class="btn2">Atualizar pela Receita</button><button class="btn2">Suspender</button></div></div></template>
+
+<!-- 2. EMPRESA -->
+<main id="empresa" class="tela"><div data-cab></div>
+ <nav class="abas"><a class="at">Empresa</a><a>Integração</a><a>Dados</a></nav>
+ <div class="grade">
+  <section class="cartao c12"><h2>Identificação <span class="dir apoio mini">Consultada na Receita em 27/11/2026 13:15</span></h2>
+   <div class="grade">
+    <div class="campo c5"><label>Razão social</label><input value="COMERCIAL IGARAPÉ FICTÍCIO LTDA"></div>
+    <div class="campo c3"><label>Nome fantasia</label><input value="IGARAPÉ FICTÍCIO"></div>
+    <div class="campo c2"><label>CNPJ</label><div class="ro">98.765.432/0001-98 <a href="#">trocar</a></div></div>
+    <div class="campo c2"><label>Inscrição estadual</label><input value="ISENTO"></div>
+    <div class="campo c2"><label>Situação na Receita</label><div class="ro" style="font-family:inherit">Ativa desde 10/03/2015</div></div>
+    <div class="campo c2"><label>Abertura</label><input value="21/07/2014"></div>
+    <div class="campo c3"><label>Natureza jurídica</label><input value="2062 · Sociedade Empresária Limitada"></div>
+    <div class="campo c2"><label>Porte</label><input value="Empresa de pequeno porte"></div>
+    <div class="campo c3"><label>Regime</label><select><option>Simples Nacional</option></select></div>
+   </div></section>
+  <section class="cartao c12"><h2>Endereço</h2>
+   <div class="grade">
+    <div class="campo c1"><label>CEP</label><input value="69075-000"></div>
+    <div class="campo c4"><label>Logradouro</label><input value="AVENIDA DAS FICÇÕES"></div>
+    <div class="campo c1"><label>Número</label><input value="100"></div>
+    <div class="campo c2"><label>Complemento</label><input value="GALPÃO 2"></div>
+    <div class="campo c2"><label>Bairro</label><input value="DISTRITO INDUSTRIAL"></div>
+    <div class="campo c2"><label>Município · UF</label><div class="ro" style="font-family:inherit">Manaus · AM <span class="apoio mini">1302603</span></div></div>
+   </div></section>
+  <section class="cartao c5"><h2>Atividades (CNAE)</h2>
+   <div class="chips"><span class="chip"><b>4639-7/01</b> Comércio atacadista de alimentos em geral · principal</span><span class="chip"><b>4637-1/99</b> Atacadista de outros alimentos</span><span class="chip"><b>4930-2/02</b> Transporte rodoviário de carga</span></div></section>
+  <section class="cartao c3"><h2>Contato</h2>
+   <div class="grade" style="--p-colunas:1;gap:var(--p-espaco)">
+    <div class="campo"><label>E-mail</label><div class="linha"><input placeholder="co****@igarape.exemplo.invalid"><button class="btn2">Mostrar</button></div></div>
+    <div class="campo"><label>Telefone</label><div class="linha"><input placeholder="(92) ****-0000"><button class="btn2">Mostrar</button></div></div>
+   </div></section>
+  <section class="cartao c2"><h2>Módulos</h2>
+   <ul class="lista"><li><input type="checkbox" checked style="width:auto;height:auto">Cadastros</li><li><input type="checkbox" checked style="width:auto;height:auto">Pedidos</li><li><input type="checkbox" disabled style="width:auto;height:auto"><span class="apoio">Faturamento · exige Fiscal</span></li><li><input type="checkbox" style="width:auto;height:auto">Fiscal</li><li><input type="checkbox" checked style="width:auto;height:auto">Integração FDV</li></ul></section>
+  <section class="cartao c2"><h2>1º administrador</h2>
+   <dl style="grid-template-columns:1fr"><div><dt>Situação</dt><dd><span class="selo ok">Ativo</span></dd></div></dl>
+   <button class="btn2" style="margin-top:var(--p-espaco)">Redefinir senha</button></section>
+ </div>
+ <div class="barra"><span class="apoio">2 campos alterados</span><button class="btn2">Descartar</button><button class="btn">Salvar</button></div>
+</main>
+
+<!-- 3. INTEGRAÇÃO -->
+<main id="integracao" class="tela"><div data-cab></div>
+ <nav class="abas"><a>Empresa</a><a class="at">Integração</a><a>Dados</a></nav>
+ <div class="grade">
+  <section class="cartao c6"><h2>Sistema do cliente → ERP <span class="selo ok">Ligada</span><span class="dir apoio mini">Atualizado às 17h40</span></h2>
+   <dl><div><dt>Código</dt><dd class="cod">igarape-erp</dd></div><div><dt>Chave</dt><dd class="cod">mxe_••••8f2a</dd></div><div><dt>Último lote</dt><dd>27/11 17h32</dd></div><div><dt>Lotes hoje</dt><dd>14</dd></div></dl>
+   <div class="linha" style="margin-top:var(--p-espaco)"><button class="btn2">Trocar chave</button><button class="btn2">Revogar chave</button></div></section>
+  <section class="cartao c6"><h2>ERP → Força de vendas <span class="selo ok">Ligada</span><span class="dir apoio mini">Atualizado às 17h40</span></h2>
+   <dl><div><dt>Ligado a</dt><dd>Macuxi FDV</dd></div><div><dt>Código</dt><dd class="cod">erp-igarape-ficticio</dd></div><div><dt>Ambiente</dt><dd>Produção</dd></div><div><dt>Último contato</dt><dd>27/11 17h39</dd></div></dl>
+   <div class="linha" style="margin-top:var(--p-espaco)"><div class="campo" style="width:140px"><label>Registros por lote</label><input value="5000"></div><button class="btn2">Salvar</button><span style="margin-left:auto"></span><button class="btn2">Testar conexão</button><button class="btn2">Trocar chave</button></div></section>
+  <section class="cartao tabela c12"><h2>Últimos envios ao FDV</h2><table>
+   <thead><tr><th>Quando</th><th>Cadastro</th><th class="n">Registros</th><th class="n">Com erro</th><th>Situação</th><th>Detalhe</th></tr></thead><tbody>
+   <tr><td>27/11 17h39</td><td>Preços</td><td class="n">3.815</td><td class="n">0</td><td><span class="selo ok">Enviado</span></td><td class="apoio">—</td></tr>
+   <tr><td>27/11 17h35</td><td>Estoque</td><td class="n">3.815</td><td class="n">2</td><td><span class="selo aviso">Parcial</span></td><td>2 produtos sem unidade · <a href="#">ver log</a></td></tr>
+   <tr><td>27/11 16h10</td><td>Clientes</td><td class="n">1.240</td><td class="n">0</td><td><span class="selo ok">Enviado</span></td><td class="apoio">—</td></tr>
+   <tr><td>27/11 15h02</td><td>Vendedores</td><td class="n">12</td><td class="n">0</td><td><span class="selo ok">Enviado</span></td><td class="apoio">—</td></tr>
+   </tbody></table></section>
+ </div>
+</main>
+
+<!-- 4. DADOS -->
+<main id="dados" class="tela"><div data-cab></div>
+ <nav class="abas"><a>Empresa</a><a>Integração</a><a class="at">Dados</a></nav>
+ <div class="grade">
+  <section class="cartao tabela c6"><h2>Sistema do cliente → ERP <span class="dir"><button class="btn2">Baixar modelos</button></span></h2><table>
+   <thead><tr><th>Cadastro</th><th>Situação</th><th>Última carga</th><th class="n">Registros</th><th class="n">Erros</th><th></th></tr></thead><tbody data-cli></tbody></table></section>
+  <section class="cartao tabela c6"><h2>ERP → Força de vendas <span class="dir"><button class="btn2">Carga completa</button> <button class="btn2">Zerar pedidos não faturados</button></span></h2><table>
+   <thead><tr><th>Cadastro</th><th>Situação</th><th>Último envio</th><th class="n">Registros</th><th class="n">Falhas</th><th></th></tr></thead><tbody data-fdv></tbody></table></section>
+ </div>
+</main>
+<script>
+const cab=document.getElementById('cab').innerHTML;document.querySelectorAll('[data-cab]').forEach(e=>e.innerHTML=cab);
+const cad=[['Filiais','Carregado','27/11 09h12','2','0'],['Vendedores','Carregado','27/11 09h12','12','0'],['Condições de pagamento','Carregado','26/11 18h40','9','0'],['Produtos','Carregado','27/11 09h58','3.815','2'],['Unidades','Carregado','27/11 09h58','6','0'],['Tabelas de preço','Carregado','27/11 10h05','4','0'],['Estoque','Carregado','27/11 17h30','3.815','0'],['Clientes','Carregado','27/11 10h12','1.240','0']];
+const sel=s=>s==='Carregado'||s==='Em dia'?'ok':s==='Parcial'?'aviso':'neutro';
+document.querySelector('[data-cli]').innerHTML=cad.map(c=>`<tr><td>${c[0]}</td><td><span class="selo ${sel(c[1])}">${c[1]}</span></td><td>${c[2]}</td><td class="n">${c[3]}</td><td class="n">${c[4]}</td><td class="n"><button class="btn2">Importar</button> <button class="btn2">⋯</button></td></tr>`).join('');
+const fdv=[['Filiais','Em dia','27/11 09h13','2','0'],['Vendedores','Em dia','27/11 15h02','12','0'],['Formas de pagamento','Em dia','26/11 18h41','5','0'],['Condições de pagamento','Em dia','26/11 18h41','9','0'],['Produtos','Em dia','27/11 10h00','3.815','0'],['Preços','Em dia','27/11 17h39','3.815','0'],['Estoque','Parcial','27/11 17h35','3.815','2'],['Clientes','Em dia','27/11 16h10','1.240','0']];
+document.querySelector('[data-fdv]').innerHTML=fdv.map(c=>`<tr><td>${c[0]}</td><td><span class="selo ${sel(c[1])}">${c[1]}</span></td><td>${c[2]}</td><td class="n">${c[3]}</td><td class="n">${c[4]}</td><td class="n"><button class="btn2">Log</button> <button class="btn2">⋯</button></td></tr>`).join('');
+</script></body></html>
