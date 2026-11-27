@@ -416,6 +416,22 @@ DELETE FROM faturamento.nota WHERE tenant_id = '${A.id}';`),
       expect(temNfe(A.id)).toBe(false);
     });
 
+    it('status espelhados: índice parcial e tem_nfe_autorizada_producao com a mesma lista de BLOQUEIAM', () => {
+      // O predicado do índice parcial exige o literal (RN-CORE-16, regra fiscal 7). O TS × 0077 é conferido no
+      // teste do faturamento (modules/faturamento/domain), que pode ler db/migrations.
+      const statusDe = (texto: string): string[] =>
+        [...texto.matchAll(/'([a-z_]+)'/g)].map((m) => m[1] ?? '').sort();
+      const [def] = consultar<{ indice: string; funcao: string }>(
+        banco.conexao,
+        `SELECT pg_get_indexdef('faturamento.nota_autorizada_producao_idx'::regclass) AS indice,
+           pg_get_functiondef('${TEM_NFE}'::regprocedure) AS funcao`,
+      );
+      const soStatus = (sql: string): string =>
+        /status\s*(?:IN\s*\(|=\s*ANY\s*\()([^)]*)\)/i.exec(sql)?.[1] ?? '';
+      expect(statusDe(soStatus(def?.indice ?? ''))).toEqual([...BLOQUEIAM].sort());
+      expect(statusDe(soStatus(def?.funcao ?? ''))).toEqual([...BLOQUEIAM].sort());
+    });
+
     it('trocar: valida o DV (23514), MXC05 com NF-e de produção, MXC06 igual ao atual; 55000, P0002, MXS01; nada auditado', () => {
       const s = novaSessao();
       recusaConfig(s, sqlTrocar(A.id, '11222333000182', null), '23514', /CNPJ inválido/);
@@ -505,7 +521,10 @@ DELETE FROM faturamento.nota WHERE tenant_id = '${A.id}';`),
       expect(eventos()).toHaveLength(antesEv);
       expect(auditoria(ACAO_TROCAR, A.id)).toEqual([]);
       // Com a empresa de E excluída, o mesmo CNPJ fica livre para A.
-      executar(banco.conexao, `UPDATE core.empresa SET deleted_at = '2026-11-01T00:00:00Z' WHERE tenant_id = '${E.id}';`);
+      executar(
+        banco.conexao,
+        `UPDATE core.empresa SET deleted_at = '2026-11-01T00:00:00Z' WHERE tenant_id = '${E.id}';`,
+      );
       try {
         expect(trocar(s, A.id, CNPJ_NOVO, 'req-em-uso-livre')).toMatchObject({ cnpj: CNPJ_NOVO });
       } finally {
@@ -523,7 +542,10 @@ DELETE FROM faturamento.nota WHERE tenant_id = '${A.id}';`),
 INSERT INTO core.empresa (tenant_id, razao_social, cnpj)
   VALUES (plataforma.tenant_referencia(), 'Referencia Ficticia', '${CNPJ_MASSA}');`,
       );
-      executar(banco.conexao, `UPDATE core.empresa SET deleted_at = '2026-11-01T00:00:00Z' WHERE tenant_id = '${D.id}';`);
+      executar(
+        banco.conexao,
+        `UPDATE core.empresa SET deleted_at = '2026-11-01T00:00:00Z' WHERE tenant_id = '${D.id}';`,
+      );
       rodarScript(banco.conexao, SQL_0077, { transacao: true });
       const vivas = consultar<{ id: string; tenant_id: string; cnpj: string }>(
         banco.conexao,
