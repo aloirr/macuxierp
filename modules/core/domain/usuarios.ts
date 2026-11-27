@@ -1,5 +1,5 @@
 /** Usuários do ERP (RF-CORE-02, RN-CORE-01). */
-import type { Perfil } from '@macuxierp/platform-sdk';
+import { gerarSenhaTemporaria, type Perfil, type Sortear } from '@macuxierp/platform-sdk';
 
 export interface UsuarioAtual {
   id: string;
@@ -26,24 +26,14 @@ export function avaliarAlteracaoUsuario(p: {
   return { ok: true };
 }
 
-const MAIUSCULAS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
-const MINUSCULAS = 'abcdefghijkmnopqrstuvwxyz';
-const DIGITOS = '23456789';
-const SIMBOLOS = '!@#%+=?';
-const ALFABETO = MAIUSCULAS + MINUSCULAS + DIGITOS + SIMBOLOS;
-const TAMANHO_SENHA = 16;
-
-const CLASSES = [MAIUSCULAS, MINUSCULAS, DIGITOS, SIMBOLOS] as const;
-
 /**
- * Senha provisória de 16 caracteres sem ambíguos (0/O, 1/l/I). Garante um de cada classe (maiúscula, minúscula, dígito e
- * especial) mais 12 do alfabeto inteiro, embaralhados (Fisher–Yates) com os mesmos bytes. Recebe bytes aleatórios (a API
- * passa `randomBytes`) para a função seguir pura; amostragem por rejeição, sem viés.
+ * Senha provisória: RN-CORE-10 (emenda v0.3.20, 44 B, R-20261127-061352). Alfabeto, tamanho e geração são a fonte única
+ * do platform-sdk (`gerarSenhaTemporaria`); aqui só se monta o `sortear(n)` puro sobre os bytes aleatórios injetados
+ * (a API passa `randomBytes(256)`): rejeição sem viés (limite 256 - 256 % n), consumindo os bytes em ordem.
  */
 export function gerarSenhaProvisoria(aleatorios: Uint8Array): string {
   let i = 0;
-  /** Índice uniforme em [0, n) por rejeição (sem viés); consome os bytes em ordem. */
-  const indice = (n: number): number => {
+  const sortear: Sortear = (n) => {
     const limite = 256 - (256 % n);
     while (i < aleatorios.length) {
       const b = aleatorios[i++] ?? 0;
@@ -51,12 +41,5 @@ export function gerarSenhaProvisoria(aleatorios: Uint8Array): string {
     }
     throw new RangeError('gerarSenhaProvisoria: bytes aleatórios insuficientes');
   };
-  const sortear = (alfabeto: string): string => alfabeto[indice(alfabeto.length)] ?? '';
-  // Um de cada classe + o resto do alfabeto inteiro, embaralhados: nenhuma classe some (T-0052).
-  const chars = [...CLASSES.map(sortear), ...Array.from({ length: TAMANHO_SENHA - CLASSES.length }, () => sortear(ALFABETO))];
-  for (let j = chars.length - 1; j > 0; j--) {
-    const k = indice(j + 1);
-    [chars[j], chars[k]] = [chars[k] ?? '', chars[j] ?? ''];
-  }
-  return chars.join('');
+  return gerarSenhaTemporaria(sortear);
 }

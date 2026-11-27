@@ -1,4 +1,4 @@
-import { regrasDescumpridas } from '@macuxierp/platform-sdk';
+import { ALFABETO_SENHA_TEMPORARIA, regrasDescumpridasTemporaria, senhaTemporariaNoFormato } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { avaliarTrocaAmbienteTenant, MENSAGEM_PRODUCAO_DO_OPERADOR } from './ambiente';
 import { alertaVencimento, avaliarA1Valido, avaliarCertificado, diasParaVencer } from './certificado';
@@ -90,14 +90,21 @@ describe('RN-CORE-01: usuário, perfil e último administrador', () => {
     const g = { id: 'g', perfil: 'gerente' as const, ativo: true };
     expect(avaliarAlteracaoUsuario({ atual: g, alteracao: { ativo: false }, outrosAdministradoresAtivos: 0 })).toEqual({ ok: true });
   });
+});
 
-  it('RF-CORE-02 e T-0052: senha provisória de 16 caracteres, sem ambíguos, com maiúscula, minúscula, número e especial', () => {
+describe('RN-CORE-10 (emenda v0.3.20, 44 B, R-20261127-061352): senha provisória', () => {
+  const LITERAL = 'ACDEFGHJKMNPQRTUVWXYabcdefghjkmnpqrstuvwxyz34679';
+
+  it('o alfabeto literal é o do SDK', () => {
+    expect(LITERAL).toBe(ALFABETO_SENHA_TEMPORARIA);
+  });
+
+  it('200 sementes: formato do SDK, sem regra descumprida e só caracteres do alfabeto', () => {
     for (let semente = 0; semente < 200; semente++) {
       const senha = gerarSenhaProvisoria(bytes(256, semente));
-      expect(senha).toMatch(/^[A-HJ-NP-Za-km-z2-9!@#%+=?]{16}$/);
-      expect(senha).toMatch(/[A-Z]/);
-      expect(senha).toMatch(/[a-z]/);
-      expect(regrasDescumpridas(senha)).toEqual([]);
+      expect(senhaTemporariaNoFormato(senha)).toBe(true);
+      expect(regrasDescumpridasTemporaria(senha)).toEqual([]);
+      expect([...senha].every((c) => LITERAL.includes(c))).toBe(true);
     }
   });
 
@@ -108,12 +115,12 @@ describe('RN-CORE-01: usuário, perfil e último administrador', () => {
   it('T-0052: bytes que no gerador antigo apagavam o único dígito ainda dão senha com todas as classes', () => {
     const b = Uint8Array.from({ length: 256 }, (_, i) => (i === 3 ? 49 : i < 16 ? i % 24 : (i * 37 + 5) % 256));
     const senha = gerarSenhaProvisoria(b);
-    expect(regrasDescumpridas(senha)).toEqual([]);
     expect(senha).toMatch(/[A-Z]/);
     expect(senha).toMatch(/[a-z]/);
+    expect(senha).toMatch(/[0-9]/);
   });
 
-  it('RF-CORE-02: senha provisória recusa bytes insuficientes', () => {
+  it('RF-CORE-02: recusa bytes insuficientes', () => {
     expect(() => gerarSenhaProvisoria(bytes(3, 1))).toThrow();
   });
 });

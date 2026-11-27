@@ -213,8 +213,8 @@ describe('T-0050: plugin de plataforma do core (ADR 0012)', () => {
       expect(r.status).toBe(201);
       expect(r.cabecalhos).toEqual({ ...CABECALHOS_SENHA_PROVISORIA });
       const senha = (r.corpo as { senha_provisoria: string }).senha_provisoria;
-      expect(senha).toHaveLength(16);
-      expect(t.hashes).toEqual(['$argon2id$teste$16']);
+      expect(senha).toHaveLength(18);
+      expect(t.hashes).toEqual(['$argon2id$teste$18']);
     });
     it('RN-CORE-01: o reenvio responde 409 e não gera senha nova', async () => {
       const t = montar();
