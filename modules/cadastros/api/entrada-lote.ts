@@ -17,11 +17,11 @@ import { z } from 'zod';
 import type { ResultadoEntidade } from '../contracts';
 import {
   PADRAO_UF, adaptarLote, agruparClientes, conferirFormasDoLote, cursorDoLote, cursorDepoisDoLote, errosDoLote, obsoletosDoLote, estadoFinalDoLote, idsVazios, repetidosNoLote,
-  type ErroGuardado, type ErroLinha, type FormaDoLote, type MunicipioOficial,
+  tpagGuardadoDaForma, type ErroGuardado, type ErroLinha, type FormaDoLote, type MunicipioOficial,
 } from '../domain';
 import { estadoVazio } from './carga-entidades';
 import { aplicarIrmasDaForma, gravarLinhas, type Linha } from './carga-gravar';
-import type { RepositorioEntrada, LotePendente } from './entrada-sql';
+import type { FormaGuardada, RepositorioEntrada, LotePendente } from './entrada-sql';
 import type { Repositorios } from './portas';
 import { dataIso } from './util';
 
@@ -87,12 +87,16 @@ async function processarUm(d: DependenciasEntradaLote, tx: Transacao, trabalho: 
   const registros = corpo.registros as Record<string, unknown>[];
   const municipios = new Map<string, MunicipioOficial[]>();
   for (const uf of ufsDosRegistros(registros)) municipios.set(uf, await r.oficiais.municipiosDaUf(uf, dataIso(agora)));
-  // Forma de pagamento conhecida do banco (RN-CAD-09): a do lote de formas ainda não tem tabela própria.
-  const formas = new Map<string, { codigo: string; nome: string }>();
+  // Forma de pagamento conhecida do banco (RN-CAD-09): a da condição (tPag da condição) ou a do lote de formas sem condição (entrada_forma, 0074).
+  const formas = new Map<string, FormaGuardada>();
   if (corpo.entidade === 'prazo_pagamento') {
     for (const ext of new Set(registros.map((x) => x.forma_external_id).filter((x): x is string => typeof x === 'string'))) {
       const c = (await r.carga.condicoesDaForma(ext))[0];
-      if (c?.forma_codigo && c.forma_nome) formas.set(ext, { codigo: c.forma_codigo, nome: c.forma_nome });
+      if (c?.forma_codigo && c.forma_nome) formas.set(ext, { codigo: c.forma_codigo, nome: c.forma_nome, tpag: c.forma_tpag });
+      else {
+        const f = await entrada.lerForma(ext);
+        if (f) formas.set(ext, f);
+      }
     }
   }
   const adaptado = adaptarLote(
@@ -139,8 +143,10 @@ async function processarUm(d: DependenciasEntradaLote, tx: Transacao, trabalho: 
     await gravarLinhas(st, [{ entidade: adaptado.entidade, nome: ARQUIVO, linhas, formas: formasDoLote, resultado }], rel);
   }
 
-  // Lote de formas (RN-CAD-09): a forma vive nas condições; atualiza as que já usam a forma. Forma sem condição ainda não tem onde ficar
-  // (falta a cadastros.entrada_forma, pedida ao banco-dados) e conta como inalterada.
+  // Lote de formas (RN-CAD-09, 0074): a forma é gravada em `entrada_forma` (casa por tenant e external_id) e, se já há condições dela, as
+  // condições irmãs também são atualizadas. tPag: `tpagGuardadoDaForma` (dicionário pelo código; sem resolução = nulo, também nas irmãs; o prazo
+  // que usar essa forma é recusado até a forma ter tPag). Contagem: forma nova = `novas`; alterada (aqui ou nas irmãs) = `atualizadas`.
+  let formasNovas = 0;
   let formasAtualizadas = 0;
   let formasObsoletas = 0;
   if (corpo.entidade === 'forma_pagamento') {
@@ -152,9 +158,12 @@ async function processarUm(d: DependenciasEntradaLote, tx: Transacao, trabalho: 
         formasObsoletas += 1;
         continue;
       }
-      const o = await aplicarIrmasDaForma({ chave: f.external_id, external_id: f.external_id, codigo: f.codigo, nome: f.nome, tpag: f.tpag, linha: f.linha, condicoes: [] }, st);
+      const tpag = tpagGuardadoDaForma(f); // o mesmo valor nas irmãs e na entrada_forma (RN-CAD-09)
+      const o = await aplicarIrmasDaForma({ chave: f.external_id, external_id: f.external_id, codigo: f.codigo, nome: f.nome, ...(tpag === null ? {} : { tpag }), linha: f.linha, condicoes: [] }, st);
       errosCarga.push(...o.erros);
-      if (o.aplicada) formasAtualizadas += 1;
+      const g = await entrada.gravarForma({ conector_id: lote.conector_id, external_id: f.external_id, codigo: f.codigo, nome: f.nome, tpag, ativo: f.ativo });
+      if (g === 'nova') formasNovas += 1;
+      else if (g === 'alterada' || o.aplicada) formasAtualizadas += 1;
     }
   }
 
@@ -168,8 +177,8 @@ async function processarUm(d: DependenciasEntradaLote, tx: Transacao, trabalho: 
   const total = doLote.total + doConector.length;
   const contagens = {
     recebidas: lote.recebidos, duplicadas_no_lote: repetidos.size, com_erro: comErro,
-    novas: resultado?.inseridas ?? 0, atualizadas: (resultado?.atualizadas ?? 0) + formasAtualizadas,
-    inalteradas: (resultado?.sem_mudanca ?? 0) + Math.max(0, adaptado.formas.length - formasAtualizadas - formasObsoletas),
+    novas: (resultado?.inseridas ?? 0) + formasNovas, atualizadas: (resultado?.atualizadas ?? 0) + formasAtualizadas,
+    inalteradas: (resultado?.sem_mudanca ?? 0) + Math.max(0, adaptado.formas.length - formasNovas - formasAtualizadas - formasObsoletas),
     obsoletas: obsoletos.size, erros_total: total, invalidas_omitidas: corpo.linhas_invalidas_omitidas,
   };
   const cursor = cursorDepoisDoLote(

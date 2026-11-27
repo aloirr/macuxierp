@@ -10,6 +10,7 @@ import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { criarAmbiente, sessaoDe, transacaoDe } from './apoio-teste';
 import { completarPrazosMedios } from './completar-prazos-medios';
+import { SEM_PERMISSAO_LEITURA } from './util';
 import { fontesHttp } from './fontes-http';
 import { criarPluginCadastros } from './index';
 import { repositoriosSql } from './sql';
@@ -162,7 +163,6 @@ describe.skipIf(!PG_DISPONIVEL)('completarPrazosMedios (T-0108, decisões 14 A e
       `INSERT INTO cadastros.filial (tenant_id, cnpj, razao_social, crt, logradouro, numero, bairro, municipio_ibge, uf, cep, padrao)
        VALUES ($1, '12345678000195', 'Filial', '3', 'Rua A', '1', 'Centro', '1302603', 'AM', '69000000', true)`, [t],
     );
-    await admin('GRANT SELECT (tenant_id, prazo_medio_dias, deleted_at) ON cadastros.cliente TO macuxierp_worker'); // a banco-dados entrega no db/ (recado da v0.3.18)
     const id = await inserir(t, 'C1', [30, 60], { medio: 90 });
     for (const [i, p] of [20, 44, 45, 60, 89, 90, 120].entries()) await clienteComPrazo(t, `10000000${i}00`, p);
     await clienteComPrazo(t, '19999999999', 50, true);
@@ -176,6 +176,9 @@ describe.skipIf(!PG_DISPONIVEL)('completarPrazosMedios (T-0108, decisões 14 A e
     expect(await rodar(t)).toMatchObject({ corrigidas: 1, clientes_afetados: 0 });
     await admin('REVOKE SELECT ON cadastros.cliente FROM macuxierp_worker');
     await inserir(t, 'C3', [30, 60], { medio: 90 });
-    expect(await rodar(t)).toMatchObject({ corrigidas: 1, clientes_afetados: null });
+    const avisos: Record<string, unknown>[] = [];
+    const comLog = completarPrazosMedios({ repositorios: repositoriosSql, outbox: new OutboxPg(), auditoria: new AuditoriaPg(), relogio: new RelogioFixo(AGORA), log: { warn: (o) => { avisos.push(o); } } });
+    expect(await worker.comTenant(t, (tx: Transacao) => comLog(tx, t))).toMatchObject({ corrigidas: 1, clientes_afetados: null });
+    expect(avisos).toEqual([{ tenant_id: t, condicao_id: expect.any(String), codigo: SEM_PERMISSAO_LEITURA }]); // só tenant, condição e código: nada de cliente
   }, 120_000);
 });

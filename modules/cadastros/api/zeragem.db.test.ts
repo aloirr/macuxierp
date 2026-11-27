@@ -5,7 +5,7 @@
  * plataforma.portal_tirar_filiais_dos_usuarios, as funções da v3, como apoio de teste, sem importar outro módulo). Sem Postgres o teste pula (PG_DISPONIVEL, `bash db/scripts/pg-local.sh`); com Postgres e sem a 0043 ele falha.
  */
 import { randomUUID } from 'node:crypto';
-import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
+import { comoConfig as comoConfigSdk, criarBancoEfemero, criarTenant, PG_DISPONIVEL, semearSessaoSuperadmin, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { planoZeragem, type FatosZeragem } from '../domain';
 import { CADASTROS_ZERAR_PORTAL, type CadastroZerarPortal } from '@macuxierp/platform-sdk';
@@ -23,23 +23,8 @@ describe.skipIf(!PG_DISPONIVEL)('plugin "Zerar dados" no banco (cadastros.portal
   const q = async (sql: string, p: unknown[] = []): Promise<Record<string, any>[]> => (await efemero.admin.query(sql, p)).rows; // eslint-disable-line @typescript-eslint/no-explicit-any
   const n = async (tabela: string) => (await q(`SELECT count(*)::int AS n FROM cadastros.${tabela} WHERE tenant_id = $1`, [T]))[0]!.n as number;
 
-  /** Uma transação como macuxierp_config com a sessão de superadmin (o que o `comPlataforma` faz). */
-  async function comoConfig<R>(fn: (consultar: (sql: string, p?: unknown[]) => Promise<Record<string, any>[]>) => Promise<R>): Promise<R> { // eslint-disable-line @typescript-eslint/no-explicit-any
-    const c = await efemero.admin.connect();
-    try {
-      await c.query('BEGIN');
-      await c.query('SET LOCAL ROLE macuxierp_config');
-      await c.query(`SET LOCAL macuxierp.sessao_superadmin = '${sessao}'`);
-      const r = await fn(async (sql, p = []) => (await c.query(sql, p)).rows);
-      await c.query('COMMIT');
-      return r;
-    } catch (e) {
-      await c.query('ROLLBACK');
-      throw e;
-    } finally {
-      c.release();
-    }
-  }
+  /** Uma transação como macuxierp_config com a sessão de superadmin (SDK, RD-2261). */
+  const comoConfig = <R>(fn: Parameters<typeof comoConfigSdk<R>>[2]) => comoConfigSdk(efemero.admin, sessao, fn);
 
   async function plano(cadastros: CadastroZerarPortal[], emUso: FatosZeragem['usos'] = {}) {
     return comoConfig(async (consultar) => {
@@ -63,13 +48,8 @@ describe.skipIf(!PG_DISPONIVEL)('plugin "Zerar dados" no banco (cadastros.portal
     // com o banco disponível, a função da 0043 tem de existir: sem ela o teste FALHA (não passa em branco)
     const temFuncao = (await q("SELECT to_regprocedure('cadastros.portal_zerar(uuid, jsonb, text)') IS NOT NULL AS ok"))[0]!.ok;
     expect(temFuncao, 'cadastros.portal_zerar (migração 0043) ausente no banco').toBe(true);
-    await q(`DO $$ BEGIN IF NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) THEN GRANT macuxierp_config TO CURRENT_USER; END IF; EXCEPTION WHEN OTHERS THEN NULL; END $$`);
     T = await criarTenant(efemero.admin, 'zerar-a', ['cadastros']);
-    sessao = randomUUID();
-    const sa = randomUUID();
-    await q(`INSERT INTO plataforma.superadmin (id, email, nome, senha_hash, deve_trocar_senha, ativo) VALUES ($1, 'sa-zerar@plataforma.teste', 'Superadmin Ficticio', $2, false, true)`, [sa, HASH]);
-    await q(`INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_em, ultimo_uso_em)
-      VALUES ($1, $2, encode(sha256(convert_to($3::text, 'UTF8')), 'hex'), now() + interval '8 hours', now())`, [sessao, sa, sessao]);
+    sessao = (await semearSessaoSuperadmin(efemero.admin)).sessao_id;
     await q(`
 INSERT INTO cadastros.filial (id, tenant_id, cnpj, razao_social, crt, logradouro, numero, bairro, municipio_ibge, uf, cep, external_id)
   VALUES ('${id.filial}', '${T}', '12345678000195', 'Filial', '3', 'Rua A', '1', 'Centro', '1302603', 'AM', '69000000', 'F1');

@@ -4,18 +4,21 @@
  * `prazo_medio_calculado` fica true. `completarPrazosMedios(deps)(tx, tenant)` roda na transação do tenant; seleciona as ativas (`FOR UPDATE`),
  * grava pelo mesmo repositório do PATCH e emite o mesmo evento. Auditoria: UMA por condição alterada (id, prazo médio antes e depois, só números)
  * e UMA por tenant com as contagens (nenhuma se nada mudou). `clientes_afetados` (RN-CAD-16) soma os clientes com prazo médio na faixa em que a
- * permissão de uso da condição muda (`faixaClientesAfetados`); `null` quando o papel não pode ler clientes. Idempotente.
+ * permissão de uso da condição muda (`faixaClientesAfetados`); `null` só quando o papel não pode ler clientes (SEM_PERMISSAO_LEITURA, 42501; avisa por `log`); outro erro da contagem sobe. Idempotente.
  */
 import { auditar, criarEvento, type DestinoAuditoria, type Outbox, type Relogio, type Transacao } from '@macuxierp/platform-sdk';
 import { decidirPrazoMedioGravado, faixaClientesAfetados } from '../domain';
 import { eventoSimples } from './eventos';
 import type { Dependencias } from './portas';
+import { SEM_PERMISSAO_LEITURA } from './util';
 
 export interface DependenciasCompletarPrazosMedios {
   repositorios: Dependencias['repositorios'];
   outbox: Outbox;
   auditoria: DestinoAuditoria;
   relogio: Relogio;
+  /** Opcional: avisa (só tenant_id e código, sem dado de cliente) quando a contagem de clientes fica indisponível. */
+  log?: { warn: (o: Record<string, unknown>, msg: string) => void };
 }
 
 export interface ResultadoCompletarPrazosMedios {
@@ -42,6 +45,7 @@ export function completarPrazosMedios(d: DependenciasCompletarPrazosMedios) {
       await d.outbox.gravar(tx, criarEvento({ nome: ev.nome, tenant_id: tenant, agregado_id: ev.agregado_id, ator: 'sistema', request_id: requestId, payload: ev.payload }, agora));
       const faixa = faixaClientesAfetados(c.forma_tpag, decisao.antes, decisao.depois);
       const afetados = faixa === null ? 0 : await r.carga.contarClientesPorPrazoMedio(faixa.de, faixa.ate);
+      if (afetados === null) d.log?.warn({ tenant_id: tenant, condicao_id: c.id, codigo: SEM_PERMISSAO_LEITURA }, 'clientes_afetados indisponível: sem permissão de leitura em cadastros.cliente');
       clientes = clientes === null || afetados === null ? null : clientes + afetados;
       await auditar(d.auditoria, tx, contexto, {
         acao: 'condicao_pagamento.ajustar_prazo_medio', entidade: 'condicao_pagamento', entidade_id: c.id,
