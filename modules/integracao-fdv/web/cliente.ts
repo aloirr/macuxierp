@@ -7,6 +7,9 @@ import { paraQuery } from '@macuxierp/platform-sdk/listas';
 import { z } from 'zod';
 import { LoteEnvioResumo, LoteErroLinha, MonitorResposta } from '../contracts';
 
+/** Texto aprovado pelo designer para erro sem corpo utilizável (RD-T1). */
+export const MENSAGEM_ERRO_GENERICA = 'Não foi possível concluir agora. Tente de novo em instantes.';
+
 export class ErroIntegracaoFdv extends Error {
   override readonly name = 'ErroIntegracaoFdv';
   constructor(
@@ -32,9 +35,9 @@ export function criarClienteIntegracaoFdv(cfg: { baseUrl: string; token: () => s
     const ehJson = (r.headers.get('content-type') ?? '').includes('json');
     if (!r.ok) {
       const e = ehJson ? Erro.safeParse(await r.json().catch(() => null)) : null;
-      throw new ErroIntegracaoFdv(r.status, e?.success ? e.data.codigo : 'ERRO', e?.success ? e.data.mensagem : 'Não foi possível concluir. Tente de novo.');
+      throw new ErroIntegracaoFdv(r.status, e?.success ? e.data.codigo : 'ERRO', e?.success ? e.data.mensagem : MENSAGEM_ERRO_GENERICA);
     }
-    if (!ehJson) throw new ErroIntegracaoFdv(r.status, 'RESPOSTA_INVALIDA', 'Não foi possível concluir. Tente de novo.');
+    if (!ehJson) throw new ErroIntegracaoFdv(r.status, 'RESPOSTA_INVALIDA', MENSAGEM_ERRO_GENERICA);
     return schema.parse(await r.json());
   }
 

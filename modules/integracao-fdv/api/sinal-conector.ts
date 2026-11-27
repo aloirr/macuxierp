@@ -4,9 +4,9 @@
  * HTTP nunca segura transação. Credencial já recusada nunca é chamada de novo (o limite de falhas de autenticação do Hub é
  * por IP, compartilhado por todos os tenants da VM).
  */
-import type { ContextoAgenda, ItemAgenda, Transacao } from '@macuxierp/platform-sdk';
+import { ehMotivoSondavelFdv, type ContextoAgenda, type ItemAgenda, type Transacao } from '@macuxierp/platform-sdk';
 import { ENTIDADES_HUB_F2, type EntidadeHub, type MotivoPausa } from '../contracts';
-import { atrasoRetentativaSegundos, classificarResposta, deveSondarCredencial, ehMotivoSondavel, dataReferenciaReconciliacao, montarCorpoReconciliacao, montarCorpoSinal, proximaReconciliacaoEm, retryAfterSegundos } from '../domain';
+import { atrasoRetentativaSegundos, classificarResposta, deveSondarCredencial, dataReferenciaReconciliacao, montarCorpoReconciliacao, montarCorpoSinal, proximaReconciliacaoEm, retryAfterSegundos } from '../domain';
 import {
   ESTADOS_EM_VOO,
   RespostaSinalLida,
@@ -122,7 +122,7 @@ export async function executarSinal(item: ItemAgenda, ctx: ContextoAgenda): Prom
       `UPDATE integracao_fdv.sinal SET ultimo_envio_em = $2, ultimo_http = coalesce($3::int, ultimo_http), parado_por_versao = $4, ultimo_codigo = coalesce($5::text, ultimo_codigo) WHERE tenant_id = $1`,
       [tenant, agora, status, paradoPorVersao, codigoHub],
     );
-    if (acao.acao === 'pausar' && ehMotivoSondavel(acao.motivo)) {
+    if (acao.acao === 'pausar' && ehMotivoSondavelFdv(acao.motivo)) {
       if (base.sondagem) await renovarPausaSondavel(tx, tenant, acao.motivo, base.credencial.id, agora);
       else await pausarEntidades(tx, tenant, null, acao.motivo, base.credencial.id, agora);
       log = { motivo: acao.motivo, codigo: acao.codigo, resultado: base.sondagem ? 'sondagem_recusada' : 'pausada' };
@@ -183,7 +183,7 @@ export async function executarReconciliacao(item: ItemAgenda, ctx: ContextoAgend
       break;
     }
     const acao = classificarResposta(resp);
-    if (acao.acao === 'pausar' && ehMotivoSondavel(acao.motivo)) {
+    if (acao.acao === 'pausar' && ehMotivoSondavelFdv(acao.motivo)) {
       await ctx.emTransacao((tx) => pausarEntidades(tx, tenant, null, acao.motivo, base.credencial.id, agora));
       avisarAgenda(ctx, { tenant_id: tenant, entidade: 'todas', motivo: acao.motivo, codigo_hub: acao.codigo, http: resp.status, resultado: 'pausada' }, 'conector: pausa da credencial');
       break;
