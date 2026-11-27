@@ -87,12 +87,15 @@ laco_iniciar() { # 0 = laço no ar (TROCA_LACO_PID, TROCA_LACO_DIR)
     trap '' INT
     while :; do
       for p in login v1/saude; do
-        curl -s -o /dev/null -m "$TROCA_LACO_TIMEOUT_S" -w '%{http_code} %{time_total}' "$base/$p" >"$TROCA_LACO_DIR/r" 2>/dev/null &
+        h="$(date -u +%H:%M:%S)"
+        : >"$TROCA_LACO_DIR/r"
+        curl -s -o /dev/null -m "$TROCA_LACO_TIMEOUT_S" -w '%{http_code} %{time_total} %{time_connect} %{errormsg}' "$base/$p" >"$TROCA_LACO_DIR/r" 2>/dev/null &
         c=$!
-        wait "$c" || true
+        s=0
+        wait "$c" || s=$?
         c=""
         r="$(cat "$TROCA_LACO_DIR/r" 2>/dev/null || true)"
-        printf '%s\n' "${r:-000 0}" >>"$TROCA_LACO_DIR/${p//\//_}"
+        printf '%s %s %s\n' "$h" "$s" "${r:-000 0 0}" >>"$TROCA_LACO_DIR/${p//\//_}"
       done
       sleep "$TROCA_LACO_PASSO_S" &
       c=$!
@@ -116,19 +119,36 @@ laco_parar() { # mata o laço (e o curl em curso), espera e apaga o mktemp; idem
   fi
 }
 
-laco_resumo() { # arquivo rótulo → a linha do laço; 0 = ao menos uma chamada e todas 200
-  LC_ALL=C awk -v rot="$2" -v hora="$(TZ=America/Manaus date +%H:%M:%S)" '
-    NF { n++; cod[$1]++; t = $2; gsub(",", ".", t); ms = int(t * 1000 + 0.5); if (ms > max) max = ms }
+laco_resumo() { # arquivo rótulo → as linhas de diagnóstico e a do laço; 0 = passou (todas 200, ou 000 isolado com aviso)
+  # Linha do arquivo: hora(UTC) saída_do_curl código tempo_total tempo_connect errormsg...
+  # Regra (v0.3.25): 000 isolado (sem outro 000 logo antes ou depois na mesma URL) = aviso; 000 seguido, qualquer outro
+  # código diferente de 200 ou nenhuma chamada = falha. Cada chamada diferente de 200 sai numa linha de diagnóstico com o
+  # %{errormsg} do curl (curl sem a variável, ou mensagem vazia: a saída do curl). Carimbo em UTC, como o log().
+  LC_ALL=C awk -v rot="$2" -v hora="$(date -u +%H:%M:%S)" '
+    function ms(t) { gsub(",", ".", t); return int(t * 1000 + 0.5) }
+    NF {
+      n++; c = $3; cod[c]++; m = ms($4); if (m > max) max = m
+      if (c == "000") { if (ant == "000") seguido = 1; n000++ } else if (c != "200") outro = 1
+      ant = c
+      if (c != "200") {
+        msg = ""; for (i = 6; i <= NF; i++) msg = msg (i > 6 ? " " : "") $i
+        if (msg == "" || msg ~ /%\{/) msg = "curl saída " $2
+        diag[++nd] = sprintf("[implantar] %s laço %s: %s em %d ms (%s, connect %d ms)", $1, rot, c, m, msg, ms($5))
+      }
+    }
     END {
+      for (i = 1; i <= nd; i++) print diag[i]
       k = 0; for (x in cod) chaves[++k] = x
       for (i = 2; i <= k; i++) { v = chaves[i]; j = i - 1; while (j > 0 && chaves[j] > v) { chaves[j + 1] = chaves[j]; j-- } chaves[j + 1] = v }
       lista = ""; for (i = 1; i <= k; i++) lista = lista (i > 1 ? ", " : "") chaves[i] ": " cod[chaves[i]]
-      printf "[implantar] %s laço %s durante a troca: %d chamadas, códigos {%s}, maior tempo %d ms\n", hora, rot, n, lista, max + 0
-      exit (n > 0 && cod["200"] == n) ? 0 : 1
+      passou = (n > 0 && !outro && !seguido)
+      aviso = (passou && n000 > 0) ? " (aviso: 000 isolado tolerado)" : ""
+      printf "[implantar] %s laço %s durante a troca: %d chamadas, códigos {%s}, maior tempo %d ms%s\n", hora, rot, n, lista, max + 0, aviso
+      exit passou ? 0 : 1
     }' "$1"
 }
 
-laco_encerrar() { # → as duas linhas do laço; 0 = todas as chamadas 200. Espera ao menos uma medição de cada URL.
+laco_encerrar() { # → as linhas do laço; 0 = as duas URLs passaram (laco_resumo). Espera ao menos uma medição de cada URL.
   local ok=0 t=0 limite
   [ -n "$TROCA_LACO_DIR" ] || return 1
   limite=$(( (2 * TROCA_LACO_TIMEOUT_S + TROCA_LACO_PASSO_S + 1) * 5 ))
@@ -147,8 +167,9 @@ laco_encerrar() { # → as duas linhas do laço; 0 = todas as chamadas 200. Espe
 }
 
 # trocar_servico <serviço> [conferência extra da réplica nova: função que recebe o id]
-# 0 = a nova está no ar, a velha saiu e o laço pelo domínio só viu 200; 1 = a nova não ficou saudável (foi removida; a
-# velha segue no túnel) ou o laço viu código diferente de 200 (o implantar.sh volta atrás pelo mesmo caminho).
+# 0 = a nova está no ar, a velha saiu e o laço pelo domínio passou (só 200, ou 000 isolado com aviso); 1 = a nova não
+# ficou saudável (foi removida; a velha segue no túnel) ou o laço falhou (000 seguido, ou código diferente de 200 e 000:
+# o implantar.sh volta atrás pelo mesmo caminho).
 trocar_servico() {
   local svc="$1" extra="${2:-}" velho novo="" id rc=0
   velho="$(ids_do_servico "$svc")"
@@ -178,7 +199,7 @@ trocar_servico() {
   remover_replica "$velho"
   dc up -d --no-deps --no-recreate --scale "$svc=1" "$svc" >/dev/null || rc=1
   if ! laco_encerrar; then
-    echo "[implantar] $svc: o laço pelo domínio viu código diferente de 200 durante a troca: volta atrás" >&2
+    echo "[implantar] $svc: o laço pelo domínio falhou durante a troca (000 seguido ou código diferente de 200 e 000): volta atrás" >&2
     rc=1
   fi
   return "$rc"

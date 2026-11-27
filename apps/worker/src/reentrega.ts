@@ -19,7 +19,11 @@ import { aplicarAoConsumidor } from './despachante';
 import type { FonteReentrega, RegistroConsumo } from './portas';
 
 /** Eventos relidos na partida. Só os que um consumidor novo precisa ver desde o início. */
-export const EVENTOS_REENTREGA_PADRAO: readonly string[] = Object.freeze(['pedido.pedido.aprovado@1']);
+export const EVENTOS_REENTREGA_PADRAO: readonly string[] = Object.freeze([
+  'pedido.pedido.aprovado@1',
+  // Carga do fim da 0077 publicada sem consumo pelo worker da v0.3.23 no rollback de 27/11 (v0.3.25).
+  'core.empresa.cnpj_alterado@1',
+]);
 /** Teto de falhas por (consumidor, evento) numa rodada: acima disso a rodada daquele par para (fica para a próxima partida). */
 const MAX_FALHAS_POR_RODADA = 1_000;
 
