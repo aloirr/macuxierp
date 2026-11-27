@@ -1,7 +1,7 @@
 # Quadro — Macuxi ERP
 
 > Dono: gerente-projetos. Status: aberta → em_andamento → em_teste → em_revisao → concluida (ou bloqueada). Horários de Manaus.
-> Fase atual: **v0.3.15 em produção** (26/11, 18h00: tag 195d46a; liberar 45900378494, issue #707 aprovada pelo PO às 17h56). **v0.3.16 em andamento**, versão única (decisão 20 B); ver a seção "26/11 noite — v0.3.16". Histórico das versões anteriores nas seções abaixo.
+> Fase atual: **v0.3.22 em produção** (27/11, 10h43: tag 7ffde45). **v0.3.23 liberada** (27/11, 12h35: SHA 2400a57, liberar 46033555461, issue #846), aguardando o "aprovado" da PO e o "aprovo deploy v0.3.23" do Alexandre. **v0.3.24 em andamento**; ver a seção "27/11 tarde". Histórico das versões anteriores nas seções abaixo.
 > Empresa piloto: **thathyany** (R-20261120-231848-gerente-projetos). Biblioteca NF-e: ADR 0002 opção A (R-20261120-231934-gerente-projetos).
 
 | Tarefa | Título | Fase | Dono | Status | Onde |
@@ -207,6 +207,27 @@ Gerente ativo: session_019xHEXorMcUM7hAvrbsGwJd. PO: session_019xHEXqMSs1piLUgLS
 - Entraram depois do #301: #302 → a902d3b, #303 → 98f306e, #304 → c547f5d, #305 → b696132, #306 → e6d2903, #307 → 7aec401, #309 → ae55aa9 e #311 → 1b1587e (08h55).
 - Entraram depois do #286: #287, #288, #289, #290, #291, #292, #293, #294, #295, #296, #297, #298 e #299.
 - Entraram: #279 → 818e4ad, #284 → 2047e0b, #285 → 30fe879 e #275 → 41b39c7. O #273 (quadro de 22/11, 07h38) foi fechado e substituído por este.
+
+## 27/11 tarde — v0.3.23 e v0.3.24 (Manaus)
+Retomada às 11h46 (R-20261127-105908 e R-20261127-110006), depois da pausa aos 93% do uso semanal.
+- **v0.3.23:**
+  - conteúdo: #834 (48 A), #836, #840, #842 (/v1/entrada), #843 → 789d254 (e2e) e #844 → 2400a57 (390 e "Registros por lote");
+  - suíte completa na sessão, no 2400a57: pacotes 5658/0, db 660/0, tests/ 1823/0, scripts 312/0, render 42/0, e2e 7/7 e 5/5;
+  - prints do SHA final aprovados pelo designer-ux (R-20261127-122514);
+  - liberar verde às 12h35 (46033555461), com a issue #846.
+- **Decisão B da PO (12h07, R-20261127-120735):** os 2 🟡 do #840 vão para a v0.3.24, com o engenheiro-apps: o corte do "Importar"/"Ações" e da tabela "ERP → Força de vendas" em 390, e o "Trocar chave" ("Informe a chave", o print de antes de confirmar e "deixa de funcionar").
+- **Chave da Thathyany:** cadastrada de novo como segredo de rede nesta conta (R-20261127-114929). O teste do bancocliente entra na conferência pós-deploy, junto com a medição da 48 A.
+- **Decisões do gerente para a 0077 (R-20261127-122654):** cnpj_em_uso sem índice único nesta versão (FOR UPDATE + conferência, ERRCODE 23505); a reemissão única exclui os tenants não ativos e o de referência. A RN-CORE-16 foi atualizada com a lista final de status.
+- **v0.3.24, frentes abertas às 12h28 (Opus 5.5, esforço médio):**
+  - modulo-faturamento: PR do v4 (ConsultaNfeProducao);
+  - banco-dados: 0077;
+  - modulo-core: Ficha editável e o 🔴 do R-20261125-045505;
+  - modulo-cadastros: consumidor do cnpj_alterado@1;
+  - designer-ux: regra das telas horizontais e do destaque nos cabeçalhos (R-20261127-110345);
+  - engenheiro-apps: tela da Ficha, os 🟡 da decisão B e a regra nova.
+  - Depois dos PRs do faturamento, do core e do cadastros: engenheiro-software (ligação no apps/api e no worker) e modulo-integracao-fdv (teste de ida da filial).
+  - Também depois: o manual da marca (design-de-marca) e a parte em .claude/agents, que é governança (PR com "Agente: alexandre" e merge só com a frase dele).
+- **Lição:** a sessão filha que recebe a tarefa só no prompt pode se ler como gerente e recusar. As sessões novas levam o papel do dono também no append_system_prompt.
 
 ## 27/11 manhã — v0.3.21, v0.3.22 e o que vem (Manaus)
 - **v0.3.21 no ar às 09h43:** #814, #815, #818, #820, #821, #823 e #824 (correção do deadlock do /v1/auth/eu, achado pela testes no render). Suíte: 8472 passados, 0 falhos e 31 pulados; e2e do /config 5/5.
