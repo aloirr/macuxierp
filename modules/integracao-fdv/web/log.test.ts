@@ -1,8 +1,8 @@
-import { ClienteRecebidoFdv, LogCadastroFdvTenant } from '@macuxierp/platform-sdk';
+import { ClienteRecebidoFdv, LogCadastroFdvTenant, MENSAGENS_RECUSA_PRE_CADASTRO_FDV } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { criarClienteIntegracaoFdv } from './cliente';
 import {
-  NOME_CSV_RECEBIDOS_LOG, TEXTO_VAZIO_RECEBIDOS_LOG, TITULO_SECAO_RECEBIDOS_LOG, colunasDeRecebidosLog, csvDeRecebidosLog, linhasDeRecebidosLog, motivoDoRecebidoLog,
+  NOME_CSV_RECEBIDOS_LOG, ROTULO_BAIXAR_RECEBIDOS, caminhoDoRecebidosCsv, textoRecebidosCortados, textoRecebidosForaDaLista, TEXTO_VAZIO_RECEBIDOS_LOG, TITULO_SECAO_RECEBIDOS_LOG, colunasDeRecebidosLog, csvDeRecebidosLog, linhasDeRecebidosLog, motivoDoRecebidoLog,
   caminhoDoLogCsv, colunasDeErrosLog, errosForaDaListaLog, linhasDeEnviosLog, linhasDeErrosLog, nomeDoCsvDoLog, textoErrosForaDaLista, TEXTO_LEGENDA_ERROS_LOG
 } from './log';
 
@@ -84,7 +84,7 @@ describe('Recebidos do FDV no Log (RN-INF-09; T-0110)', () => {
   });
   it('RN-INF-09: a data sai no fuso do tenant, o vendedor ausente vira traço e o documento é o mascarado', () => {
     const [a, b] = linhasDeRecebidosLog([rec(), recusado], 'America/Manaus');
-    expect(a).toMatchObject({ situacao: 'Aceito', documento: '11.222.333/****-**', vendedor: 'V-1', motivo: '', retorno: 'Voltou ao FDV' });
+    expect(a).toMatchObject({ situacao: 'Aceito', documento: '11.222.333/****-**', vendedor: 'V-1', motivo: '—', retorno: 'Voltou ao FDV' });
     expect(a!.recebidoEm).toBe(linhasDeEnviosLog(log({ envios: [{ em: '2026-11-26T12:30:00.000Z', origem: 'ciclo', situacao: 'concluido', registros: 1, com_erro: 0 }] }), 'America/Manaus')[0]!.quando);
     expect(b).toMatchObject({ situacao: 'Recusado', vendedor: '—', retorno: 'Na fila para voltar ao FDV' });
   });
@@ -100,5 +100,21 @@ describe('Recebidos do FDV no Log (RN-INF-09; T-0110)', () => {
     expect(linhas[2]).toContain('Vendedor inativo');
     expect(NOME_CSV_RECEBIDOS_LOG).toBe('recebidos-fdv.csv');
     expect(linhas.join('\n')).not.toMatch(/\d{3}\.\d{3}\.\d{3}-\d{2}|\d{14}/);
+  });
+  it('RN-INF-09 (RD-2251): o motivo das recusas de vendedor vem só do catálogo do SDK, sem cópia na integração', () => {
+    for (const codigo of ['vendedor_fdv_nao_encontrado', 'vendedor_fdv_inativo'] as const) {
+      const c = rec({ ...recusado, erros: [{ campo: 'vendedor_external_id', codigo, mensagem: 'x' }] });
+      expect(motivoDoRecebidoLog(c)).toBe(MENSAGENS_RECUSA_PRE_CADASTRO_FDV[codigo]);
+    }
+  });
+  it('RN-INF-09 (RD-2240 a 2242): motivo e retorno ausentes saem com o traço; rótulo e aviso do arquivo completo', () => {
+    expect(linhasDeRecebidosLog([rec({ retorno: null })])[0]).toMatchObject({ motivo: '—', retorno: '—' });
+    expect(ROTULO_BAIXAR_RECEBIDOS).toBe('Baixar recebidos (.csv)');
+    expect(textoRecebidosForaDaLista(50, 120)).toBe('Mostrando os 50 mais recentes de 120.');
+    expect(textoRecebidosCortados(10_000)).toBe('Aviso: o arquivo traz só os 10000 recebidos mais recentes.');
+  });
+  it('decisão 21 A: o botão baixa o arquivo completo pela rota de exportação, com a situação quando houver', () => {
+    expect(caminhoDoRecebidosCsv()).toBe('/v1/integracao-fdv/clientes-recebidos/exportar');
+    expect(caminhoDoRecebidosCsv('recusado')).toBe('/v1/integracao-fdv/clientes-recebidos/exportar?situacao=recusado');
   });
 });
