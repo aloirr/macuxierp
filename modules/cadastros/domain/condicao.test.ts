@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FORMAS_A_VISTA, MAX_DIAS } from '../contracts';
 import {
-  MOTIVO_A_VISTA, MOTIVO_BOLETO, MOTIVO_CARTAO_PRAZOS, MOTIVO_DESCRICAO, MOTIVO_FORMA_NAO_ACEITA, MOTIVO_PRAZO_MEDIO, MOTIVO_PRAZO_MEDIO_FAIXA, completarPrazoMedio, decidirPrazoMedioGravado, derivarParcelasCartao, faixaClientesAfetados, prazoMedioForaDaFaixa, prazoMedioEfetivo, validarCondicaoPagamento as v,
+  MOTIVO_A_VISTA, MOTIVO_BOLETO, MOTIVO_CARTAO_PRAZOS, MOTIVO_DESCRICAO, MOTIVO_FORMA_NAO_ACEITA, MOTIVO_PRAZO_MEDIO, MOTIVO_PRAZO_MEDIO_FAIXA, completarPrazoMedio, decidirPrazoMedioGravado, derivarParcelasCartao, faixaClientesAfetados, faixaSeAplica, prazoMedioForaDaFaixa, prazoMedioEfetivo, validarCondicaoPagamento as v,
 } from './condicao';
 
 const rn = (m: string, campo: string, r = 'RN-CAD-09') => [{ rn: r, campo, mensagem: m }];
@@ -162,5 +162,18 @@ describe('v0.3.18: prazos médios gravados (RN-CAD-15, RN-CAD-16)', () => {
     expect(faixaClientesAfetados('15', 10, 45)).toEqual({ de: 10, ate: 45 });
     expect(faixaClientesAfetados('15', null, 38)).toEqual({ de: 38, ate: null });
     expect(faixaClientesAfetados('03', 90, 45)).toBeNull();
+  });
+});
+
+describe('RN-CAD-15: faixaSeAplica (única para a carga e o PATCH)', () => {
+  const gravada = { forma_tpag: '15', prazos_dias: [28, 56], prazo_medio_dias: 90, inativo: false };
+  it('RN-CAD-15: mudar só a forma não confere a faixa', () => expect(faixaSeAplica({ gravada, nova: { forma_tpag: '17', prazos_dias: [28, 56] } })).toBe(false));
+  it('RN-CAD-15: mudar parcelas ou prazo médio, com a condição ativa, confere', () => {
+    expect(faixaSeAplica({ gravada, nova: { prazos_dias: [30, 60] } })).toBe(true);
+    expect(faixaSeAplica({ gravada, nova: { prazo_medio_dias: 40 } })).toBe(true);
+  });
+  it('RN-CAD-15: reativar confere; inativar nunca', () => {
+    expect(faixaSeAplica({ gravada: { ...gravada, inativo: true }, nova: { inativo: false } })).toBe(true);
+    expect(faixaSeAplica({ gravada, nova: { inativo: true, prazos_dias: [30, 60] } })).toBe(false);
   });
 });
