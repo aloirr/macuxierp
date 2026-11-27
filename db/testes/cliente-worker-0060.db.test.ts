@@ -67,8 +67,8 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — cliente e empresa criados p
 
   const matriz = () => TABELAS.map((t) => privilegiosDe(banco.conexao, 'macuxierp_worker', t));
 
-  it('o worker tem só SELECT e INSERT no cliente, no endereço, no contato e na empresa (sem UPDATE, DELETE nem TRUNCATE)', () => {
-    expect(matriz()).toEqual(['SI', 'SI', 'SI', 'SI']);
+  it('o worker tem SELECT e INSERT no cliente, no endereço, no contato e na empresa, UPDATE só nos cadastros (0072), sem DELETE nem TRUNCATE', () => {
+    expect(matriz()).toEqual(['SIU', 'SIU', 'SIU', 'SI']);
     expect(privilegiosDe(banco.conexao, 'macuxierp_leitura', 'cadastros.cliente')).toBe('S');
   });
 
@@ -154,6 +154,6 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — cliente e empresa criados p
     const sql = readFileSync(MIGRACAO, 'utf8');
     rodarScript(banco.conexao, sql, { transacao: true });
     rodarScript(banco.conexao, sql, { transacao: true });
-    expect(matriz()).toEqual(['SI', 'SI', 'SI', 'SI']);
+    expect(matriz()).toEqual(['SIU', 'SIU', 'SIU', 'SI']);
   });
 });

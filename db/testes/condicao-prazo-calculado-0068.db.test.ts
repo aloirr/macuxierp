@@ -16,7 +16,6 @@ import {
   PG_DISPONIVEL,
   permitirSetRole,
   privilegiosDe,
-  recusaDetalhada,
   rodarComo,
   rodarScript,
 } from './apoio.ts';
@@ -27,7 +26,6 @@ const CP = 'cadastros.condicao_pagamento';
 const A = novoTenant('condicao-0068-a');
 const B = novoTenant('condicao-0068-b');
 const WORKER = (t: Tenant) => ({ papel: 'macuxierp_worker', tenant: t.id });
-const COLUNAS = ['prazo_medio_calculado', 'prazo_medio_dias', 'updated_at'];
 
 let banco: BancoDeTeste;
 const um = <T,>(sql: string, ctx?: Parameters<typeof consultar>[2]): T => consultar<T>(banco.conexao, sql, ctx)[0] as T;
@@ -70,36 +68,14 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — prazo médio calculado na c
     ]);
   });
 
-  it('o worker tem UPDATE só em prazo_medio_dias, prazo_medio_calculado e updated_at (na tabela, só SELECT)', () => {
-    expect(privilegiosDe(banco.conexao, 'macuxierp_worker', CP)).toBe('S');
-    expect(
-      consultar<{ c: string }>(
-        banco.conexao,
-        `SELECT column_name AS c FROM information_schema.columns
-          WHERE table_schema = 'cadastros' AND table_name = 'condicao_pagamento'
-            AND has_column_privilege('macuxierp_worker', '${CP}', column_name, 'UPDATE') ORDER BY 1`,
-      ).map((r) => r.c),
-    ).toEqual(COLUNAS);
+  it('o worker tem SELECT, INSERT e UPDATE na condição (0072); a leitura só SELECT', () => {
+    expect(privilegiosDe(banco.conexao, 'macuxierp_worker', CP)).toBe('SIU');
     expect(privilegiosDe(banco.conexao, 'macuxierp_leitura', CP)).toBe('S');
   });
 
-  it('o worker grava as 3 colunas no próprio tenant e recebe 42501 em outra coluna', () => {
+  it('o worker grava as 3 colunas no próprio tenant', () => {
     expect(atualizar(A)).toEqual([1]);
     expect(prazo(A)).toEqual({ dias: 30, calc: true });
-    recusaDetalhada(
-      banco.conexao,
-      `UPDATE ${CP} SET descricao = 'Outra' WHERE codigo = 'P30';`,
-      '42501',
-      /permission denied/,
-      WORKER(A),
-    );
-    recusaDetalhada(
-      banco.conexao,
-      `UPDATE ${CP} SET prazo_medio_dias = 30, prazos_dias = '{30}' WHERE codigo = 'P30';`,
-      '42501',
-      /permission denied/,
-      WORKER(A),
-    );
   });
 
   it('RLS: o worker do A atinge 0 linhas no B; o B não muda', () => {
