@@ -1,6 +1,7 @@
 import { ehRespostaDefinitiva } from '../descritor/idempotencia';
 import { TEXTOS_BLOQUEIO } from '../login-regras';
 import { SESSAO_EXPIRADA } from '../textos';
+import { ERRO_CODIGO_EM_USO, ERRO_CODIGO_REGRA, ERRO_GERAR_INCERTO, ERRO_PEPPER_AUSENTE, ERRO_REVOGAR } from './entrada-textos';
 
 /** Erros do portal /config. Mensagens fixas: nada de corpo de erro cru, e-mail, nome de empresa ou senha (LGPD, ADR 0012). */
 export class ConfigNaoAutenticado extends Error {
@@ -32,7 +33,7 @@ export class ErroPlataforma extends Error {
   }
 }
 
-export type ContextoErro = 'entrar' | 'criar_empresa' | 'modulos' | 'criar_admin' | 'redefinir' | 'situacao' | 'senha' | 'carregar' | 'email' | 'integracao_fdv' | 'carga' | 'receita';
+export type ContextoErro = 'entrar' | 'criar_empresa' | 'modulos' | 'criar_admin' | 'redefinir' | 'situacao' | 'senha' | 'carregar' | 'email' | 'integracao_fdv' | 'carga' | 'receita' | 'entrada' | 'entrada_revogar';
 
 /**
  * Ficha pela Receita (T-0101): as falhas da fonte (200 `estado: 'erro'`), o 409 e o 422 trazem a `mensagem` do core, que a
@@ -68,6 +69,17 @@ export function mensagemDoErro(e: unknown, ctx: ContextoErro): MensagemErro {
   if (e instanceof ConfigMuitasTentativas) return { ...base, texto: 'Muitas tentativas. Aguarde 15 minutos e tente de novo.' };
   if (e instanceof ConfigContaBloqueada) return { ...base, texto: `${TEXTOS_BLOQUEIO.titulo}. ${TEXTOS_BLOQUEIO.texto}` };
   if (e instanceof ConfigSemPermissao) return { ...base, texto: SEM_PERMISSAO };
+  // Entrada de dados (T-0057 A1): textos fixos do desenho; nunca a mensagem da API (503 cita a variável do servidor).
+  if (ctx === 'entrada_revogar') return { ...base, texto: ERRO_REVOGAR };
+  if (ctx === 'entrada') {
+    if (e instanceof ErroPlataforma) {
+      const codigo = e.codigo.toLowerCase();
+      if (e.status === 503 && codigo === 'pepper_ausente') return { ...base, texto: ERRO_PEPPER_AUSENTE };
+      if (e.status === 409 && codigo === 'conector_id_em_uso') return { ...base, texto: '', campos: { conector_id: ERRO_CODIGO_EM_USO }, chaveNova: true };
+      if (e.status === 400 || e.status === 422) return { ...base, texto: '', campos: { conector_id: ERRO_CODIGO_REGRA }, chaveNova: true };
+    }
+    return { ...base, texto: ERRO_GERAR_INCERTO };
+  }
   if (e instanceof ErroPlataforma) {
     if (ctx === 'receita') {
       const definitiva = ehRespostaDefinitiva(e.status);

@@ -1,5 +1,5 @@
 'use client';
-import { LIMITE_REGISTROS_LOTE_FDV, type EntidadeEnvioFdv, type IntegracaoFdvPlataforma, type MonitorConectorFdv } from '@macuxierp/platform-sdk';
+import { LIMITE_REGISTROS_LOTE_FDV, type PortalEntradaLeitura, type EntidadeEnvioFdv, type IntegracaoFdvPlataforma, type MonitorConectorFdv } from '@macuxierp/platform-sdk';
 import { DialogoMotivo, MenuAcoes, TabelaDensa, type ColunaTabela } from '@macuxierp/ui';
 import { SeloTom } from '@/components/selo-tom';
 import { useRouter } from 'next/navigation';
@@ -12,6 +12,7 @@ import type { Resultado } from '@/lib/config/executar';
 import { configurarFdvAcao, lerMonitorFdvAcao, reprocessarFdvAcao, retomarFdvAcao, salvarCredencialFdvAcao, testarConexaoFdvAcao } from '../acoes-integracao-fdv';
 import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
 import { maisRecente, textoAtualizado, textoReprocessarOk, vistaMonitor } from '@/lib/config/operacao-fdv';
+import { BlocoEntradaApi } from './bloco-entrada-api';
 import { LogCadastro } from './log-cadastro';
 import { ZerarCadastro } from './zerar-cadastro';
 import { ZerarPedidos } from './zerar-pedidos';
@@ -30,7 +31,7 @@ type Mensagem = { ok: boolean; texto: string } | null;
  * A chave do conector fica só no campo até o envio: sem estado, URL, armazenamento nem log; depois de salvar, o campo é limpo e a
  * tela mostra só o prefixo e as datas que a API devolve.
  */
-export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial = null }: { empresaId: string; dados: IntegracaoFdvPlataforma; fuso: string; monitor?: MonitorConectorFdv | null }) {
+export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial = null, entrada = null }: { empresaId: string; dados: IntegracaoFdvPlataforma; fuso: string; monitor?: MonitorConectorFdv | null; entrada?: PortalEntradaLeitura | null }) {
   const router = useRouter();
   const [pendente, iniciar] = useTransition();
   const [mensagem, setMensagem] = useState<Mensagem>(null);
@@ -124,7 +125,10 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
 
   return (
     <div className="integracao-colunas">
-      {/* Cenário B (depois): colunas "Integração via Conector" e "Integração via API" entram aqui, ao lado deste grupo. */}
+      {/* T-0057 A1: só o bloco "Integração via API" (a coluna "via Conector" e a tabela de donos entram depois). */}
+      <div aria-label="Entrada de dados do cliente" role="group">
+        <BlocoEntradaApi empresaId={empresaId} dados={entrada} fuso={fuso} />
+      </div>
       <div aria-label="Macuxi FDV" role="group">
         {!dados.modulo_licenciado && <p className="faixa-aviso" role="status">O módulo Integração FDV não está licenciado nesta empresa. Ligue-o na aba Empresa para configurar.</p>}
         {mensagem && <p className={mensagem.ok ? 'faixa-aviso' : 'erro'} role={mensagem.ok ? 'status' : 'alert'}>{mensagem.texto}</p>}
