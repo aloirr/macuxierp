@@ -8,3 +8,4 @@
 2026-11-21 — T-0030 — RN-CORE-08 (ADR 0006): avaliarTrocaAmbienteTenant, rota só volta para homologação (produção 422), porta tipada, PADRAO_RECADO_APROVACAO removido, web e testes (todas as combinações)
 2026-11-24 — T-0087 — API (filtro usuario_id, CSV, perfis só do administrador), descritores de lista do core e testes de RLS/licença; telas no apps/web pendentes do engenheiro-apps
 2026-11-24 — T-0088 — core: tela de empresa e ambiente fiscal (só exibição, sem ação de troca; troca segue só pela rota da T-0030)
+2026-11-27 — T-0101 — v0.3.24 RN-CORE-16: cnpj_em_uso revalidado no domínio (empresa_cnpj_em_uso), db.test da ficha contra a 0077 (#850), revisão do corretor aplicada; PR depende do #850, do PR do engenheiro (401 por etapa) e do R-1 do testes.
