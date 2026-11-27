@@ -107,4 +107,21 @@ describe('ambiente-vm.sh: gerados.env (T-0057, pepper da entrada)', () => {
     assert.equal(gerados(), g);
     assert.match(readFileSync(s, 'utf8'), /^MACUXIERP_CHAVE_A1$/m);
   });
+
+  it('interruptor do prazo médio (decisão 16 A): grava ligado no .env uma vez, nunca troca o que o operador mudou, fora da sentinela', () => {
+    const envf = join(erp, '.env');
+    assert.equal(valor(readFileSync(envf, 'utf8'), 'MACUXIERP_COMPLETAR_PRAZO_MEDIO'), 'ligado');
+    writeFileSync(envf, readFileSync(envf, 'utf8').replace('MACUXIERP_COMPLETAR_PRAZO_MEDIO=ligado', 'MACUXIERP_COMPLETAR_PRAZO_MEDIO=desligado'));
+    const r = rodar();
+    assert.equal(r.status, 0, r.saida);
+    const depois = readFileSync(envf, 'utf8');
+    assert.equal(valor(depois, 'MACUXIERP_COMPLETAR_PRAZO_MEDIO'), 'desligado');
+    assert.equal(depois.match(/^MACUXIERP_COMPLETAR_PRAZO_MEDIO=/gm)?.length, 1);
+    assert.doesNotMatch(readFileSync(join(erp, '.chaves-geradas'), 'utf8'), /MACUXIERP_COMPLETAR_PRAZO_MEDIO/);
+    const compose = readFileSync(resolve(dirname(SCRIPT), '..', '..', '..', 'compose.yml'), 'utf8');
+    const worker = compose.slice(compose.indexOf('macuxierp-worker:'));
+    assert.match(worker, /MACUXIERP_COMPLETAR_PRAZO_MEDIO: \$\{MACUXIERP_COMPLETAR_PRAZO_MEDIO:-ligado\}/);
+    assert.equal(compose.split('\n').filter((l) => l.trim().startsWith('MACUXIERP_COMPLETAR_PRAZO_MEDIO:')).length, 1);
+    assert.match(readFileSync(join(dirname(SCRIPT), 'env.modelo'), 'utf8'), /^MACUXIERP_COMPLETAR_PRAZO_MEDIO=ligado$/m);
+  });
 });

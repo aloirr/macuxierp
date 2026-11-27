@@ -18,6 +18,7 @@
 import { z } from 'zod';
 import { PADRAO_UUID } from './banco';
 import { AMBIENTES_HUB } from './hub';
+import { CodigoErroFdv } from './erros-fdv';
 
 const Id = z.string().regex(PADRAO_UUID);
 const Instante = z.string().datetime();
@@ -88,6 +89,11 @@ export const UltimoSinalFdv = z.object({
   ultimo_aceito_em: Instante.nullable(),
   ultimo_http: z.number().int().min(100).max(599).nullable(),
   parado_por_versao: z.boolean(),
+  /**
+   * v0.3.18 (25 B): o código que o Hub devolveu no último sinal recusado (`integracao_fdv.sinal.ultimo_codigo`, 0074); só
+   * o código, nunca a mensagem. Opcional na leitura enquanto o módulo não manda (expand).
+   */
+  ultimo_codigo: CodigoErroFdv.nullable().optional(),
 });
 export type UltimoSinalFdv = z.infer<typeof UltimoSinalFdv>;
 
@@ -169,6 +175,11 @@ export const CadastroIntegracaoFdv = z.object({
   ligada: z.boolean(),
   ultimo_envio_em: Instante.nullable(),
   falha: FalhaEnvioFdv.nullable(),
+  /**
+   * v0.3.18 (25 B): quando a sondagem de 30 min tenta de novo o cadastro pausado por `credencial` ou `licenca_fdv`; nulo
+   * (ou ausente, expand) nas outras situações.
+   */
+  proxima_tentativa_em: Instante.nullable().optional(),
 });
 export type CadastroIntegracaoFdv = z.infer<typeof CadastroIntegracaoFdv>;
 
@@ -180,6 +191,9 @@ export type CadastroIntegracaoFdv = z.infer<typeof CadastroIntegracaoFdv>;
 export const CadastroIntegracaoFdvPlataforma = CadastroIntegracaoFdv.extend({ lote_em_voo: z.boolean() });
 export type CadastroIntegracaoFdvPlataforma = z.infer<typeof CadastroIntegracaoFdvPlataforma>;
 
+/** As pausas que a sondagem de 30 min retoma sozinha (25 B). */
+const MOTIVOS_COM_SONDAGEM_FDV: ReadonlySet<string> = new Set(['credencial', 'licenca_fdv']);
+
 /** Os 10 cadastros da F2, um por linha, na ordem de `ENTIDADES_ENVIO_FDV` (a tela não precisa ordenar nem completar). */
 function conferirCadastros(cadastros: readonly CadastroIntegracaoFdv[], ctx: z.RefinementCtx, ligadaEsperada?: (e: EntidadeEnvioFdv) => boolean): void {
   const ordem = cadastros.map((c) => c.entidade).join(',');
@@ -187,6 +201,11 @@ function conferirCadastros(cadastros: readonly CadastroIntegracaoFdv[], ctx: z.R
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['cadastros'], message: 'Um item por cadastro da F2, na ordem de carga' });
     return;
   }
+  cadastros.forEach((c, i) => {
+    if (c.proxima_tentativa_em && !MOTIVOS_COM_SONDAGEM_FDV.has(c.falha?.motivo ?? '')) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['cadastros', i, 'proxima_tentativa_em'], message: 'Próxima tentativa só na pausa por credencial ou licença do FDV' });
+    }
+  });
   if (!ligadaEsperada) return;
   cadastros.forEach((c, i) => {
     if (c.ligada !== ligadaEsperada(c.entidade)) {

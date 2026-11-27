@@ -65,7 +65,7 @@ describe('worker: rotinas e executores com os adaptadores reais', () => {
   it('RF-CORE-06: a exportação LGPD, com o registro SQL do core e os exportadores de core, cadastros (T-0037) e pedido (T-0016)', async () => {
     const { banco, sql } = bancoGravador([[/SELECT estado FROM core\.exportacao/, [{ estado: 'pronta' }]]]);
     const executores = montarExecutores({ banco, log, armazenamento: new ArmazenamentoMemoria(), catalogo: { inserir: async () => undefined }, agora: () => AGORA });
-    expect(executores.map((e) => e.tipo)).toEqual([TRABALHO_EXPORTAR, TRABALHO_CARGA_INICIAL, TRABALHO_ENTRADA_LOTE]);
+    expect(executores.map((e) => e.tipo)).toEqual([TRABALHO_EXPORTAR, TRABALHO_CARGA_INICIAL, TRABALHO_ENTRADA_LOTE, 'cadastros.entrada_expurgo']);
     expect(EXPORTADORES).toEqual([exportadorCore, exportadorCadastros, exportadorPedido]);
     const id = '10000000-0000-4000-8000-000000000001';
     const r = await banco.comTenant(T1, (tx) => executores[0]!.executar({ id, tipo: TRABALHO_EXPORTAR, tenant_id: T1, payload: { exportacao_id: id }, tentativas: 0 }, tx));
