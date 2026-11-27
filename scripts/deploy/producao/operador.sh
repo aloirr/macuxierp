@@ -70,14 +70,14 @@ PADRAO_OPERADOR='^[a-z][a-z0-9._-]{1,39}$'
 # Tamanho em caracteres (não bytes), qualquer que seja o locale da sessão SSH: o empresa.mjs e o superadmin.mjs contam igual.
 tamanho() { local LC_ALL=C.UTF-8; printf '%s' "${#1}"; }
 
-# >>> gerador da senha provisória (o teste apps/api/src/operador-senha.test.ts roda este trecho e trava as classes)
-# Mesmas classes da senha provisória da API (modules/core/domain/usuarios.ts: sem 0/O, 1/l/I).
-MAIUSCULAS='ABCDEFGHJKLMNPQRSTUVWXYZ'
-MINUSCULAS='abcdefghijkmnopqrstuvwxyz'
-DIGITOS='23456789'
-SIMBOLOS='!@#%+=?'
-ALFABETO="$MAIUSCULAS$MINUSCULAS$DIGITOS$SIMBOLOS"
-TAMANHO_SENHA=16
+# >>> gerador da senha provisória (o teste apps/api/src/operador-senha.test.ts roda este trecho e trava as classes no SDK)
+# Cópia do SDK (packages/platform-sdk/src/senha-temporaria.ts, 44 B): só letras e números, sem 0/O/o, 1/I/i/l, 2/Z, 5/S
+# e 8/B; 18 caracteres; isenta da regra "especial" (é trocada no 1º acesso). O teste trava as constantes iguais às do SDK.
+MAIUSCULAS='ACDEFGHJKMNPQRTUVWXY'
+MINUSCULAS='abcdefghjkmnpqrstuvwxyz'
+DIGITOS='34679'
+ALFABETO="$MAIUSCULAS$MINUSCULAS$DIGITOS"
+TAMANHO_SENHA=18
 
 # Inteiros de 32 bits do /dev/urandom lidos de uma vez por senha (64; a senha usa 35, o resto cobre a rejeição).
 SORTEIO=()
@@ -96,15 +96,15 @@ sortear() { # R = inteiro uniforme em [0, $1): rejeição acima do maior múltip
   return 1
 }
 
-# Por construção, sem sorteio repetido: um caractere de cada classe (maiúscula, minúscula, dígito, especial), o resto do
-# alfabeto inteiro e embaralhamento de Fisher-Yates. Cumpre a regra única do SDK (letra, número e especial; 16 >= 8).
+# Por construção, sem sorteio repetido: um caractere de cada classe (maiúscula, minúscula, dígito), o resto do alfabeto
+# inteiro e embaralhamento de Fisher-Yates. Cumpre a regra da temporária do SDK (letra e número; 18 >= 8).
 gerar_senha() {
   local -a c=()
   local classe i t
   read -r -a SORTEIO <<<"$(od -An -v -N256 -tu4 /dev/urandom | tr '\n' ' ')"
   POSICAO=0
   [ "${#SORTEIO[@]}" -eq 64 ] || return 1
-  for classe in "$MAIUSCULAS" "$MINUSCULAS" "$DIGITOS" "$SIMBOLOS"; do
+  for classe in "$MAIUSCULAS" "$MINUSCULAS" "$DIGITOS"; do
     sortear "${#classe}" || return 1
     c+=("${classe:R:1}")
   done

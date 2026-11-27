@@ -17,6 +17,10 @@ import {
   VALIDADE_SENHA_TEMPORARIA_HORAS,
   ContaBloqueadaResposta,
   URL_MACUXI_ERP,
+  ROTA_TELA_LOGIN,
+  lerPreenchimentoLogin,
+  PreenchimentoLogin,
+  urlEntrarPreenchida,
 } from './esqueci-senha';
 import { CODIGO_TROCAR_SENHA } from './eu';
 import { CodigoEmpresaLogin } from './login';
@@ -139,7 +143,7 @@ describe('RN-CORE-13: e-mail da senha temporária', () => {
         '',
         'Vale por 72 horas e serve para entrar uma vez só. Ela também desbloqueia a conta.',
         '',
-        'Abrir o Macuxi ERP: https://erp.macuxifdv.com.br/',
+        'Abrir o Macuxi ERP: https://erp.macuxifdv.com.br/login#codigo=AM2808&email=ana%40exemplo.invalid',
         '',
         '--',
         'Equipe Macuxi ERP · Boa Vista, RR · erp.macuxifdv.com.br',
@@ -149,7 +153,8 @@ describe('RN-CORE-13: e-mail da senha temporária', () => {
     expect(e.html).toContain('>AM2808</td>');
     expect(e.html).toContain('>ana@exemplo.invalid</td>');
     expect(e.html).toContain('>Tmp#2026ab</td>');
-    expect(e.html).toContain(`href="${URL_MACUXI_ERP}/"`);
+    expect(e.html).toContain(`href="${URL_MACUXI_ERP}/login#codigo=AM2808&amp;email=ana%40exemplo.invalid"`);
+    expect(e.html).not.toContain('Tmp#2026ab"');
     expect(e.html).not.toMatch(/\{\{/);
   });
 
@@ -182,5 +187,30 @@ describe('RN-CORE-15 (T-0111): 423 CONTA_BLOQUEADA', () => {
     expect(ContaBloqueadaResposta.parse(corpo)).toEqual({ codigo: CODIGO_CONTA_BLOQUEADA, mensagem: MENSAGEM_CONTA_BLOQUEADA, detalhes: { recuperar: RECUPERAR_CONTA_BLOQUEADA } });
     expect(JSON.stringify(corpo)).not.toMatch(/\d/);
     expect(ContaBloqueadaResposta.safeParse({ ...corpo, mensagem: 'outra' }).success).toBe(false);
+  });
+});
+
+describe('44 B: o botão abre o login com o código e o e-mail preenchidos (fragmento, nunca a senha)', () => {
+  it('o link leva código e e-mail no fragmento (#), não na query, e nunca a senha', () => {
+    const url = urlEntrarPreenchida('AM2808', 'ana+teste@exemplo.invalid');
+    expect(url).toBe('https://erp.macuxifdv.com.br/login#codigo=AM2808&email=ana%2Bteste%40exemplo.invalid');
+    const u = new URL(url);
+    expect(u.search).toBe('');
+    expect(u.pathname).toBe(ROTA_TELA_LOGIN);
+    const e = emailSenhaTemporaria({ senha: 'Segredo123', validade_horas: 72, codigo_empresa: 'AM2808', email: 'ana@exemplo.invalid' });
+    for (const parte of [e.texto, e.html]) expect(parte.match(/https:\/\/\S+/g)!.join(' ')).not.toContain('Segredo123');
+  });
+
+  it('ida e volta: lerPreenchimentoLogin devolve o código e o e-mail do link, normalizados como no login', () => {
+    const url = urlEntrarPreenchida('am2808', 'Ana+Teste@Exemplo.invalid');
+    expect(lerPreenchimentoLogin(new URL(url).hash)).toEqual({ codigo: 'AM2808', email: 'ana+teste@exemplo.invalid' });
+    expect(lerPreenchimentoLogin(url.slice(url.indexOf('#') + 1))).toEqual({ codigo: 'AM2808', email: 'ana+teste@exemplo.invalid' });
+  });
+
+  it('o inválido fica de fora sem erro; senha e outros campos no fragmento são ignorados', () => {
+    expect(lerPreenchimentoLogin('')).toEqual({});
+    expect(lerPreenchimentoLogin('#codigo=%3Cx%3E&email=nao-e-email')).toEqual({});
+    expect(lerPreenchimentoLogin('#email=ana%40exemplo.invalid&senha=abc')).toEqual({ email: 'ana@exemplo.invalid' });
+    expect(PreenchimentoLogin.keyof().options).toEqual(['codigo', 'email']);
   });
 });
