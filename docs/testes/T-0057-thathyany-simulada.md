@@ -5,8 +5,8 @@
 > **Status:** pronto para rodar depois da migração 0072 (GRANTs do `macuxierp_worker` para gravar os cadastros; sem ela, toda linha que o worker grava sai `falha_processamento`). O teste automático equivalente é `tests/ponta-a-ponta-fdv/entrada-v1.db.test.ts`, com o código de produção de ponta a ponta. Quatro defeitos conhecidos (recados ao gerente de 27/11/2026, 00h09 e 00h12), que este roteiro contorna e marca:
 > - **D1:** filial nova não entra pela entrada (o `FilialHub` não tem `crt`);
 > - **D2:** produto novo não entra (o `ProdutoHub` não tem NCM, RN-CAD-04);
-> - **D3:** o 1º prazo de uma forma nova não entra (o lote de formas não grava, e o prazo busca a forma numa condição que já existe);
-> - **D4:** registro mais antigo que o gravado é aplicado e faz o cursor voltar, em vez de contar como `obsoletas`.
+> - **D3:** o 1º prazo de uma forma nova, sem condição no ERP, não entra (fica para a v0.3.18, com a `cadastros.entrada_forma`). Desde o #768, a forma já ligada a uma condição entra: o lote da forma atualiza as condições dela, e o prazo novo dessa forma grava;
+> - **D4:** corrigido no #768 (o registro mais antigo que o gravado conta como `obsoletas`, não grava e não recua o cursor).
 
 ## 1. Objetivo
 
@@ -161,7 +161,7 @@ Repita os passos 1, 4 e 6 para `forma_pagamento`, `prazo_pagamento`, `produto`, 
 
 No BKO do tenant, cada cadastro aparece com o `external_id` do cliente; no tenant com o `integracao-fdv` ligado, o registro sai ao Hub como o cadastrado pelo BKO (a entrada não fala com o FDV).
 
-Reenvie o `vendedor` com outra `Idempotency-Key` e o mesmo conteúdo: `inalteradas=1`, nada novo ao Hub. Reenvie com `alterado_em` mais antigo: o esperado é `obsoletas=1`, nada grava e o cursor não volta. **Hoje falha (D4):** sai `atualizadas=1`, o nome antigo grava e o cursor recua; anote no relatório como D4.
+Reenvie o `vendedor` com outra `Idempotency-Key` e o mesmo conteúdo: `inalteradas=1`, nada novo ao Hub. Reenvie com `alterado_em` mais antigo: `obsoletas=1`, nada grava e o cursor não volta (D4, corrigido no #768).
 
 ### Passo 8 — carga completa (decisão 34 B)
 
@@ -215,7 +215,7 @@ Todos os passos com o obtido igual ao esperado; os 10 cadastros visíveis no BKO
 | 4 | resultado | `concluido`, `novas=1`, cursor | | |
 | 5 | linha com erro | `concluido_com_erros`, erro sem valor | | |
 | 6 | cursor | último registro aplicado | | |
-| 7 | 8 cadastros + inalterada + obsoleta | uma linha contada em cada (seção do passo 7); `inalteradas=1`; `obsoletas=1` (hoje falha: D4) | | |
+| 7 | 8 cadastros + inalterada + obsoleta | uma linha contada em cada (seção do passo 7); `inalteradas=1`; `obsoletas=1` | | |
 | 8 | carga completa | 422, sem lote | | |
 | 9 | recusas | 401/400/422 da tabela | | |
 | 10 | sinal | 200 `RespostaSinal` | | |
