@@ -5,13 +5,13 @@
  * depois do estado final: o `corpo` é zerado e os erros levam só índice, `external_id`, campo e código (LGPD).
  */
 import type { Transacao } from '@macuxierp/platform-sdk';
-import type { CorpoLote, CursorHub } from '@macuxierp/platform-sdk/hub-v1';
-import type { ErroGuardado, LoteGuardado } from '../domain';
+import type { CorpoLote, CursorHub, ModoLote } from '@macuxierp/platform-sdk/hub-v1';
+import { cursorDaLinha, type ErroGuardado, type estadoFinalDoLote, type LoteGuardado } from '../domain';
 
 export interface LoteCriado {
   id: string;
   entidade: string;
-  modo: 'completo' | 'delta';
+  modo: ModoLote;
   recebidos: number;
   hash_corpo: string;
 }
@@ -25,7 +25,7 @@ export interface LotePendente {
 }
 
 export interface ResultadoGravado {
-  estado: 'concluido' | 'concluido_com_erros';
+  estado: ReturnType<typeof estadoFinalDoLote>;
   com_erro: number;
   contagens: Readonly<Record<string, number>>;
   erros: readonly ErroGuardado[];
@@ -40,7 +40,7 @@ export interface SinalGravado {
 export interface RepositorioEntrada {
   /** Cria o lote `recebido`; com a mesma `Idempotency-Key` do conector devolve o que já existe (`criado: false`). */
   criarLote(p: {
-    credencial_id: string; conector_id: string; entidade: string; modo: 'completo' | 'delta'; idempotency_key: string; hash_corpo: string;
+    credencial_id: string; conector_id: string; entidade: string; modo: ModoLote; idempotency_key: string; hash_corpo: string;
     corpo: CorpoLote; recebidos: number;
   }): Promise<{ lote: LoteCriado; criado: boolean }>;
   lerLote(conectorId: string, id: string): Promise<LoteGuardado | null>;
@@ -53,6 +53,8 @@ export interface RepositorioEntrada {
   concluir(id: string, r: ResultadoGravado, agora: Date): Promise<void>;
   falhar(id: string, codigo: string, agora: Date): Promise<void>;
   avancarCursor(conectorId: string, entidade: string, cursor: CursorHub, loteId: string): Promise<void>;
+  /** LGPD: o lote `recebido` ou `processando` criado antes do `corte` vira `falhou` (`erro_codigo`), com o corpo zerado. Devolve quantos. Idempotente. */
+  expurgarCorpos(corte: Date, codigo: string, agora: Date): Promise<number>;
 }
 
 type Linha = Record<string, unknown>;
@@ -81,7 +83,7 @@ export function entradaSql(tx: Transacao): RepositorioEntrada {
 
     async lerLote(conectorId, id) {
       const r = await consultar<{
-        id: string; entidade: string; modo: 'completo' | 'delta'; estado: LoteGuardado['estado']; contagens: LoteGuardado['contagens']; erros: ErroGuardado[];
+        id: string; entidade: string; modo: ModoLote; estado: LoteGuardado['estado']; contagens: LoteGuardado['contagens']; erros: ErroGuardado[];
         cursor_alterado_em: string | null; cursor_external_id: string | null; recebido_em: string; concluido_em: string | null; erro_codigo: string | null;
       }>(
         `SELECT id, entidade, modo, estado, contagens, erros, erro_codigo, ${ISO('cursor_alterado_em')} AS cursor_alterado_em, cursor_external_id,
@@ -100,7 +102,7 @@ export function entradaSql(tx: Transacao): RepositorioEntrada {
       );
       const l = r[0];
       if (!l) return null;
-      return { cursor: l.alterado_em !== null && l.external_id !== null ? { alterado_em: l.alterado_em, external_id: l.external_id } : null, atualizado_em: l.atualizado_em };
+      return { cursor: cursorDaLinha(l.alterado_em, l.external_id), atualizado_em: l.atualizado_em };
     },
 
     async gravarSinal(conectorId, s, agora) {
@@ -148,6 +150,18 @@ export function entradaSql(tx: Transacao): RepositorioEntrada {
           WHERE id = $1 AND estado IN ('recebido', 'processando')`,
         [id, codigo, agora.toISOString()],
       );
+    },
+
+    async expurgarCorpos(corte, codigo, agora) {
+      // SKIP LOCKED: o lote que o worker está processando agora (travado) fica para a próxima rodada.
+      const r = await consultar(
+        `UPDATE cadastros.entrada_lote SET estado = 'falhou', erro_codigo = $2, corpo = NULL, concluido_em = $3, cursor_alterado_em = NULL, cursor_external_id = NULL
+          WHERE id IN (SELECT id FROM cadastros.entrada_lote
+                        WHERE estado IN ('recebido', 'processando') AND created_at < $1 AND deleted_at IS NULL FOR UPDATE SKIP LOCKED)
+          RETURNING id`,
+        [corte.toISOString(), codigo, agora.toISOString()],
+      );
+      return r.length;
     },
 
     async avancarCursor(conectorId, entidade, cursor, loteId) {

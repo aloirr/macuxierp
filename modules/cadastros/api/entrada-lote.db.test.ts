@@ -14,6 +14,7 @@ import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from
 import { CursorEntidade, LoteAceito, LoteResultado } from '@macuxierp/platform-sdk/hub-v1';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { criarExecutorEntradaLote } from './entrada-lote';
+import { criarExecutorExpurgoEntrada, TRABALHO_ENTRADA_EXPURGO } from './entrada-expurgo';
 import { entradaSql } from './entrada-sql';
 import { rotasEntrada } from './entrada-rotas';
 import { repositoriosSql } from './sql';
@@ -174,5 +175,38 @@ describe.skipIf(!PG_DISPONIVEL)('entrada de lotes (T-0057 C3 e C4, PostgreSQL re
     await worker.comTenant(A, (tx) => executor.aoDesistir!(trabalho(A, id), tx));
     expect(await resultado(A, 'conector-1', id)).toMatchObject({ status: 'falhou', cursor: null });
     expect((await admin('SELECT erro_codigo, corpo FROM cadastros.entrada_lote WHERE id = $1', [id]))[0]).toEqual({ erro_codigo: 'falha_processamento', corpo: null });
+  }, 60_000);
+
+  it('ADR 0014 (emenda de 27/11): produto existente sem ncm mantém o gravado (nenhum erro na linha)', async () => {
+    await admin(
+      `INSERT INTO cadastros.produto (tenant_id, codigo, descricao, ncm, unidade_comercial, unidade_tributavel, grupo_tributacao, external_id)
+       VALUES ($1, 'SKUX2', 'Parafuso antigo', '22021000', 'UN', 'UN', 'PADRAO', 'PX2')`,
+      [A],
+    );
+    const id = await receber(A, 'conector-1', corpo([{ external_id: 'PX2', alterado_em: '2026-11-26T09:00:00.000Z', ativo: true, sku: 'SKUX2', nome: 'Parafuso novo', unidade: 'UN' }], { entidade: 'produto' }), 'chave-pg-0011');
+    await processar(A, id);
+    expect((await resultado(A, 'conector-1', id)).erros).toEqual([]);
+    expect((await admin('SELECT ncm, descricao FROM cadastros.produto WHERE tenant_id = $1 AND external_id = $2', [A, 'PX2']))[0]).toEqual({ ncm: '22021000', descricao: 'Parafuso novo' });
+  }, 60_000);
+
+  it('ADR 0014 §3 (LGPD): o expurgo de 24 h falha e zera o corpo do lote velho, não toca o novo nem o já concluído, e rodar de novo não muda nada', async () => {
+    const velho = await receber(A, 'conector-1', corpo([registro(1)]), 'chave-pg-0020');
+    const processando = await receber(A, 'conector-1', corpo([registro(2)]), 'chave-pg-0021');
+    const novo = await receber(A, 'conector-1', corpo([registro(3)]), 'chave-pg-0022');
+    await admin("UPDATE cadastros.entrada_lote SET created_at = now() - interval '25 hours' WHERE id = ANY($1::uuid[])", [[velho, processando]]);
+    await admin("UPDATE cadastros.entrada_lote SET estado = 'processando', processado_em = now() WHERE id = $1", [processando]);
+    const exp = criarExecutorExpurgoEntrada({ entrada: entradaSql, agora: () => new Date() });
+    expect(exp.tipo).toBe(TRABALHO_ENTRADA_EXPURGO);
+    const rodar = () => worker.comTenant(A, (tx) => exp.executar({ id: 'exp', tipo: TRABALHO_ENTRADA_EXPURGO, tenant_id: A, payload: {}, tentativas: 0 }, tx));
+    const estados = async () => admin('SELECT id, estado, erro_codigo, cursor_external_id IS NULL AS sem_cursor, corpo IS NULL AS sem_corpo, concluido_em IS NOT NULL AS fechado FROM cadastros.entrada_lote WHERE id = ANY($1::uuid[]) ORDER BY id', [[velho, processando, novo]]);
+    expect((await rodar())!.expurgados).toBeGreaterThanOrEqual(2);
+    const depois = await estados();
+    expect(depois.find((l) => l.id === velho)).toMatchObject({ estado: 'falhou', erro_codigo: 'corpo_expirado', sem_corpo: true, sem_cursor: true, fechado: true });
+    expect(depois.find((l) => l.id === processando)).toMatchObject({ estado: 'falhou', erro_codigo: 'corpo_expirado', sem_corpo: true });
+    expect(depois.find((l) => l.id === novo)).toMatchObject({ estado: 'recebido', erro_codigo: null, sem_corpo: false });
+    expect(await rodar()).toEqual({ expurgados: 0 });
+    expect(await estados()).toEqual(depois);
+    expect(await resultado(A, 'conector-1', velho)).toMatchObject({ status: 'falhou' });
+    await processar(A, novo);
   }, 60_000);
 });
