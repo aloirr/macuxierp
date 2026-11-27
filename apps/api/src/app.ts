@@ -210,7 +210,7 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
   const respostaLogin = (reply: FastifyReply, r: ResultadoLogin) =>
     porCookie(reply, r)
       .header('cache-control', 'no-store')
-      .send({ destino: 'bko', token_acesso: r.token_acesso, expira_em: r.expira_em.toISOString() } satisfies LoginResposta);
+      .send({ destino: 'bko', token_acesso: r.token_acesso, expira_em: r.expira_em.toISOString(), ...(r.desbloqueou ? { desbloqueou: true as const } : {}) } satisfies LoginResposta);
 
   app.get('/v1/saude', async (_req, reply) => {
     const banco = await d.banco.ping().catch(() => false);
@@ -241,7 +241,8 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
       if (destinoDoCodigo(entrada.empresa) === 'bko') return respostaLogin(reply, await servico.entrar(entrada));
       return await entrarComoSuperadmin(reply, plataforma, entrada, { cookieSeguro: d.cookieSeguro, csrf: req.headers[CABECALHO_CSRF_CONFIG] === '1' });
     } catch (e) {
-      if (e instanceof ErroApi && e.status === 401) limiteLogin.registrar(ip, agoraMs);
+      // 401 e 423 (RN-CORE-15) contam no limite por IP; o login certo, inclusive com a temporária, não
+      if (e instanceof ErroApi && (e.status === 401 || e.status === 423)) limiteLogin.registrar(ip, agoraMs);
       throw e;
     }
   });

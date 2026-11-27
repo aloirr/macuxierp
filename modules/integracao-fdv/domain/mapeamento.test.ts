@@ -146,7 +146,6 @@ describe('RF-INF-01 vendedor, condição, estoque', () => {
     const decrescente = mapearCondicao({ ...ev, prazos_dias: [56, 28] }, EM, { tenantId: U(100), formaAtiva: true }).prazo!;
     expect(validarRegistro(decrescente, () => true, { prazoV2: true })).toEqual({ external_id: decrescente.external_id, codigo: 'campo_invalido', campo: 'parcelas_dias' }); // v2: sem decrescer
     expect(validarRegistro(decrescente, () => true)).toBeNull(); // v1 aceita
-    expect(validarRegistro({ ...prazo!, payload: { ...prazo!.payload, prazo_medio_dias: 90 } }, () => true, { prazoV2: true })).toEqual({ external_id: prazo!.external_id, codigo: 'campo_invalido', campo: 'prazo_medio_dias' });
     const longo = mapearCondicao({ ...ev, prazos_dias: [400], prazo_medio_dias: 400 }, EM, { tenantId: U(100), formaAtiva: true }).prazo!;
     expect(validarRegistro(longo, () => true)).toEqual({ external_id: longo.external_id, codigo: 'campo_invalido', campo: 'parcelas_dias' }); // o Hub v1 real já limita a 365
   });
@@ -367,5 +366,29 @@ describe('T-0085: fator fracionário ou acima do limite do Hub é recusado por r
     expect(validarRegistro(unidade(120_000), () => true)).toBeNull();
     expect(validarRegistro(unidade(9999 * 10_000), () => true)).toBeNull();
     expect(validarRegistro(unidade(10_000 * 10_000), () => true)).toEqual({ external_id: U(3), codigo: 'campo_invalido', campo: 'fator' });
+  });
+
+  it('RN-CAD-15 e ADR 0072 do FDV: prazo médio fora da faixa das parcelas é linha inválida local, em v1 e v2; à vista só aceita 0', () => {
+    const ev = { id: U(6), codigo: '28-56', descricao: '28 e 56 dias', forma_tpag: '15', prazos_dias: [28, 56], prazo_medio_dias: 42, inativo: false, forma_codigo: null, forma_nome: null };
+    const { prazo } = mapearCondicao(ev, EM, { tenantId: U(100), formaAtiva: true });
+    const com = (payload: Record<string, unknown>) => ({ ...prazo!, payload: { ...prazo!.payload, ...payload } });
+    const esperado = { external_id: prazo!.external_id, codigo: 'prazo_medio_fora_da_faixa', campo: 'prazo_medio_dias' };
+    for (const opcoes of [{}, { prazoV2: true }]) {
+      expect(validarRegistro(com({ prazo_medio_dias: 90 }), () => true, opcoes)).toEqual(esperado);
+      expect(validarRegistro(com({ prazo_medio_dias: 10 }), () => true, opcoes)).toEqual(esperado);
+      expect(validarRegistro(com({ prazo_medio_dias: 28 }), () => true, opcoes)).toBeNull();
+      expect(validarRegistro(com({ prazo_medio_dias: 56 }), () => true, opcoes)).toBeNull();
+      expect(validarRegistro(com({ parcelas_dias: [0], prazo_medio_dias: 5 }), () => true, opcoes)).toEqual(esperado);
+      expect(validarRegistro(com({ parcelas_dias: [0], prazo_medio_dias: 0 }), () => true, opcoes)).toBeNull();
+      expect(validarRegistro(com({ parcelas_dias: '28/56', prazo_medio_dias: 90 }), () => true, opcoes)).toEqual(esperado); // texto legado
+    }
+  });
+
+  it('T-0112: parcelas_dias legado em texto é normalizado e validado; ilegível segue campo_invalido', () => {
+    const { prazo } = mapearCondicao({ id: U(6), codigo: '28-56', descricao: '28 e 56 dias', forma_tpag: '15', prazos_dias: [28, 56], prazo_medio_dias: 42, inativo: false, forma_codigo: null, forma_nome: null }, EM, { tenantId: U(100), formaAtiva: true });
+    for (const opcoes of [{}, { prazoV2: true }]) {
+      expect(validarRegistro({ ...prazo!, payload: { ...prazo!.payload, parcelas_dias: '28/56' } }, () => true, opcoes)).toBeNull();
+      expect(validarRegistro({ ...prazo!, payload: { ...prazo!.payload, parcelas_dias: 'abc' } }, () => true, opcoes)).toEqual({ external_id: prazo!.external_id, codigo: 'campo_invalido', campo: 'parcelas_dias' });
+    }
   });
 });

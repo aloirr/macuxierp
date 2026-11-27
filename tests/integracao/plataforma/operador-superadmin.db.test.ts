@@ -22,13 +22,12 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { COOKIE_CONFIG } from '../../../packages/platform-sdk/src/index';
 import { criarBancoEfemero, PG_DISPONIVEL, type BancoEfemero } from '../../../packages/platform-sdk/src/pg-testes';
 import { appPgDeTeste, destinoDeLogs } from '../../../apps/api/src/apoio-teste';
 import { envPsqlAdmin } from '../../../apps/api/src/apoio-operador-teste';
 import { ARGON2_PADRAO, conferirSenha } from '../../../apps/api/src/auth/senha';
 import { criarPsqlPassagem, rodarOperador, type VmOperador } from '../../apoio/operador-falso';
-import { atalhosPortal, type AppPortal } from '../../apoio/portal-pg';
+import { atalhosPortal, esperarContaBloqueada, esperarRecusaUnica, type AppPortal } from '../../apoio/portal-pg';
 
 const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const OPERADOR_SH = resolve(RAIZ, 'scripts', 'deploy', 'producao', 'operador.sh');
@@ -36,7 +35,6 @@ const EMAIL = 'sa-e6-operador@exemplo.invalid';
 const NOME = 'Pessoa Superadmin Operador E6';
 const SENHA_NOVA = 'senha-nova-do-superadmin-e6';
 const SENHA_ERRADA = 'senha-errada-e6-operador';
-const MENSAGEM_UNICA = 'E-mail ou senha inválidos';
 const TEM_ARGON2_NATIVO = Number(process.versions.node.split('.')[0]) * 100 + Number(process.versions.node.split('.')[1]) >= 2407;
 
 interface Linha {
@@ -115,12 +113,10 @@ describe.skipIf(!PG_DISPONIVEL)('operador.sh criar-superadmin e superadmin, pont
     expect(argv).not.toContain('@');
     if (senha) for (const x of [argv, ambiente]) expect(x).not.toContain(senha);
   };
-  const recusaUnica = async (senha: string) => {
-    const r = await p.entrar(EMAIL, senha);
-    expect(r.statusCode).toBe(401);
-    expect(r.json<{ mensagem: string }>().mensagem).toBe(MENSAGEM_UNICA);
-    expect(r.cookies.map((c) => c.name)).not.toContain(COOKIE_CONFIG);
-  };
+  const recusaUnica = async (senha: string) => esperarRecusaUnica(await p.entrar(EMAIL, senha));
+
+  /** RN-CORE-15 (T-0111): a conta travada recebe o 423, mesmo com a senha certa. */
+  const bloqueada = async (senha: string) => esperarContaBloqueada(await p.entrar(EMAIL, senha));
 
   it('criar-superadmin sem --confirmar: o banco recebe BEGIN READ ONLY; nada gravado nem auditado; nenhuma senha impressa', async () => {
     const r = criar(false);
@@ -222,7 +218,7 @@ describe.skipIf(!PG_DISPONIVEL)('operador.sh criar-superadmin e superadmin, pont
     const travada = (await linhas())[0]!;
     expect(travada.falhas_login).toBe(5);
     expect(travada.bloqueado_ate).not.toBeNull();
-    await recusaUnica(SENHA_NOVA);
+    await bloqueada(SENHA_NOVA);
 
     const sim = acao('destravar', false);
     expect(sim.sql).toMatch(/^BEGIN READ ONLY;$/m);

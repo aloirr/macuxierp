@@ -15,3 +15,17 @@ export function lerParcelasDias(valor: unknown): number[] | null {
   if (lista.length === 0 || !lista.every((n) => Number.isInteger(n) && (n as number) >= 0)) return null;
   return lista as number[];
 }
+
+/**
+ * T-0112: o espelho anterior à T-0085 guarda `parcelas_dias` como texto ("28/56"). No envio, o payload do prazo sai com a lista
+ * de inteiros, quando legível; ilegível fica como está (e segue `campo_invalido`). Não mexe no hash do espelho.
+ */
+export function normalizarParcelasDias<P extends Record<string, unknown>>(payload: P): P {
+  const lista = lerParcelasDias(payload.parcelas_dias);
+  return lista ? { ...payload, parcelas_dias: lista } : payload;
+}
+
+/** T-0112: só o prazo é normalizado; o `hash` do espelho fica (o aceite confirma o hash da montagem, sem laço). */
+export function normalizarPrazo<R extends { entidade: string; payload: Record<string, unknown> }>(r: R): R {
+  return r.entidade === 'prazo_pagamento' ? { ...r, payload: normalizarParcelasDias(r.payload) } : r;
+}

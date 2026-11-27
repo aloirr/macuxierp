@@ -19,6 +19,9 @@ import type { Ambiente, BaixaTituloResumo, ContingenciaResumo, StatusNota, Titul
 import { digestValueDoXml, emTransmissao, calcularTotais, interpretarRetorno, nfeVaiAoFdv, resumoDoItem, type ConteudoNota } from '../domain';
 import { calc, IDS, itemPedido, pedidoAprovado } from '../domain/fixtures';
 import type { DepsEmissao } from './emissao';
+import { criarPluginFaturamento } from './index';
+import { configuracaoFaturamentoSql } from './sql-configuracao';
+import type { repositoriosSql } from './sql';
 import type { DepsEventos } from './eventos';
 import type { A1DaFilial, EventoRegistro, GuardaEpec, InutilizacaoRegistro, NotaRegistro, EpecPendenteRegistro, RepositorioContingencia, RepositorioEventos, RepositorioNotas, RepositorioTitulos, ConfiguracaoFaturamento, TransmissaoDeEvento, TransmissaoRegistrada } from './portas';
 
@@ -413,7 +416,7 @@ export function depsFake(opc: { ambiente?: Ambiente; status?: string; r?: RepoFa
   const deps: DepsEmissao & Pick<DepsEventos, 'eventos'> = {
     log: () => undefined,
     emissor: espiao.emissor,
-    pedidos: { obter: async () => pedido, statusNaFila: async () => 'a_faturar' as const, gravar: async () => 'novo', marcarCancelado: async () => undefined, listar: async () => ({ itens: [], proximo_cursor: null }), detalhar: async () => null },
+    pedidos: { obter: async () => ({ pedido, status: 'a_faturar' as const }), gravar: async () => 'novo', marcarCancelado: async () => undefined, listar: async () => ({ itens: [], proximo_cursor: null }), detalhar: async () => null },
     situacao: { situacao: async () => situacao },
     cadastros: {
       filial: async () => ({
@@ -676,3 +679,15 @@ export async function pedidoNovoNaFila(tx: Transacao, gravar: (tx: Transacao, p:
 
 /** Porta `situacao` do pedido para o transmissor nos testes: pedido sempre `aprovado` (a guarda RN-PED-02 é obrigatória no tipo). */
 export const situacaoAprovadaDeTeste = { situacao: async () => ({ status: 'aprovado' as const, itens: [] }) };
+
+/** Dependências do faturamento com os repositórios SQL reais (notas, pedidos, ambiente) sobre o `depsFake` em homologação. */
+export function depsSql(repos: ReturnType<typeof repositoriosSql>) {
+  const f = depsFake({ ambiente: 'homologacao' });
+  Object.assign(f.deps, { notas: repos.notas, pedidos: repos.pedidos, ambiente: repos.ambiente });
+  return f;
+}
+
+/** Plugin Fastify do faturamento com os repositórios SQL reais (inclui títulos e configuração). */
+export function pluginSql(repos: ReturnType<typeof repositoriosSql>) {
+  return criarPluginFaturamento({ ...depsSql(repos).deps, titulos: repos.titulos, configuracao: configuracaoFaturamentoSql } as never);
+}

@@ -76,6 +76,28 @@ export class LimitePorChave {
   }
 }
 
+/**
+ * Trava em memória da conta que NÃO existe (RN-CORE-15, T-0111; decisão R-20261126-175321), com os mesmos `maxFalhas` e
+ * `travaMinutos` da trava do banco da conta que existe, para o 423 sair igual nos dois casos (anti-enumeração). A conta que
+ * existe segue só o banco (`falhas_login`, `bloqueado_ate`), que o `operador.sh --destravar` zera na hora. A chave é a
+ * `chaveEmpresaEmail` (SHA-256): o e-mail em claro nunca fica no Map. Uma por processo (uma API por VM, ADR 0003).
+ */
+export class TravaContaMemoria {
+  readonly #limite: LimitePorChave;
+
+  constructor(cfg: { maxFalhas: number; travaMinutos: number }) {
+    this.#limite = new LimitePorChave(cfg.maxFalhas, cfg.travaMinutos * 60_000);
+  }
+
+  travada(chave: string, agoraMs: number): boolean {
+    return !this.#limite.excedido(chave, agoraMs).permitido;
+  }
+
+  falhou(chave: string, agoraMs: number): void {
+    this.#limite.registrar(chave, agoraMs);
+  }
+}
+
 /** Chave do limite por empresa + e-mail: SHA-256 da empresa e do e-mail normalizados (trim e minúsculas). */
 export function chaveEmpresaEmail(empresa: string, email: string): string {
   return sha256Hex(`${empresa.trim().toLowerCase()}\u0000${email.trim().toLowerCase()}`);

@@ -1,10 +1,9 @@
 /**
  * T-0050 (E6.2): trava do login do superadmin (ADR 0012 §6), na API real sobre o PostgreSQL efêmero com a 0033.
- * - 5 falhas seguidas travam por 15 min; a conta travada recebe 401 com a mensagem única "E-mail ou senha inválidos",
- *   NÃO 429 (diferença proposital do login do tenant, que devolve 429 na trava: o portal não diz que a conta existe);
+ * - 5 falhas seguidas travam por 15 min; a conta travada recebe o 423 `ContaBloqueadaResposta` (RN-CORE-15, T-0111),
+ *   NÃO 429, com o MESMO corpo do e-mail inexistente travado pela memória (5 falhas; decisão R-20261126-175321);
  * - a contagem de falhas NÃO zera quando a trava vence (comportamento atual, fixado aqui; muda na versão seguinte);
  *   o login certo zera;
- * - e-mail inexistente recebe a mesma mensagem, o mesmo status e o mesmo corpo;
  * - log pino sem e-mail, senha, cookie nem token (molde dos testes do RN-CORE-07).
  * O limite por IP (10 tentativas a cada 15 min, IP do cliente atrás do BFF e do túnel, #324) fica no 2º describe, numa
  * API própria com o segredo do BFF e relógio falso; no 1º, cada login sai de um IP próprio e o limite não interfere.
@@ -17,13 +16,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { CABECALHO_IP_CLIENTE, CABECALHO_PROVA_BFF, COOKIE_CONFIG, type Relogio } from '../../../packages/platform-sdk/src/index';
 import { criarBancoEfemero, PG_DISPONIVEL, type BancoEfemero } from '../../../packages/platform-sdk/src/pg-testes';
 import { appPgDeTeste, destinoDeLogs } from '../../../apps/api/src/apoio-teste';
-import { atalhosPortal, CSRF, inserirSuperadmin, SENHA_SA, type AppPortal, type RespostaPortal } from '../../apoio/portal-pg';
+import { atalhosPortal, CSRF, esperarContaBloqueada, esperarRecusaUnica, inserirSuperadmin, SENHA_SA, type AppPortal, type RespostaPortal } from '../../apoio/portal-pg';
 
-/** Texto literal do ADR 0012 §6 (não importado da API: o teste confere o valor, não a constante). */
-const MENSAGEM_UNICA = 'E-mail ou senha inválidos';
 const EMAIL_TRAVA = 'sa-e6-trava@exemplo.invalid';
 const EMAIL_LOG = 'sa-e6-log@exemplo.invalid';
 const EMAIL_INEXISTENTE = 'sa-e6-ninguem@exemplo.invalid';
+const EMAIL_INEXISTENTE_TRAVA = 'sa-e6-ninguem-trava@exemplo.invalid';
 const SENHA_ERRADA = 'senha-errada-e6-fict';
 
 describe.skipIf(!PG_DISPONIVEL)('portal /config: trava do login do superadmin (T-0050 E6.2, ADR 0012 §6)', () => {
@@ -44,11 +42,8 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config: trava do login do superadmin (T
     ).rows[0]!;
   /** Vence a trava (o tempo passou): bloqueado_ate 1 s no passado, sem tocar na contagem. */
   const vencerTrava = (email: string) => b.admin.query("UPDATE plataforma.superadmin SET bloqueado_ate = now() - interval '1 second' WHERE email = $1", [email]);
-  const recusaUnica = (r: RespostaPortal) => {
-    expect(r.statusCode).toBe(401);
-    expect(r.json<{ mensagem: string }>().mensagem).toBe(MENSAGEM_UNICA);
-    expect(r.cookies.map((c) => c.name)).not.toContain(COOKIE_CONFIG);
-  };
+  const bloqueada = esperarContaBloqueada;
+  const recusaUnica = esperarRecusaUnica;
 
   beforeAll(async () => {
     b = await criarBancoEfemero();
@@ -74,13 +69,14 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config: trava do login do superadmin (T
     expect(s.minutos).toBeLessThanOrEqual(15);
   });
 
-  it('ADR 0012 §6: conta travada com a senha certa recebe 401 e a mensagem única, nunca 429; o corpo é o do e-mail inexistente', async () => {
+  it('RN-CORE-15 (T-0111): conta travada com a senha certa recebe 423, nunca 429; o corpo é o do e-mail inexistente travado pela memória', async () => {
     const travada = await p.entrar(EMAIL_TRAVA, SENHA_SA);
-    recusaUnica(travada);
-    expect(travada.statusCode).not.toBe(429);
+    bloqueada(travada);
     const errada = await p.entrar(EMAIL_TRAVA, SENHA_ERRADA);
-    const inexistente = await p.entrar(EMAIL_INEXISTENTE, SENHA_SA);
-    recusaUnica(inexistente);
+    bloqueada(errada);
+    for (let i = 1; i <= 5; i++) recusaUnica(await p.entrar(EMAIL_INEXISTENTE_TRAVA, `${SENHA_ERRADA}-${i}`));
+    const inexistente = await p.entrar(EMAIL_INEXISTENTE_TRAVA, SENHA_SA);
+    bloqueada(inexistente);
     expect(travada.json()).toEqual(inexistente.json());
     expect(errada.json()).toEqual(inexistente.json());
     // a tentativa com a conta travada não sobe a contagem (nem a certa, nem a errada) e não estende a trava
@@ -109,8 +105,8 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config: trava do login do superadmin (T
     const s = await estado(EMAIL_TRAVA);
     expect(s).toMatchObject({ falhas_login: 6, travado: true });
     expect(s.minutos).toBeGreaterThan(14);
-    // travada de novo: a senha certa volta a receber a mensagem única
-    recusaUnica(await p.entrar(EMAIL_TRAVA, SENHA_SA));
+    // travada de novo: a senha certa volta a receber o 423
+    bloqueada(await p.entrar(EMAIL_TRAVA, SENHA_SA));
   });
 
   it('ADR 0012 §6: vencida a trava, o login certo entra e zera a contagem e a trava', async () => {
@@ -157,7 +153,9 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config: trava do login do superadmin (T
  */
 const SEGREDO_BFF = 'segredo-bff-de-teste-e6-fict';
 const EMAIL_IP = 'sa-e6-limite-ip@exemplo.invalid';
-const EMAIL_NINGUEM_IP = 'sa-e6-limite-ninguem@exemplo.invalid';
+/** Um e-mail inexistente por tentativa: a trava por conta da memória (RN-CORE-15, 5 falhas) não entra no teste do limite por IP. */
+let ninguemSeq = 0;
+const emailNinguemIp = () => `sa-e6-limite-ninguem-${ninguemSeq++}@exemplo.invalid`;
 const SENHA_ERRADA_IP = 'senha-errada-limite-e6-fict';
 const MAXIMO = 10; // ADR 0012 §6, literal (não importado da API)
 const JANELA_MS = 15 * 60_000;
@@ -175,7 +173,7 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config: limite de login por IP do clien
   const tentar = (o: { remoto: string; cab?: Record<string, string>; email?: string; senha?: string }) => {
     usados.add(o.remoto);
     for (const v of Object.values(o.cab ?? {})) if (isIP(v)) usados.add(v); // só IPs válidos (a prova é conferida à parte)
-    return p.entrar(o.email ?? EMAIL_NINGUEM_IP, o.senha ?? SENHA_ERRADA_IP, { ip: o.remoto, cabecalhos: { ...CSRF, ...(o.cab ?? {}) } });
+    return p.entrar(o.email ?? emailNinguemIp(), o.senha ?? SENHA_ERRADA_IP, { ip: o.remoto, cabecalhos: { ...CSRF, ...(o.cab ?? {}) } });
   };
   /** As `MAXIMO` tentativas da janela: todas passam do limite e caem no 401 da senha (e-mail inexistente). */
   const gastar = async (o: { remoto: string; cab?: Record<string, string> } | ((i: number) => { remoto: string; cab?: Record<string, string> })) => {

@@ -12,7 +12,7 @@ import { prazoCompleto, type EVENTOS } from '@macuxierp/cadastros/contracts';
 import { PAYLOADS_HUB, PrazoPagamentoHubV2, type EntidadeHub, type LinhaInvalida } from '../contracts';
 import { externalIdForma, hashRegistro } from './canonico';
 import { chaveHub } from './chave';
-import { parcelasDiasParaHub } from './parcelas';
+import { lerParcelasDias, normalizarPrazo, parcelasDiasParaHub } from './parcelas';
 import { CODIGO_QUANTIDADE_FRACIONARIA, FATOR_MAXIMO_HUB, unidadesInteirasParaHub } from './quantidade-hub';
 import { cnpjValido } from '@macuxierp/platform-sdk';
 
@@ -398,12 +398,17 @@ export const REFERENCIAS_HUB: Record<string, ReadonlyArray<readonly [string, Ent
   cliente_endereco: [['cliente_external_id', 'cliente']],
 };
 
+/** T-0112: código local (catálogo do ERP); no Hub vira `regra_invalida`. */
+export const CODIGO_PRAZO_MEDIO_FORA_DA_FAIXA = 'prazo_medio_fora_da_faixa';
+
 /**
  * Valida o registro antes do envio (M5): campo obrigatório vazio, formato do Hub, referência não confirmada. Devolve a linha
  * inválida (código e campo, nunca o valor — RN-INF-04) ou `null` se pode ir em `registros`.
  * `confirmado(entidade, external_id)`: o registro alvo já foi confirmado no Hub.
  */
-export function validarRegistro(r: RegistroEspelho, confirmado: (entidade: EntidadeHub, externalId: string) => boolean, opcoes: { prazoV2?: boolean } = {}): LinhaInvalida | null {
+export function validarRegistro(registro: RegistroEspelho, confirmado: (entidade: EntidadeHub, externalId: string) => boolean, opcoes: { prazoV2?: boolean } = {}): LinhaInvalida | null {
+  // T-0112: parcelas legadas em texto ("28/56") são normalizadas antes de validar (o envio manda o mesmo payload)
+  const r = normalizarPrazo(registro);
   const falta = (OBRIGATORIOS[r.entidade] ?? []).find((c) => {
     const v = r.payload[c];
     return v === undefined || v === null || v === '';
@@ -415,6 +420,14 @@ export function validarRegistro(r: RegistroEspelho, confirmado: (entidade: Entid
     const fator = Number(r.payload.fator);
     if (!unidadesInteirasParaHub(fator)) return { external_id: r.external_id, codigo: CODIGO_QUANTIDADE_FRACIONARIA, campo: 'fator' };
     if (fator > FATOR_MAXIMO_HUB) return { external_id: r.external_id, codigo: 'campo_invalido', campo: 'fator' };
+  }
+  // T-0112 (RN-CAD-15, ADR 0072 do FDV): o prazo médio fica entre a menor e a maior parcela; à vista [0] só aceita 0
+  if (r.entidade === 'prazo_pagamento') {
+    const parcelas = lerParcelasDias(r.payload.parcelas_dias);
+    const medio = r.payload.prazo_medio_dias;
+    if (parcelas && typeof medio === 'number' && (medio < Math.min(...parcelas) || medio > Math.max(...parcelas))) {
+      return { external_id: r.external_id, codigo: CODIGO_PRAZO_MEDIO_FORA_DA_FAIXA, campo: 'prazo_medio_dias' };
+    }
   }
   const schema = PAYLOADS_HUB[r.entidade as keyof typeof PAYLOADS_HUB];
   if (r.entidade === 'prazo_pagamento' && opcoes.prazoV2) {

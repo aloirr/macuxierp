@@ -12,12 +12,9 @@ Desenho: `docs/desenho/T-0086.md`. Contratos: `packages/platform-sdk/src/portal-
 
 As três do /config checam o módulo licenciado na empresa (422 `RN-CORE-02`) e usam a empresa alvo do `:id`.
 
-## Virada de versão de contrato do Hub (T-0107, passo manual)
-Ligar uma versão nova de contrato (por exemplo, `PRAZO_CONTRATO_V2_LIGADO`) **não marca nada como pendente**: o hash do payload não muda, então o worker não vê diferença e não reenvia. Na virada, o reenvio é manual:
-1. **Deploy** da versão com a flag ligada.
-2. **Reenviar o cadastro afetado**, por uma destas duas vias:
-   - /config → empresa → aba **Integração** → botão **Ações** da linha do cadastro → **Reprocessar** (sem confirmação; reenvia falhas e pendentes); ou
-   - /config → empresa → aba **Dados** → **Ações** da linha → **Carga completa** (reenvia tudo, com confirmação).
-3. **Conferir a chegada** no monitor da aba Integração (ou no monitor do BKO): os **pendentes caem a zero** e a última carga mostra a data e hora novas. Falha por linha: **Log** da mesma linha.
-4. **Limite:** reverter a flag **não reenvia** na versão antiga; se precisar voltar, repita o passo 2 depois do deploy da reversão.
-5. **Próximo passo:** o reenvio automático (coluna `contrato_enviado`, desenho aprovado pelo engenheiro-software) entra na v0.3.16 e torna este passo desnecessário.
+## Virada de versão de contrato do Hub (T-0107, automática)
+Ligar (ou desligar) uma versão de contrato (por exemplo, `PRAZO_CONTRATO_V2_LIGADO`) **não exige mais reenvio manual**. Cada registro do espelho guarda em `contrato_enviado` a versão do envelope em que foi enviado (aceito ou recusado pelo Hub). No começo de cada ciclo da entidade, o worker marca como pendente, os registros vivos do tenant cuja versão enviada é diferente da vigente; o delta os reenvia na versão vigente e grava a nova versão.
+1. **Deploy** da versão com a flag ligada. Nada mais a fazer: no ciclo seguinte os pendentes sobem e voltam a zero no monitor da aba Integração.
+2. **O que volta:** só a entidade que mudou de versão (hoje, `prazo_pagamento`), com os inativos já confirmados (vão como `ativo: false`) e os recusados em versão antiga. Aceito na versão vigente não volta; ciclo sem virada não marca nada; outro tenant não é tocado.
+3. **Limite:** reverter a flag também reenvia, **automaticamente na versão antiga**. Não há "só os novos": a versão vigente vale para o cadastro inteiro da entidade.
+4. **Reenvio manual** (Reprocessar ou Carga completa) segue disponível para outros casos, mas deixa de ser passo da virada.
