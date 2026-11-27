@@ -11,6 +11,7 @@ import {
   ConfigurarIntegracaoPlataformaEntrada,
   DefinirCredencialPlataformaEntrada,
   ENTIDADES_ENVIO_FDV,
+  MENSAGEM_SEM_CREDENCIAL_FDV,
   FalhaEnvioFdv,
   IntegracaoFdvPlataforma,
   MOTIVOS_FALHA_ENVIO_FDV,
@@ -72,6 +73,10 @@ describe('contratos da Integração FDV no portal /config (ADR 0013, T-0056)', (
     expect(ENTIDADES_ENVIO_FDV).not.toContain('titulo');
     expect(ENTIDADES_ENVIO_FDV).not.toContain('nota');
     expect(LIMITE_REGISTROS_LOTE_FDV).toBe(5000);
+  });
+
+  it('o 409 sem chave fala de "chave", não de "credencial" (36 A)', () => {
+    expect(MENSAGEM_SEM_CREDENCIAL_FDV).toBe('Salve a chave do conector antes.');
   });
 
   it('o ambiente do contrato é o mesmo conjunto da porta do Hub', () => {
