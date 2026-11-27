@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PrazoPagamentoHub } from '../contracts';
-import { lerParcelasDias, parcelasDiasParaHub } from './parcelas';
+import { lerParcelasDias, normalizarParcelasDias, parcelasDiasParaHub } from './parcelas';
 
 describe('RN-INF-PRAZO: parcelas_dias do Hub é lista de inteiros (T-0085)', () => {
   it('prazos do ERP viram lista de inteiros, na ordem; à vista = [0]', () => {
@@ -25,5 +25,15 @@ describe('RN-INF-PRAZO: parcelas_dias do Hub é lista de inteiros (T-0085)', () 
     expect(lerParcelasDias(null)).toBeNull();
     expect(lerParcelasDias([])).toBeNull();
     expect(lerParcelasDias('x')).toBeNull();
+  });
+});
+
+describe('T-0112: normalizarParcelasDias', () => {
+  it('RN-INF-PRAZO: texto legado vira lista; lista fica; ilegível fica como está; o resto do payload não muda', () => {
+    expect(normalizarParcelasDias({ a: 1, parcelas_dias: '28/56' })).toEqual({ a: 1, parcelas_dias: [28, 56] });
+    expect(normalizarParcelasDias({ parcelas_dias: '0' })).toEqual({ parcelas_dias: [0] });
+    expect(normalizarParcelasDias({ parcelas_dias: [28] })).toEqual({ parcelas_dias: [28] });
+    expect(normalizarParcelasDias({ parcelas_dias: 'x' })).toEqual({ parcelas_dias: 'x' });
+    expect(normalizarParcelasDias({ parcelas_dias: [] })).toEqual({ parcelas_dias: [] });
   });
 });
