@@ -14,6 +14,10 @@ describe('RN-INF-02: erro do Hub reprocessável (decisão 37 A)', () => {
     expect(erroDoHubReprocessavel('referencia_ausente', false)).toBe(true);
     expect(erroDoHubReprocessavel('referencia_ausente', undefined)).toBe(true);
   });
+  it('RN-INF-02: dependência inexistente do Hub (v0.3.26) é reprocessável: o dependente fica retido, sem laço 4xx', () => {
+    expect(erroDoHubReprocessavel('filial_inexistente', false)).toBe(true);
+    expect(erroDoHubReprocessavel('forma_external_id_inexistente', undefined)).toBe(true);
+  });
   it('RN-INF-02: os demais códigos seguem o que o Hub disse', () => {
     expect(erroDoHubReprocessavel('falha_processamento', true)).toBe(true);
     expect(erroDoHubReprocessavel('valor_fora_da_faixa', false)).toBe(false);

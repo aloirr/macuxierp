@@ -4,6 +4,7 @@
  * do valor do campo. Funções puras.
  */
 import { CODIGOS_LINHA_HUB, type LinhaInvalida, type LinhaInvalidaHub } from '../contracts';
+import { ehErroDeDependenciaDoHub } from './forma-unica';
 import { mensagemDoErro } from './mensagens';
 
 type CodigoHub = (typeof CODIGOS_LINHA_HUB)[number];
@@ -39,4 +40,4 @@ export const ehLinhaRetida = (l: LinhaInvalida): boolean => l.codigo === 'refere
  * reprocessável sempre, mesmo com `reprocessavel:false`. O registro segue pendente; a guarda o retém até o alvo confirmar.
  */
 export const erroDoHubReprocessavel = (codigo: string, reprocessavelDoHub: boolean | undefined): boolean =>
-  codigo === 'referencia_ausente' || reprocessavelDoHub === true;
+  ehErroDeDependenciaDoHub(codigo) || reprocessavelDoHub === true;

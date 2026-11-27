@@ -1,0 +1,7 @@
+# Envio ao Hub: forma única, prazo v2 e ordem de dependência (v0.3.26, decisão 35 A)
+
+- **RN-INF-11 (a registrar no doc 03)** Forma de pagamento única por código por empresa. A chave enviada ao Hub vale por (tenant, código): a primeira já confirmada no Hub (`confirmado_em` mais antigo); sem confirmada, a derivada do tPag (`externalIdForma`); senão a menor `external_id`. A condição referencia a forma pela chave vencedora (o prazo é remapeado no envio e o payload normalizado é gravado no espelho). A forma perdedora sai como linha inválida `forma_codigo_repetido` e nunca vai no lote.
+- **RN-INF-12 (a registrar no doc 03)** O prazo só vai completo: `parcelas_dias` lista de inteiros (v2, nunca texto) e `prazo_medio_dias` presente. Vale na montagem, no registro de fechamento e no reenvio de lote já montado (que é normalizado; se ainda inválido, o lote fecha `recusado` com `prazo_invalido`, sem pausar).
+- **RN-INF-02 (emenda)** O Hub recusou por dependência inexistente (`referencia_ausente`, `*_inexistente`, `*_ausente`, `*_nao_encontrado`): a confirmação da referência cai (`hash_confirmado = null`, pendente), o cursor dela acorda e o dependente fica retido (reprocessável), sem laço 4xx. Ordem: filial → vendedor → cliente → endereço; produto → preço, unidade e estoque; forma → prazo.
+
+Código: `modules/integracao-fdv/domain/forma-unica.ts`; uso em `api/envio-lote.ts`. Testes: `domain/forma-unica.test.ts`, `api/envio-ordem-hub.db.test.ts`.

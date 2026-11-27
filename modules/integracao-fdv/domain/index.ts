@@ -5,6 +5,7 @@ export * from './configuracao';
 export * from './credencial';
 export * from './limites';
 export * from './linhas';
+export * from './forma-unica';
 export * from './lote';
 export * from './mapeamento';
 export * from './mensagens';
