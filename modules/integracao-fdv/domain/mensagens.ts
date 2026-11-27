@@ -19,6 +19,8 @@ export const CATALOGO_ERRO: Readonly<Record<string, TextoErro>> = {
   prazo_medio_fora_da_faixa: { motivo: 'O prazo médio precisa ficar entre a menor e a maior parcela.', acao: 'Corrija a condição de pagamento no cadastro.' },
   referencia_ausente: { motivo: 'Aguardando um cadastro de que este depende ser confirmado no FDV.', acao: 'Nada a fazer: aguarde.' },
   filial_codigo_repetido: { motivo: 'Duas filiais têm a mesma ordem de CNPJ. O FDV identifica a filial por essa ordem.', acao: 'Revise as filiais.' },
+  forma_codigo_repetido: { motivo: 'Outra forma de pagamento com o mesmo código já representa este código no FDV.', acao: 'Nada a fazer: o FDV usa uma forma só por código.' },
+  prazo_invalido: { motivo: 'O prazo não está completo para o FDV (parcelas em dias e prazo médio).', acao: 'Corrija a condição de pagamento no cadastro.' },
   falha_processamento: { motivo: 'O FDV não conseguiu processar o registro.', acao: 'Use Reprocessar; se persistir, fale com o suporte.' },
   acima_do_limite: { motivo: 'O lote passou do limite do FDV.', acao: 'Aguarde.' },
   rede: { motivo: 'Sem resposta do FDV.', acao: 'Aguarde.' },

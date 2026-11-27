@@ -45,6 +45,8 @@ import {
   codigoDoHub,
   decidirEnvioLote,
   dividirAoMeio,
+  chaveVencedoraDaForma,
+  ehErroDeDependenciaDoHub,
   ehLinhaRetida,
   erroDoHubReprocessavel,
   esperaConsultaSegundos,
@@ -52,9 +54,14 @@ import {
   hashRegistro,
   jsonCanonico,
   montarLotes,
+  normalizarParcelasDias,
   normalizarPrazo,
   origemDoLote,
   precisaFechamento,
+  prazoProntoParaHub,
+  referenciasADesmarcar,
+  remapearFormaDoPrazo,
+  separarFormasRepetidas,
   validarRegistro,
   versaoContratoDoLote,
   type RegistroEspelho,
@@ -347,10 +354,15 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | 
   const chunk = continua ? candidatos.slice(0, e.limiteRegistros) : candidatos;
 
   // 4. validação local (M5): o que o Hub recusaria vai em linhas_invalidas, sem o valor
-  const confirmados = await carregarConfirmados(tx, tenant, entidade, chunk.map((c) => c.payload ?? {}));
-  const confirmado = (alvo: Entidade, id: string): boolean => confirmados.has(`${alvo}\u0000${id}`);
   const brutos = chunk.map((c) => paraRegistro(c));
-  const espelhos: RegistroEspelho[] = brutos.map((b) => normalizarPrazo(b));
+  // v0.3.26 (RN-INF-11): o prazo referencia a forma pela chave vencedora do código; o payload remapeado é gravado como o normalizado (abaixo)
+  const vencedoras = entidade === 'prazo_pagamento' ? await vencedorasDasFormasDosPrazos(tx, tenant, brutos) : null;
+  const espelhos: RegistroEspelho[] = brutos.map((b) => {
+    const n = normalizarPrazo(b);
+    return vencedoras ? remapearFormaDoPrazo(n, (id) => vencedoras.get(id) ?? null) : n;
+  });
+  const confirmados = await carregarConfirmados(tx, tenant, entidade, espelhos.map((r) => r.payload));
+  const confirmado = (alvo: Entidade, id: string): boolean => confirmados.has(`${alvo}\u0000${id}`);
   // T-0107: o espelho com `parcelas_dias` em texto passa a guardar o payload normalizado e o hash dele (mesma transação, depois do lock do
   // cursor), senão o aceite (`pendente = r.hash <> hash enviado`) deixaria a linha pendente para sempre. Só as linhas que mudaram.
   if (entidade === 'prazo_pagamento') {
@@ -371,6 +383,11 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | 
     );
     repetidas = new Map(filiaisComCodigoRepetido(todas.map(paraRegistro)).map((l) => [l.external_id, l]));
   }
+  // v0.3.26 (RN-INF-11): duas formas com o mesmo código nunca vão no mesmo lote (nem em lotes diferentes): só a vencedora do código
+  if (entidade === 'forma_pagamento') {
+    const porCodigo = await vencedorasPorCodigo(tx, tenant, [...new Set(espelhos.map((r) => String(r.payload.codigo)))]);
+    repetidas = new Map(separarFormasRepetidas(espelhos, porCodigo).repetidas.map((l) => [l.external_id, l]));
+  }
   const validos: RegistroLote[] = [];
   const invalidas: LinhaInvalida[] = [];
   // RN-INF-02 (T-0112): referência ainda não confirmada no FDV (ordem de carga, não erro de cadastro) fica retida em silêncio: o lote
@@ -388,7 +405,8 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | 
       retidas.push(linha);
     } else {
       invalidas.push(linha);
-      if (!repetida) hashDasFirmes.set(r.external_id, r.hash);
+      // a forma perdedora do código é firme (sai da fila; só um evento novo a recoloca); o código de filial repetido não (depende de outra filial)
+      if (!repetida || entidade === 'forma_pagamento') hashDasFirmes.set(r.external_id, r.hash);
     }
   }
   const ultimo = chunk[chunk.length - 1];
@@ -409,7 +427,14 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | 
         ORDER BY alterado_em DESC, registro_external_id COLLATE "C" DESC LIMIT 1`,
       [tenant, entidade, localCursor.alterado_em, localCursor.external_id],
     );
-    if (fecho) registroDeFechamento = paraRegistroLote(normalizarPrazo(paraRegistro(fecho)));
+    if (fecho) {
+      const bruto = paraRegistro(fecho);
+      const vf = entidade === 'prazo_pagamento' ? await vencedorasDasFormasDosPrazos(tx, tenant, [bruto]) : null;
+      const normal = normalizarPrazo(bruto);
+      const pronto = vf ? remapearFormaDoPrazo(normal, (id) => vf.get(id) ?? null) : normal;
+      // RN-INF-12: o fecho do prazo também só vai completo (parcelas em lista de inteiros e prazo médio)
+      if (entidade !== 'prazo_pagamento' || prazoProntoParaHub(pronto.payload)) registroDeFechamento = paraRegistroLote(pronto);
+    }
   }
 
   const lotes = montarLotes({
@@ -548,6 +573,48 @@ export async function gravarNormalizados(
   return new Set(gravadas.map((g) => g.registro_external_id));
 }
 
+/**
+ * RN-INF-11 (v0.3.26): chave vencedora por código de forma, olhando o espelho inteiro do tenant (não só o lote): a primeira confirmada
+ * no Hub; senão a derivada do tPag; senão a menor chave.
+ */
+async function vencedorasPorCodigo(tx: Transacao, tenant: string, codigos: readonly string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (codigos.length === 0) return out;
+  const linhas = await tx.consultar<{ chave: string; codigo: string; confirmada: boolean; confirmado_em: Date | null }>(
+    `SELECT registro_external_id AS chave, payload->>'codigo' AS codigo, hash_confirmado IS NOT NULL AS confirmada, confirmado_em
+       FROM integracao_fdv.registro_publicado
+      WHERE tenant_id = $1 AND entidade = 'forma_pagamento' AND deleted_at IS NULL AND payload IS NOT NULL AND payload->>'codigo' = ANY($2::text[])`,
+    [tenant, [...codigos]],
+  );
+  for (const codigo of codigos) {
+    const v = chaveVencedoraDaForma(
+      tenant,
+      codigo,
+      linhas.filter((l) => l.codigo === codigo).map((l) => ({ external_id: l.chave, confirmada: l.confirmada, confirmadaEm: l.confirmado_em ? new Date(l.confirmado_em).toISOString() : null })),
+    );
+    if (v) out.set(codigo, v);
+  }
+  return out;
+}
+
+/** RN-INF-11: forma referenciada pelo prazo (chave atual) -> chave vencedora do código dela. Forma que o espelho não conhece fica fora. */
+async function vencedorasDasFormasDosPrazos(tx: Transacao, tenant: string, prazos: readonly RegistroEspelho[]): Promise<Map<string, string>> {
+  const formas = [...new Set(prazos.map((p) => p.payload.forma_external_id).filter((v): v is string => typeof v === 'string'))];
+  const out = new Map<string, string>();
+  if (formas.length === 0) return out;
+  const codigos = await tx.consultar<{ chave: string; codigo: string }>(
+    `SELECT registro_external_id AS chave, payload->>'codigo' AS codigo FROM integracao_fdv.registro_publicado
+      WHERE tenant_id = $1 AND entidade = 'forma_pagamento' AND deleted_at IS NULL AND payload IS NOT NULL AND registro_external_id = ANY($2::text[])`,
+    [tenant, formas],
+  );
+  const porCodigo = await vencedorasPorCodigo(tx, tenant, [...new Set(codigos.map((c) => c.codigo))]);
+  for (const c of codigos) {
+    const v = porCodigo.get(c.codigo);
+    if (v) out.set(c.chave, v);
+  }
+  return out;
+}
+
 /** Pares (entidade alvo, chave) das referências dos registros já `confirmados` no Hub. */
 async function carregarConfirmados(tx: Transacao, tenant: string, entidade: Entidade, payloads: ReadonlyArray<Record<string, unknown>>): Promise<Set<string>> {
   const refs = REFERENCIAS_HUB[entidade] ?? [];
@@ -585,7 +652,17 @@ export async function enviarLote(e: Exec, lote: LinhaLote): Promise<void> {
     return l.tentativas;
   });
   if (tentativas === null) return; // outro processo já avançou este lote
-  const resp = await e.ctx.hub.chamar(e.cred, { metodo: 'POST', caminho: '/lotes', corpo: lote.corpo, chaveIdempotencia: lote.chave_idempotencia });
+  // v0.3.26 (RN-INF-12): lote do prazo montado antes da correção pode ter `parcelas_dias` em texto; vai em lista de inteiros, e o
+  // prazo que ainda assim não fica completo (parcelas e prazo médio) não vai ao Hub: o lote fecha recusado, sem pausar, e a próxima montagem o retém.
+  const corpo = lote.corpo.entidade === 'prazo_pagamento' ? { ...lote.corpo, registros: lote.corpo.registros.map((r) => normalizarParcelasDias(r)) } : lote.corpo;
+  if (corpo.entidade === 'prazo_pagamento' && !corpo.registros.every((r) => prazoProntoParaHub(r as Record<string, unknown>))) {
+    await e.ctx.emTransacao(async (tx) => {
+      await recusarLote(tx, e, { ...lote, tentativas }, 'prazo_invalido');
+      await gravarCursor(tx, e, { proximoEm: e.agora });
+    });
+    return;
+  }
+  const resp = await e.ctx.hub.chamar(e.cred, { metodo: 'POST', caminho: '/lotes', corpo, chaveIdempotencia: lote.chave_idempotencia });
   const acao = classificarResposta(resp);
   if (acao.acao === 'ok' || acao.acao === 'replay') {
     const aceito = resp.tipo === 'ok' ? LoteAceitoLido.safeParse(resp.corpo) : null;
@@ -750,6 +827,27 @@ export async function finalizar(tx: Transacao, e: Exec, lote: LinhaLote, status:
   const doHub = (r.erros ?? []).filter((x) => x.origem !== 'conector').map((x) => ({ ...x, reprocessavel: erroDoHubReprocessavel(codigoDoHub(x.codigo), x.reprocessavel) }));
   for (const x of doHub) {
     await gravarErroDeLinha(tx, e, { loteId: lote.id, origem: 'hub', indice: x.indice, externalId: x.external_id, codigo: x.codigo, campo: x.campo, reprocessavel: x.reprocessavel });
+  }
+  // v0.3.26 (RN-INF-02): o Hub recusou por dependência inexistente: a confirmação da referência (que o espelho tinha como confirmada) cai,
+  // a referência volta à fila e o dependente fica retido (reprocessável, sem laço 4xx) até ela ser confirmada de novo.
+  const registrosDoLote = new Map(lote.corpo.registros.map((x) => [x.external_id, x as Record<string, unknown>]));
+  const desmarcar = new Map<string, Set<string>>();
+  for (const x of doHub) {
+    const reg = registrosDoLote.get(x.external_id);
+    if (!reg || !ehErroDeDependenciaDoHub(codigoDoHub(x.codigo))) continue;
+    for (const { alvo, chave } of referenciasADesmarcar(entidade, reg, campoDoHub(x.campo))) desmarcar.set(alvo, (desmarcar.get(alvo) ?? new Set()).add(chave));
+  }
+  for (const [alvo, chaves] of desmarcar) {
+    await tx.consultar(
+      `UPDATE integracao_fdv.registro_publicado SET hash_confirmado = NULL, confirmado_em = NULL, pendente = true
+        WHERE tenant_id = $1 AND entidade = $2 AND registro_external_id = ANY($3::text[]) AND deleted_at IS NULL AND hash_confirmado IS NOT NULL`,
+      [tenant, alvo, [...chaves]],
+    );
+    await tx.consultar(
+      `UPDATE integracao_fdv.cursor_entidade SET proximo_em = least(proximo_em, $3)
+        WHERE tenant_id = $1 AND entidade::text = $2 AND pausada_motivo IS NULL AND deleted_at IS NULL`,
+      [tenant, alvo, agora],
+    );
   }
   const comErro = new Set(doHub.map((x) => x.external_id));
   const reprocessaveis = new Set(doHub.filter((x) => x.reprocessavel).map((x) => x.external_id));
