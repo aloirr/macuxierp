@@ -133,11 +133,15 @@ export type AcaoSugeridaFdv = z.infer<typeof AcaoSugeridaFdv>;
 /** Só o superadmin resolve, no `/config` (credencial, retomar, análise do lote recusado) ou a Macuxi (versão do conector). */
 export const ACOES_FDV_SO_DO_PORTAL: readonly AcaoSugeridaFdv[] = Object.freeze(['corrigir_credencial', 'atualizar_conector', 'retomar', 'acionar_suporte']);
 
-/** Ação sugerida por motivo (fonte única: o `portal_ler`, o status do BKO e as telas usam esta tabela). */
-export const ACAO_SUGERIDA_POR_MOTIVO_FDV: Readonly<Record<MotivoFalhaEnvioFdv, AcaoSugeridaFdv>> = Object.freeze({
+/**
+ * Ação sugerida por motivo (fonte única: o `portal_ler`, o status do BKO e as telas usam esta tabela). `null` = sem ação
+ * sugerida: a `licenca_erp` (42 A, contract; o expand entrou na v0.3.19) só se resolve na licença do ERP, fora do alcance
+ * de quem lê o status.
+ */
+export const ACAO_SUGERIDA_POR_MOTIVO_FDV: Readonly<Record<MotivoFalhaEnvioFdv, AcaoSugeridaFdv | null>> = Object.freeze({
   credencial: 'corrigir_credencial',
   licenca_fdv: 'regularizar_licenca',
-  licenca_erp: 'regularizar_licenca',
+  licenca_erp: null,
   versao: 'atualizar_conector',
   envelope: 'retomar',
   idempotencia: 'retomar',
@@ -148,7 +152,7 @@ export const ACAO_SUGERIDA_POR_MOTIVO_FDV: Readonly<Record<MotivoFalhaEnvioFdv, 
 });
 
 export const FalhaEnvioFdv = z
-  .object({ motivo: MotivoFalhaEnvioFdv, acao: AcaoSugeridaFdv })
+  .object({ motivo: MotivoFalhaEnvioFdv, acao: AcaoSugeridaFdv.nullable() })
   .refine((f) => ACAO_SUGERIDA_POR_MOTIVO_FDV[f.motivo] === f.acao, { path: ['acao'], message: 'A ação sugerida é a do motivo' });
 export type FalhaEnvioFdv = z.infer<typeof FalhaEnvioFdv>;
 
@@ -192,11 +196,16 @@ export const CadastroIntegracaoFdvPlataforma = CadastroIntegracaoFdv.extend({ lo
 export type CadastroIntegracaoFdvPlataforma = z.infer<typeof CadastroIntegracaoFdvPlataforma>;
 
 /**
- * As pausas que a sondagem de 30 min retoma sozinha (25 B). Fonte única (RD-2409): o domain do integracao-fdv importa daqui, e o
- * refine da leitura (`proxima_tentativa_em`) usa a mesma lista.
+ * As pausas que a sondagem de 30 min retoma sozinha (25 B). Fonte única (RD-2356): o refine da leitura
+ * (`proxima_tentativa_em`) pergunta pelo `ehMotivoSondavelFdv`; o `ehMotivoSondavel` do domain do integracao-fdv passa a
+ * ser ele (troca do dono, depois deste PR).
  */
 export const MOTIVOS_SONDAVEIS_FDV = Object.freeze(['credencial', 'licenca_fdv'] as const satisfies readonly (typeof MOTIVOS_PAUSA_FDV)[number][]);
 const MOTIVOS_COM_SONDAGEM_FDV: ReadonlySet<string> = new Set(MOTIVOS_SONDAVEIS_FDV);
+/** "O motivo é sondável?" (RD-2356): a pergunta numa função só, para o domain e para o refine. `null`/ausente = não. */
+export function ehMotivoSondavelFdv(motivo: string | null | undefined): boolean {
+  return motivo != null && MOTIVOS_COM_SONDAGEM_FDV.has(motivo);
+}
 
 /** Os 10 cadastros da F2, um por linha, na ordem de `ENTIDADES_ENVIO_FDV` (a tela não precisa ordenar nem completar). */
 function conferirCadastros(cadastros: readonly CadastroIntegracaoFdv[], ctx: z.RefinementCtx, ligadaEsperada?: (e: EntidadeEnvioFdv) => boolean): void {
@@ -206,7 +215,7 @@ function conferirCadastros(cadastros: readonly CadastroIntegracaoFdv[], ctx: z.R
     return;
   }
   cadastros.forEach((c, i) => {
-    if (c.proxima_tentativa_em && !MOTIVOS_COM_SONDAGEM_FDV.has(c.falha?.motivo ?? '')) {
+    if (c.proxima_tentativa_em && !ehMotivoSondavelFdv(c.falha?.motivo)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['cadastros', i, 'proxima_tentativa_em'], message: 'Próxima tentativa só na pausa por credencial ou licença do FDV' });
     }
   });

@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { ACOES_PLATAFORMA } from './plataforma-rotas';
 import {
   ACAO_SUGERIDA_POR_MOTIVO_FDV,
+  ACOES_SUGERIDAS_FDV,
+  ehMotivoSondavelFdv,
   ACOES_FDV_SO_DO_PORTAL,
   AmbienteIntegracaoFdv,
   CAMINHOS_INTEGRACAO_FDV_PLATAFORMA,
@@ -187,8 +189,8 @@ describe('contratos da Integração FDV no portal /config (ADR 0013, T-0056)', (
   });
 
   describe('falha do cadastro: motivo e ação sugerida', () => {
-    it('todo motivo tem ação; as pausas são motivos', () => {
-      for (const m of MOTIVOS_FALHA_ENVIO_FDV) expect(ACAO_SUGERIDA_POR_MOTIVO_FDV[m]).toBeDefined();
+    it('todo motivo está na tabela (a ação ou null, sem ação); as pausas são motivos', () => {
+      for (const m of MOTIVOS_FALHA_ENVIO_FDV) expect(ACAO_SUGERIDA_POR_MOTIVO_FDV[m]).not.toBeUndefined();
       for (const m of MOTIVOS_PAUSA_FDV) expect(MOTIVOS_FALHA_ENVIO_FDV).toContain(m);
     });
     it('o que o tenant resolve no BKO é só corrigir os cadastros; o resto é do portal ou espera', () => {
@@ -299,10 +301,32 @@ describe('RD-2319 (36 A): sem "último uso" na Integração do portal', () => {
   });
 });
 
-describe('RD-2409: fonte única dos motivos sondáveis', () => {
+describe('RD-2356: fonte única dos motivos sondáveis', () => {
   it('são credencial e licenca_fdv, todos motivos de pausa, e congelados', () => {
     expect(MOTIVOS_SONDAVEIS_FDV).toEqual(['credencial', 'licenca_fdv']);
     for (const m of MOTIVOS_SONDAVEIS_FDV) expect(MOTIVOS_PAUSA_FDV).toContain(m);
     expect(Object.isFrozen(MOTIVOS_SONDAVEIS_FDV)).toBe(true);
+  });
+});
+
+describe('RD-2356: ehMotivoSondavelFdv, a pergunta "o motivo é sondável?" numa função só', () => {
+  it('true só para os motivos de MOTIVOS_SONDAVEIS_FDV; false para os outros e para null', () => {
+    for (const m of MOTIVOS_FALHA_ENVIO_FDV) expect(ehMotivoSondavelFdv(m), m).toBe((MOTIVOS_SONDAVEIS_FDV as readonly string[]).includes(m));
+    expect(ehMotivoSondavelFdv(null)).toBe(false);
+    expect(ehMotivoSondavelFdv(undefined)).toBe(false);
+  });
+});
+
+describe('42 A (contract): a licença do ERP não tem ação sugerida', () => {
+  it('licenca_erp fica sem ação (null), como no portal_ler; a licenca_fdv continua em regularizar_licenca', () => {
+    expect(ACAO_SUGERIDA_POR_MOTIVO_FDV.licenca_erp).toBeNull();
+    expect(ACAO_SUGERIDA_POR_MOTIVO_FDV.licenca_fdv).toBe('regularizar_licenca');
+    expect(ACOES_SUGERIDAS_FDV).toContain('regularizar_licenca');
+  });
+  it('falhaEnvioFdv e o FalhaEnvioFdv: licenca_erp com acao null passa; com uma ação, não', () => {
+    expect(falhaEnvioFdv({ pausada_motivo: 'licenca_erp', ultimo_lote_estado: null, erros_abertos: 0 })).toEqual({ motivo: 'licenca_erp', acao: null });
+    expect(FalhaEnvioFdv.safeParse({ motivo: 'licenca_erp', acao: null }).success).toBe(true);
+    expect(FalhaEnvioFdv.safeParse({ motivo: 'licenca_erp', acao: 'regularizar_licenca' }).success).toBe(false);
+    expect(FalhaEnvioFdv.safeParse({ motivo: 'credencial', acao: null }).success).toBe(false);
   });
 });
