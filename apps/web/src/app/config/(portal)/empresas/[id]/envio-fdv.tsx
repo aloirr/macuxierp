@@ -9,7 +9,7 @@ import { colunasStatusFdv } from '@/lib/integracao-fdv';
 import { textoZerado } from '@/lib/config/cargas';
 import type { Resultado } from '@/lib/config/executar';
 import { resultadoErro, resultadoSucesso } from '@/lib/resultado-acao';
-import { configurarFdvAcao, reprocessarFdvAcao, retomarFdvAcao } from '../acoes-integracao-fdv';
+import { configurarFdvAcao, reprocessarFdvAcao, retomarFdvAcao } from '@/lib/acoes-cliente';
 import { RETORNOS_FDV, ROTULOS_FDV, textoDaFalha, textoReprocessarOk } from '@/lib/config/operacao-fdv';
 import { LIGACAO_SAIDA } from '@/lib/config/ligacoes';
 import { textoPedidosZerados } from '@/lib/config/pedidos-zerar';

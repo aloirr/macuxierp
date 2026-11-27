@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { codigoExibido } from '@/lib/config/empresa';
 import { modulosLigados, nomeModulo, resumoModulos } from '@/lib/config/modulos';
-import { maisEmpresasAcao } from './empresas/acoes';
+import { maisEmpresasAcao } from '@/lib/acoes-cliente';
 import { SeloSituacao } from './selo-situacao';
 
 /** Acima de 480 px a lista completa; abaixo, "N módulos" (CSS em globals.css). A lista completa fica no title e no aria-label. */

@@ -4,6 +4,7 @@ import { buscarEu } from '@/lib/api';
 import { euPlataforma } from '@/lib/config/api';
 import { cookies } from 'next/headers';
 import { COOKIE_CONFIG_WEB, opcoesConfig, ROTA_SENHA as ROTA_SENHA_CONFIG } from '@/lib/config/sessao';
+import { registrarFalha } from '@/lib/falha-log';
 import { loginUnico, type SessaoAberta } from '@/lib/login-unico';
 import { contaBloqueada, TEXTOS_LOGIN, validarComSdk, type ErrosLogin } from '@/lib/login-regras';
 import { COOKIE_ACESSO, COOKIE_REFRESH, destinoSeguro, opcoesAcesso, opcoesLongas } from '@/lib/sessao';
@@ -46,6 +47,15 @@ async function trocaPendente(s: SessaoAberta): Promise<boolean> {
  * Troca pendente (lida no `eu` do destino) leva a `/senha` no BKO ou `/config/senha` no config. Nada de senha em log.
  */
 export async function entrarAction(dados: FormData): Promise<EstadoLogin> {
+  try {
+    return await entrar(dados);
+  } catch (e) {
+    registrarFalha('login.acao', e); // exceção inesperada nunca vira "indisponível" sem rastro (só o tipo e o build, sem dado pessoal)
+    return { erro: TEXTOS_LOGIN.indisponivel };
+  }
+}
+
+async function entrar(dados: FormData): Promise<EstadoLogin> {
   const bruto = { empresa: String(dados.get('empresa') ?? ''), email: String(dados.get('email') ?? ''), senha: String(dados.get('senha') ?? '') };
   const v = validarComSdk(LoginEntrada, ['empresa', 'email', 'senha'], bruto);
   if (!v.ok) return { campos: v.erros };
@@ -54,6 +64,7 @@ export async function entrarAction(dados: FormData): Promise<EstadoLogin> {
   if (r.tipo === 'campos') return { campos: r.erros };
   if (contaBloqueada(r)) return { bloqueada: true };
   if (r.tipo === 'limite') return { erro: textoMuitasTentativas(r.retry_after_s) };
+  if (r.tipo === 'recusado') return { erro: r.mensagem };
   if (r.tipo === 'indisponivel') return { erro: TEXTOS_LOGIN.indisponivel };
   if (r.tipo === 'credencial') return { erro: TEXTOS_LOGIN.credencial };
   await gravarSessao(r.sessao);

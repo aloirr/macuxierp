@@ -9,7 +9,7 @@ import { ChavesIdempotencia } from '@/lib/config/chaves';
 import { LIGACAO_SAIDA, ROTULO_DESTINO_FDV, fichaSaida } from '@/lib/config/ligacoes';
 import { RETORNOS_FDV, ROTULOS_FDV, textoDaFalha } from '@/lib/config/operacao-fdv';
 import { resultadoErro, resultadoSucesso } from '@/lib/resultado-acao';
-import { salvarCredencialFdvAcao, testarConexaoFdvAcao } from '../acoes-integracao-fdv';
+import { salvarCredencialFdvAcao, testarConexaoFdvAcao } from '@/lib/acoes-cliente';
 import { AVISO_TROCAR } from '@/lib/config/entrada-textos';
 import { CartaoLigacao, FichaDaLigacao } from './ligacao';
 
