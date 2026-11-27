@@ -6,5 +6,5 @@ import { InicioVisao } from './inicio-visao';
 
 export default async function Inicio() {
   const { eu } = await contexto();
-  return <InicioVisao atalhos={atalhosDoInicio(montarMenu(eu.modulos, MANIFESTOS, eu.usuario.perfil))} />;
+  return <InicioVisao nome={eu.usuario.nome} atalhos={atalhosDoInicio(montarMenu(eu.modulos, MANIFESTOS, eu.usuario.perfil))} />;
 }

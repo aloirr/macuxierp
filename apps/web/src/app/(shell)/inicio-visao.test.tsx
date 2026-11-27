@@ -9,7 +9,7 @@ import { InicioVisao } from './inicio-visao';
 
 function inicio(perfil: Perfil, semModulo?: string): string {
   const modulos = EU_FALSO.modulos.filter((m) => m.id !== semModulo);
-  return renderToStaticMarkup(<InicioVisao atalhos={atalhosDoInicio(montarMenu(modulos, MANIFESTOS, perfil))} />);
+  return renderToStaticMarkup(<InicioVisao nome="Ana Exemplo" atalhos={atalhosDoInicio(montarMenu(modulos, MANIFESTOS, perfil))} />);
 }
 const cartoes = (h: string) => h.match(/class="atalho"/g)?.length ?? 0;
 
@@ -18,7 +18,12 @@ describe('Início do BKO (decisões 58 e 59)', () => {
     const h = inicio('administrador');
     expect(cartoes(h)).toBe(3);
     expect(h).toContain('atalhos-3');
-    for (const r of ['Pedidos', 'Notas fiscais', 'Clientes']) expect(h).toContain(`>${r}</a>`);
+    expect(h).toContain('<h1>Início</h1>');
+    expect(h).toContain('Olá, Ana. Por onde quer começar?');
+    expect(h).toContain('<h2 class="titulo-secao">Atalhos</h2>');
+    for (const r of ['Pedidos', 'Notas fiscais', 'Clientes']) expect(h).toContain(`<b>${r}</b>`);
+    for (const d of ['Lançar e acompanhar pedidos', 'Emitir e consultar NF-e', 'Cadastro de clientes']) expect(h).toContain(`<span>${d}</span>`);
+    expect(h.match(/<span class="seta" aria-hidden="true">→<\/span>/g)).toHaveLength(3);
     expect(h).not.toMatch(/\d{2,}/); // sem números nem contadores
   });
   it('sem licença do faturamento some Notas fiscais e os dois restantes esticam', () => {
@@ -34,12 +39,15 @@ describe('Início do BKO (decisões 58 e 59)', () => {
     const rotulos = atalhosDoInicio(menu).map((a) => a.rotulo);
     expect(rotulos).not.toContain('Clientes');
     expect(rotulos).toContain('Pedidos');
-    expect(cartoes(renderToStaticMarkup(<InicioVisao atalhos={atalhosDoInicio(menu)} />))).toBe(rotulos.length);
+    expect(cartoes(renderToStaticMarkup(<InicioVisao nome="Ana Exemplo" atalhos={atalhosDoInicio(menu)} />))).toBe(rotulos.length);
   });
-  it('nenhum atalho: estado vazio com uma frase, sem botão', () => {
-    const h = renderToStaticMarkup(<InicioVisao atalhos={[]} />);
+  it('nenhum atalho: só título, saudação e a frase do vazio, sem Atalhos nem botão', () => {
+    const h = renderToStaticMarkup(<InicioVisao nome="Ana Exemplo" atalhos={[]} />);
     expect(cartoes(h)).toBe(0);
-    expect(h).toContain('Nenhum módulo disponível');
+    expect(h).toContain('<h1>Início</h1>');
+    expect(h).toContain('Olá, Ana. Por onde quer começar?');
+    expect(h).toContain('Nenhum atalho disponível. Use o menu para abrir as telas liberadas.');
+    expect(h).not.toContain('Atalhos');
     expect(h).not.toContain('<button');
   });
 });
