@@ -203,3 +203,10 @@ Nada disso entra na 0033 nem no código da v0.3.0:
 - **Até lá:** o portal não cria uma 2ª empresa em produção sem o ok do PO (regra de operação, decisão do PO de 23/11 ~08h30; sem trava em código).
 
 Ampliada pela ADR 0013 (Integração FDV no portal, T-0056).
+
+## Emenda (26/11/2026, 22h51): sem trava por tempo no login e no Esqueci (substitui partes da §6)
+Pedido do Alexandre, pelo PO, em 26/11 às 21h21: "quando eu clicar em esquecer a senha, gerar a senha e colocar a senha temporária para ele desbloquear automaticamente". Decisão 38 A: entra na v0.3.17 (PR #750). Vale para o tenant e para o superadmin, pela tela única e pelo `/config/entrar`, e muda a RN-CORE-15 e a RN-CORE-13.
+- **Bloqueio da conta sem prazo:** na 5ª falha seguida (`maxFalhas`), a conta bloqueia sem prazo (`BLOQUEIO_SEM_PRAZO`, apps/api/src/auth/apoio-login.ts) e responde o 423 `CONTA_BLOQUEADA` com "Recuperar a senha". Ela não solta com o tempo. Saem dele só a senha temporária válida, que desbloqueia na hora (`desbloqueou: true`), e o `operador.sh superadmin --destravar` (ou o administrador, no tenant). Sai o `travaMinutos` do `ConfigAuth`. Um bloqueio antigo, com prazo e já vencido, recomeça a contagem.
+- **Limite por IP (10 em 15 min, contra força bruta):** conta só as falhas (401 e 423), na tela única e no `/config/entrar`, que deixa de contar o login certo. Com o IP no limite, **só a temporária válida entra**: a senha comum, certa ou errada, recebe o 429 `MuitasTentativasResposta`, sem somar falha na conta e com o mesmo custo de argon2 da recusa.
+- **Esqueci:** sai o limite por conta. Fica só o anti-spam por IP, 20 pedidos a cada 15 min (`LIMITES_ESQUECI_SENHA` do SDK), sempre com o 202 neutro.
+- **Trava em memória da conta que não existe (T-0111):** também sem prazo, para o 423 continuar igual ao da conta que existe. Ela tem um teto de 100 mil chaves e zera quando o processo reinicia.

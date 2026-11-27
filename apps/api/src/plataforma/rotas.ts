@@ -12,8 +12,8 @@
  * - Deadlock (`40P01`) no `comPlataforma`: a transação é refeita uma vez (`comRetentativaEmDeadlock`, T-0056).
  * - Multipart (T-0058): lido depois da sessão e antes de qualquer transação, com os limites da rota (`lerMultipart`).
  * - Rota `por_etapa` (só a carga do portal; ADR 0013, adendo A1): sem transação em volta; o `executar` abre as próprias.
- * - "Esqueci a senha" (T-0076): `POST /v1/plataforma/auth/esqueci`, pública (com o anti-CSRF), com os limites por IP e
- *   por conta (empresa = `EMPRESA_PLATAFORMA`) antes do banco e SEMPRE o mesmo 202 neutro; o e-mail sai só depois da
+ * - "Esqueci a senha" (T-0076): `POST /v1/plataforma/auth/esqueci`, pública (com o anti-CSRF), com o limite por IP
+ *   (anti-spam) antes do banco e SEMPRE o mesmo 202 neutro; o e-mail sai só depois da
  *   resposta (`auth/esqueci.ts`). Sem a porta de e-mail, o mesmo 202 (sem banco e sem envio). Login com a temporária = 200 com a
  *   sessão e o cookie (`responderLoginPlataforma`, o mesmo da tela única com o código MACUXI); as outras rotas dão o 403
  *   `TROCAR_SENHA` do bloqueio (`SenhaATrocarResposta`, motivo 'temporaria', `expira_em` = o fim da temporária).
@@ -47,13 +47,13 @@ import {
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { ConfigAuth } from '../auth/servico';
 import { opcoesCookieSessao } from '../auth/apoio-login';
-import { envioAposResposta, erroMuitasTentativas, limitarEsqueciPorConta, limitarEsqueciPorIp, type EsqueciMontado } from '../auth/esqueci';
+import { envioAposResposta, erroMuitasTentativas, limitarEsqueciPorIp, type EsqueciMontado } from '../auth/esqueci';
 import { CorpoTrocaSenha, corpoTrocarSenha } from '../auth/troca-senha';
 import { entradaDaChamada, responder } from '../execucao-rota';
 import { lerMultipart } from '../multipart';
 import { erroDaPlataforma } from './erros';
 import { ipDoCliente } from './ip-cliente';
-import { EMPRESA_PLATAFORMA, LimitePorChave } from './limite-ip';
+import { LimitePorChave } from './limite-ip';
 import { comRetentativaEmDeadlock } from './retentativa';
 import { ServicoPlataforma, type LoginPlataforma, type SessaoPlataformaLida } from './servico';
 
@@ -133,10 +133,15 @@ export function montarPlataforma(
   app.post(`${PREFIXO_PLATAFORMA}/auth/entrar`, async (req, reply) =>
     traduzido(async () => {
       exigirCsrf(req);
-      const porIp = limite.registrar(ipDoCliente(req, d.segredoBff), o.relogio.agora().getTime());
-      if (!porIp.permitido) throw erroMuitasTentativas(porIp.retry_after_s);
+      // Como a tela única (hotfix v0.3.16.1): o IP conta só as falhas; no limite, só a temporária válida entra.
+      const ip = ipDoCliente(req, d.segredoBff);
+      const agoraMs = o.relogio.agora().getTime();
+      const porIp = limite.excedido(ip, agoraMs);
       const { email, senha } = EntrarPlataformaEntrada.parse(req.body);
-      const r = await c.servico.entrar(email, senha);
+      const r = await c.servico.entrar(email, senha, porIp.permitido ? undefined : () => erroMuitasTentativas(porIp.retry_after_s)).catch((e: unknown) => {
+        if (e instanceof ErroApi && (e.status === 401 || e.status === 423)) limite.registrar(ip, agoraMs);
+        throw e;
+      });
       req.log = reply.log = req.log.child({ superadmin_id: r.superadmin_id });
       return responderLoginPlataforma(reply, r, c.cookieSeguro);
     }),
@@ -201,7 +206,6 @@ function montarEsqueciPlataforma(app: FastifyInstance, d: DependenciasPlataforma
       const agoraMs = relogio.agora().getTime();
       limitarEsqueciPorIp(e.limites, ipDoCliente(req, d.segredoBff), agoraMs);
       const { email } = PedirSenhaTemporariaPlataformaEntrada.parse(req.body);
-      limitarEsqueciPorConta(e.limites, EMPRESA_PLATAFORMA, email, agoraMs);
       return apos.responder(req, reply, e.envio ? await servico.esqueci(email, req.log) : await servico.esqueciSemEnvio(req.log));
     }),
   );

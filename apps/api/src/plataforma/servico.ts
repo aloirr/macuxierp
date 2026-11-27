@@ -2,7 +2,7 @@
  * Login, sessão, saída e troca de senha do superadmin (ADR 0012 §2, §4 e §6). Só chama as funções da lista fechada da
  * 0033 (`superadmin_*`), dentro do `BancoPlataformaComLogin` (papel `macuxierp_config` só na transação):
  * - o token da sessão é opaco (32 bytes aleatórios, base64url) e só o SHA-256 vai ao banco; o token só existe no cookie;
- * - argon2id conferido na API (`conferirSenha`); `maxFalhas` falhas seguidas travam por `travaMinutos` (`ConfigAuth`,
+ * - argon2id conferido na API (`conferirSenha`); `maxFalhas` falhas seguidas bloqueiam sem prazo (`ConfigAuth`,
  *   `travaAposFalha`); mensagem única e o mesmo custo de argon2 (`ConferenciaCustoIgual`) quando o e-mail não existe ou
  *   a conta está travada;
  * - nada de e-mail, senha, token ou nome em log ou erro;
@@ -13,7 +13,7 @@
  *   A marca da temporária (`marcaTemporaria`) vai no começo do próprio token; `superadmin_trocar_senha` zera a temporária.
  */
 import { randomBytes } from 'node:crypto';
-import { CODIGO_SUPERADMIN_LOGIN, erros, sha256Hex, type BancoPlataformaComLogin, type Relogio, type SessaoPlataforma } from '@macuxierp/platform-sdk';
+import { CODIGO_SUPERADMIN_LOGIN, erros, sha256Hex, type BancoPlataformaComLogin, type ErroApi, type Relogio, type SessaoPlataforma } from '@macuxierp/platform-sdk';
 import { custoTemporariaDescartada, emitirTemporaria, lerMarcaTemporaria, marcaTemporaria, mensagemSenhaTemporaria } from '../auth/senha-temporaria';
 import { registrarSemEnvio, type LogEsqueci } from '../auth/esqueci-log';
 import type { TrocaPendente } from '../auth/troca-senha';
@@ -65,7 +65,7 @@ export class ServicoPlataforma {
 
   constructor(
     private readonly banco: BancoPlataformaComLogin,
-    private readonly cfg: Pick<ConfigAuth, 'maxFalhas' | 'travaMinutos' | 'argon2'>,
+    private readonly cfg: Pick<ConfigAuth, 'maxFalhas' | 'argon2'>,
     private readonly relogio: Relogio,
   ) {
     this.custoIgual = new ConferenciaCustoIgual(cfg.argon2);
@@ -76,19 +76,21 @@ export class ServicoPlataforma {
    * Login do superadmin (RN-CORE-15, T-0111; decisão R-20261126-175321): a mesma `decidirEntrada` do tenant, com a trava em
    * memória da chave `plataforma` + e-mail para a conta que não existe.
    */
-  async entrar(email: string, senha: string): Promise<LoginPlataforma> {
+  async entrar(email: string, senha: string, limite?: () => ErroApi): Promise<LoginPlataforma> {
     const agora = this.relogio.agora();
     const falha = () => erros.naoAutenticado(FALHA_LOGIN_PLATAFORMA);
     // A recusa é devolvida, não lançada, dentro da transação: o erro desfaria a contagem de falhas gravada.
     const r = await this.banco.antesDaSessao(async (tx): Promise<Recusa | LoginPlataforma | null> => {
       const [sa] = await tx.consultar<LinhaLogin>(SQL_PARA_LOGIN, [email]);
       if (!sa || !sa.ativo) return null;
-      const { resultado, fimTemporaria, conferencias } = await this.custoIgual.decidirEntrada(senha, sa, agora);
+      const { resultado, fimTemporaria, conferencias } = await this.custoIgual.decidirEntrada(senha, sa, agora, limite !== undefined);
       if (resultado === 'bloqueada') return { recusa: 'bloqueada', conferencias };
       if (resultado === 'falha') {
-        // A 0033 só sobe a contagem (zera no login certo); a partir da `maxFalhas`-ésima falha seguida, trava.
+        // IP no limite: só a temporária foi conferida; a recusa é o 429, sem somar falha na conta
+        if (limite) return { recusa: 'falha', conferencias };
+        // A 0033 só sobe a contagem (zera no login certo); a partir da `maxFalhas`-ésima falha seguida, bloqueia sem prazo.
         const falhas = sa.falhas_login + 1;
-        await tx.consultar('SELECT plataforma.superadmin_registrar_falha($1::uuid, $2, $3)', [sa.id, falhas, travaAposFalha(falhas, agora, this.cfg)]);
+        await tx.consultar('SELECT plataforma.superadmin_registrar_falha($1::uuid, $2, $3)', [sa.id, falhas, travaAposFalha(falhas, this.cfg)]);
         return { recusa: 'falha', conferencias };
       }
       if (fimTemporaria) {
@@ -102,8 +104,8 @@ export class ServicoPlataforma {
       await tx.consultar('SELECT plataforma.superadmin_abrir_sessao($1::uuid, $2, $3)', [sa.id, hashToken(token), expira_em]);
       return { token, expira_em, superadmin_id: sa.id, ...(resultado === 'entra_desbloqueando' ? { desbloqueou: true as const } : {}) };
     });
-    if (r === null) return this.custoIgual.recusarSemConta(senha, this.travaConta, chaveEmpresaEmail(EMPRESA_PLATAFORMA, email), agora, falha);
-    if ('recusa' in r) return this.custoIgual.recusarConta(senha, r, falha);
+    if (r === null) return this.custoIgual.recusarSemConta(senha, this.travaConta, chaveEmpresaEmail(EMPRESA_PLATAFORMA, email), falha, limite);
+    if ('recusa' in r) return this.custoIgual.recusarConta(senha, r, falha, limite);
     return r;
   }
 

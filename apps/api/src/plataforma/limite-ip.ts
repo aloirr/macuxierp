@@ -1,11 +1,10 @@
 /**
  * Limites de tentativa em memória do processo (uma API por VM, ADR 0003), em janela fixa por chave:
  * - login do superadmin por IP (ADR 0012 §6): `LIMITE_LOGIN_IP_PADRAO`;
- * - login da tela única (`POST /v1/auth/login`, tenant e MACUXI, T-0076): o mesmo `LIMITE_LOGIN_IP_PADRAO`, contando só
- *   as falhas (401) dos dois lados juntos (`excedido` antes, `registrar` na falha), para o login certo nunca travar o IP
- *   de um escritório inteiro;
- * - "Esqueci a senha" (T-0076, molde do FDV): `LIMITES_ESQUECI_SENHA` do SDK, por IP e por conta (empresa + e-mail), com a
- *   chave da conta em SHA-256 (`chaveEmpresaEmail`): o e-mail em claro nunca fica no Map. Conferidos antes do banco.
+ * - login da tela única (`POST /v1/auth/login`, tenant e MACUXI, T-0076) e o `/config/entrar`: o mesmo
+ *   `LIMITE_LOGIN_IP_PADRAO`, contando só as falhas (401 e 423) dos dois lados juntos. Com o IP no limite, só a senha
+ *   temporária válida entra (hotfix v0.3.16.1): o limite nunca impede a recuperação;
+ * - "Esqueci a senha" (T-0076): `LIMITES_ESQUECI_SENHA` do SDK, só por IP (anti-spam), conferido antes do banco.
  * O IP e a chave ficam só aqui, nunca em log nem em banco.
  */
 import { LIMITES_ESQUECI_SENHA, sha256Hex } from '@macuxierp/platform-sdk';
@@ -16,12 +15,10 @@ export const LIMITE_LOGIN_IP_PADRAO = { maximo: 10, janelaMs: 15 * 60_000 } as c
 /** Limites do "Esqueci a senha", um por processo, comuns ao `/v1/auth/esqueci` e ao `/v1/plataforma/auth/esqueci`. */
 export interface LimitesEsqueci {
   ip: LimitePorChave;
-  conta: LimitePorChave;
 }
 
 export const novosLimitesEsqueci = (): LimitesEsqueci => ({
   ip: new LimitePorChave(LIMITES_ESQUECI_SENHA.por_ip.maximo, LIMITES_ESQUECI_SENHA.por_ip.janela_s * 1000),
-  conta: new LimitePorChave(LIMITES_ESQUECI_SENHA.por_conta.maximo, LIMITES_ESQUECI_SENHA.por_conta.janela_s * 1000),
 });
 
 /** "Empresa" do superadmin na chave da conta (o MACUXI da tela única e o pedido do `/config`). */
@@ -77,24 +74,29 @@ export class LimitePorChave {
 }
 
 /**
- * Trava em memória da conta que NÃO existe (RN-CORE-15, T-0111; decisão R-20261126-175321), com os mesmos `maxFalhas` e
- * `travaMinutos` da trava do banco da conta que existe, para o 423 sair igual nos dois casos (anti-enumeração). A conta que
- * existe segue só o banco (`falhas_login`, `bloqueado_ate`), que o `operador.sh --destravar` zera na hora. A chave é a
- * `chaveEmpresaEmail` (SHA-256): o e-mail em claro nunca fica no Map. Uma por processo (uma API por VM, ADR 0003).
+ * Trava em memória da conta que NÃO existe (RN-CORE-15, T-0111; decisão R-20261126-175321), com o mesmo `maxFalhas` do
+ * bloqueio do banco da conta que existe e, como ele, SEM PRAZO (hotfix v0.3.16.1), para o 423 sair igual nos dois casos
+ * (anti-enumeração). A conta que existe segue só o banco (`falhas_login`, `bloqueado_ate`). A chave é a
+ * `chaveEmpresaEmail` (SHA-256): o e-mail em claro nunca fica no Map. Uma por processo (uma API por VM, ADR 0003); acima
+ * de `TETO_TRAVA_MEMORIA` chaves, a mais antiga sai (o Map não cresce sem limite).
  */
+export const TETO_TRAVA_MEMORIA = 100_000;
+
 export class TravaContaMemoria {
-  readonly #limite: LimitePorChave;
+  readonly #falhas = new Map<string, number>();
+  readonly #maximo: number;
 
-  constructor(cfg: { maxFalhas: number; travaMinutos: number }) {
-    this.#limite = new LimitePorChave(cfg.maxFalhas, cfg.travaMinutos * 60_000);
+  constructor(cfg: { maxFalhas: number }) {
+    this.#maximo = cfg.maxFalhas;
   }
 
-  travada(chave: string, agoraMs: number): boolean {
-    return !this.#limite.excedido(chave, agoraMs).permitido;
+  travada(chave: string): boolean {
+    return (this.#falhas.get(chave) ?? 0) >= this.#maximo;
   }
 
-  falhou(chave: string, agoraMs: number): void {
-    this.#limite.registrar(chave, agoraMs);
+  falhou(chave: string): void {
+    this.#falhas.set(chave, (this.#falhas.get(chave) ?? 0) + 1);
+    if (this.#falhas.size > TETO_TRAVA_MEMORIA) this.#falhas.delete(this.#falhas.keys().next().value!);
   }
 }
 

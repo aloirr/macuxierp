@@ -426,9 +426,9 @@ describe('T-0076: POST /v1/auth/esqueci (tenant)', () => {
     expect(m.envio.enviados[0]!.depoisDaResposta).toBe(true);
   });
 
-  it('429 por IP (5 a cada 15 min) antes do banco: MuitasTentativasResposta com detalhes.retry_after_s, e no Retry-After', async () => {
+  it('429 por IP (20 a cada 15 min, só anti-spam) antes do banco: MuitasTentativasResposta com detalhes.retry_after_s, e no Retry-After', async () => {
     const m = await montar();
-    for (let i = 0; i < 5; i++) expect((await esqueci(m, 'AM2808', `p${i}@exemplo.com`)).statusCode).toBe(202);
+    for (let i = 0; i < 20; i++) expect((await esqueci(m, 'AM2808', `p${i}@exemplo.com`)).statusCode).toBe(202);
     const aberturas = m.banco.aberturas.length;
     hashes.mockClear();
     const r = await esqueci(m, 'AM2808', 'adm@exemplo.com');
@@ -440,21 +440,9 @@ describe('T-0076: POST /v1/auth/esqueci (tenant)', () => {
     expect(hashes).not.toHaveBeenCalled();
   });
 
-  it('429 por conta (3 por hora, empresa + e-mail), mesmo trocando de IP, igual para conta que existe ou não, antes do banco', async () => {
+  it('hotfix v0.3.16.1: sem limite por conta: a mesma conta pede de novo, de outro IP, sem 429', async () => {
     const m = await montar();
-    for (const email of ['adm@exemplo.com', 'ninguem@exemplo.com']) {
-      for (let i = 0; i < 3; i++) expect((await esqueci(m, 'AM2808', email, `198.51.100.${i + 10}`)).statusCode).toBe(202);
-    }
-    m.relogio.avancar(10 * 60_000);
-    const aberturas = m.banco.aberturas.length;
-    const existe = await esqueci(m, 'am2808', 'ADM@exemplo.com', '198.51.100.50');
-    const naoExiste = await esqueci(m, 'AM2808', 'ninguem@exemplo.com', '198.51.100.51');
-    for (const r of [existe, naoExiste]) {
-      expect(r.statusCode).toBe(429);
-      expect(r.json()).toMatchObject({ codigo: 'MUITAS_TENTATIVAS', detalhes: { retry_after_s: 50 * 60 } });
-    }
-    expect(existe.body).toBe(naoExiste.body);
-    expect(m.banco.aberturas).toHaveLength(aberturas);
+    for (let i = 0; i < 6; i++) expect((await esqueci(m, 'AM2808', 'adm@exemplo.com', `198.51.100.${i + 10}`)).statusCode).toBe(202);
   });
 
   it('corpo inválido é 400 VALIDACAO (CodigoEmpresaLogin fora do código e do slug; e-mail válido)', async () => {
@@ -580,18 +568,14 @@ describe('T-0076: POST /v1/auth/esqueci (tenant)', () => {
     expect(sem.sa).toMatchObject({ senha_temporaria_hash: null, senha_temporaria_expira_em: null });
   });
 
-  it('e-mail desligado: os 429 por IP e por conta valem antes do 202 (e antes do argon2)', async () => {
+  it('e-mail desligado: o 429 por IP vale antes do 202 (e antes do argon2)', async () => {
     const sem = await montar({ semEmail: true });
-    for (let i = 0; i < 5; i++) expect((await esqueci(sem, 'AM2808', `p${i}@exemplo.com`)).statusCode).toBe(202);
+    for (let i = 0; i < 20; i++) expect((await esqueci(sem, 'AM2808', `p${i}@exemplo.com`)).statusCode).toBe(202);
     hashes.mockClear();
     const ip = await esqueci(sem, 'AM2808', 'adm@exemplo.com');
     expect(ip.statusCode).toBe(429);
     expect(ip.json()).toEqual({ codigo: 'MUITAS_TENTATIVAS', mensagem: textoMuitasTentativas(900), detalhes: { retry_after_s: 900 } });
     expect(hashes).not.toHaveBeenCalled();
-    for (let i = 0; i < 3; i++) expect((await esqueciConfig(sem, EMAIL_SA, `198.51.100.${i + 20}`)).statusCode).toBe(202);
-    const conta = await esqueci(sem, 'MACUXI', EMAIL_SA, '198.51.100.30');
-    expect(conta.statusCode).toBe(429);
-    expect(conta.json()).toMatchObject({ codigo: 'MUITAS_TENTATIVAS', detalhes: { retry_after_s: 3600 } });
     expect(sem.banco.aberturas).toHaveLength(0);
     expect(sem.plataforma.chamadas).toEqual([]);
   });
@@ -732,17 +716,12 @@ describe('T-0076: tela única com o código MACUXI', () => {
     expect(m.sa.deve_trocar_senha).toBe(true);
   });
 
-  it('o limite da conta MACUXI é o mesmo do /config (plataforma + e-mail): 2 pela tela única + 1 pelo /config, o 4º é 429', async () => {
+  it('hotfix v0.3.16.1: MACUXI pela tela única e pelo /config, sem limite por conta: o 4º pedido também é 202', async () => {
     const m = await montar();
     expect((await esqueci(m, 'MACUXI', EMAIL_SA, '198.51.100.1')).statusCode).toBe(202);
     expect((await esqueci(m, 'MACUXI', EMAIL_SA, '198.51.100.2')).statusCode).toBe(202);
     expect((await esqueciConfig(m, EMAIL_SA, '198.51.100.3')).statusCode).toBe(202);
-    const chamadas = m.plataforma.chamadas.length;
-    const r = await esqueciConfig(m, ` ${EMAIL_SA.toUpperCase()}`, '198.51.100.4');
-    expect(r.statusCode).toBe(429);
-    expect(r.json()).toMatchObject({ codigo: 'MUITAS_TENTATIVAS', detalhes: { retry_after_s: 3600 } });
-    expect((await esqueci(m, 'MACUXI', EMAIL_SA, '198.51.100.5')).body).toBe(r.body);
-    expect(m.plataforma.chamadas).toHaveLength(chamadas);
+    expect((await esqueciConfig(m, ` ${EMAIL_SA.toUpperCase()}`, '198.51.100.4')).statusCode).toBe(202);
   });
 
   it('POST /v1/plataforma/auth/esqueci exige o anti-CSRF e responde o mesmo 202 neutro', async () => {
@@ -769,16 +748,22 @@ describe('hotfix: a temporária entra com a conta travada e zera a trava', () =>
     return conta.bloqueado_ate;
   };
 
-  it('RN-CORE-15 (T-0111): a temporária não fura a trava por IP (429 antes de tudo); a temporária certa não soma no IP; a memória só guarda o SHA-256', async () => {
+  it('hotfix v0.3.16.1 (RN-CORE-15): com o IP no limite, a temporária válida ENTRA e desbloqueia; a senha atual certa e a errada dão 429; a temporária certa não soma no IP', async () => {
     const m = await montar();
     await comTemporaria(m.adm);
     travar(m.adm);
     const preso = ip();
     for (let i = 0; i < 10; i++) await login(m, 'am2808', `outro-${i}@exemplo.com`, 'errada', preso);
+    const atual = await login(m, 'am2808', 'adm@exemplo.com', SENHA_DE_TESTE, preso);
+    expect(atual.statusCode).toBe(429);
+    expect(MuitasTentativasResposta.safeParse(atual.json()).success).toBe(true);
+    expect((await login(m, 'am2808', 'adm@exemplo.com', 'Temp-errada-9!', preso)).statusCode).toBe(429);
+    expect(m.adm.falhas_login).toBe(5); // a recusa do limite não soma falha na conta
     const r = await login(m, 'am2808', 'adm@exemplo.com', TEMPORARIA, preso);
-    expect(r.statusCode).toBe(429);
-    expect(r.json()).toMatchObject({ codigo: 'MUITAS_TENTATIVAS' });
-    expect(m.adm.senha_temporaria_hash).toBeTruthy(); // não consumiu
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toMatchObject({ destino: 'bko', desbloqueou: true });
+    expect(m.adm).toMatchObject({ falhas_login: 0, bloqueado_ate: null, senha_temporaria_hash: null });
+    await comTemporaria(m.adm);
     const livre = ip();
     for (let i = 0; i < 9; i++) await login(m, 'am2808', `mais-${i}@exemplo.com`, 'errada', livre);
     expect((await login(m, 'am2808', 'adm@exemplo.com', TEMPORARIA, livre)).statusCode).toBe(200);
