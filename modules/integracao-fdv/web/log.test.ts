@@ -90,7 +90,7 @@ describe('Recebidos do FDV no Log (RN-INF-09; T-0110)', () => {
   });
   it('RN-INF-09: o motivo é vazio fora de recusado, genérico sem erro e sem texto repetido', () => {
     expect(motivoDoRecebidoLog(rec())).toBe('');
-    expect(motivoDoRecebidoLog(rec({ ...recusado, erros: [] }))).toMatch(/suporte/);
+    expect(motivoDoRecebidoLog(rec({ ...recusado, erros: [] }))).toMatch(/Macuxi/);
     expect(motivoDoRecebidoLog(rec({ ...recusado, erros: [recusado.erros[0]!, recusado.erros[0]!] }))).toBe(motivoDoRecebidoLog(recusado));
   });
   it('RN-INF-09 e LGPD: o CSV traz o cabeçalho e as linhas, só com o documento mascarado', () => {

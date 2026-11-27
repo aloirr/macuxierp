@@ -4,6 +4,7 @@
  */
 import { REFERENCIAS_HUB } from './mapeamento';
 import { classificarResposta } from './resposta';
+import { MENSAGENS_PAUSA, MENSAGEM_ERRO_DESCONHECIDO } from '../contracts';
 
 /** Causa e ação de um erro por linha: o Monitor junta as duas; o Log mostra separado (uma só frase de cada, sem repetir). */
 export interface TextoErro { readonly motivo: string; readonly acao: string }
@@ -48,48 +49,28 @@ const STATUS_DO_CODIGO_DE_PAUSA: Readonly<Record<string, number>> = {
   entidade_de_outro_conector: 422,
 };
 
-/** Texto único de "sem licença" (ERP e FDV): a API usa o mesmo. */
-export const MSG_SEM_LICENCA = 'Integração FDV sem licença nesta empresa. Ligue o módulo na aba Empresa.';
-
-export const MENSAGENS_PAUSA: Readonly<Record<string, string>> = {
-  credencial: 'O FDV recusou a chave do conector. Use "Trocar chave".',
-  licenca_fdv: MSG_SEM_LICENCA,
-  licenca_erp: MSG_SEM_LICENCA,
-  versao: 'O FDV não aceita mais esta versão do conector. Fale com a Macuxi.',
-  envelope: 'O FDV recusou o formato do envio. Fale com a Macuxi.',
-  idempotencia: 'O FDV recusou um envio repetido. Fale com a Macuxi.',
-  topologia: 'Outro conector já envia este cadastro ao FDV. Fale com a Macuxi.',
-};
-
-const GENERICA = 'Erro desconhecido. Fale com a Macuxi.';
-
-const ACAO_GENERICA = 'Fale com a Macuxi.';
+const ACAO_MENSAGEM_ERRO_DESCONHECIDO = 'Fale com a Macuxi.';
 
 /** Causa do erro (Log do BKO). Código de pausa mostra o texto do motivo da pausa; desconhecido cai no genérico, nunca ecoa texto do Hub. */
 export function motivoDoErro(codigo: string | null | undefined, campo?: string | null): string {
-  if (!codigo) return GENERICA;
+  if (!codigo) return MENSAGEM_ERRO_DESCONHECIDO;
   const aguardado = codigo === 'referencia_ausente' && campo ? NOME_DO_CAMPO[campo] : undefined;
   if (aguardado) return `Aguardando ${aguardado} ser confirmada no FDV.`;
   const status = STATUS_DO_CODIGO_DE_PAUSA[codigo];
   if (status !== undefined) {
     const a = classificarResposta({ tipo: 'recusa', status, codigo });
-    if (a.acao === 'pausar') return MENSAGENS_PAUSA[a.motivo] ?? GENERICA;
+    if (a.acao === 'pausar') return MENSAGENS_PAUSA[a.motivo] ?? MENSAGEM_ERRO_DESCONHECIDO;
   }
-  return CATALOGO_ERRO[codigo]?.motivo ?? GENERICA;
+  return CATALOGO_ERRO[codigo]?.motivo ?? MENSAGEM_ERRO_DESCONHECIDO;
 }
 
 /** O que a pessoa faz para resolver o erro por linha (Log do BKO). Nunca texto do Hub. */
 export function acaoDoErro(codigo: string | null | undefined): string {
-  return (codigo ? CATALOGO_ERRO[codigo]?.acao : undefined) ?? ACAO_GENERICA;
+  return (codigo ? CATALOGO_ERRO[codigo]?.acao : undefined) ?? ACAO_MENSAGEM_ERRO_DESCONHECIDO;
 }
 
 /** Mensagem completa (causa e ação) do Monitor. Código de pausa e desconhecido já trazem a ação no próprio texto. */
 export function mensagemDoErro(codigo: string | null | undefined, campo?: string | null): string {
   const t = codigo ? CATALOGO_ERRO[codigo] : undefined;
   return t ? `${motivoDoErro(codigo, campo)} ${t.acao}` : motivoDoErro(codigo);
-}
-
-export function mensagemDaPausa(motivo: string | null | undefined): string {
-  if (!motivo) return '';
-  return MENSAGENS_PAUSA[motivo] ?? GENERICA;
 }

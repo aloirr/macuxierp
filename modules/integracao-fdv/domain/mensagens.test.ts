@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { CATALOGO_ERRO, acaoDoErro, mensagemDaPausa, mensagemDoErro, motivoDoErro } from './mensagens';
+import { mensagemDaPausa } from '../contracts';
+import { CATALOGO_ERRO, acaoDoErro, mensagemDoErro, motivoDoErro } from './mensagens';
 
 describe('catálogo de mensagens', () => {
   it('RN-INF-04: mensagem vem do catálogo pelo código; código desconhecido nunca ecoa texto', () => {

@@ -10,9 +10,9 @@ const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}
 const base = (o: Partial<MonitorResposta> = {}): MonitorResposta => ({
   credencial: { id: U(1), conector_id: 'erp-1', ambiente: 'producao', chave_prefixo: 'abcd1234', criada_em: '2026-11-22T14:00:00.000Z', ultimo_uso_em: null },
   configuracao: { entidades_habilitadas: ['produto', 'cliente'], limite_registros_lote: 500 },
-  sinal: { ultimo_envio_em: '2026-11-22T14:05:00.000Z', ultimo_aceito_em: '2026-11-22T14:05:00.000Z', ultimo_http: 200, parado_por_versao: false, politica_versao: { minima: '1.4.0' } },
+  sinal: { ultimo_envio_em: '2026-11-22T14:05:00.000Z', ultimo_aceito_em: '2026-11-22T14:05:00.000Z', ultimo_http: 200, parado_por_versao: false, ultimo_codigo: null, politica_versao: { minima: '1.4.0' } },
   entidades: ENTIDADES_HUB_F2.map((entidade) => ({
-    entidade, ultimo_envio_em: null, ultimo_sucesso_em: null, pendentes: 0, situacao: 'ok' as const, pausada_motivo: null, pausada_mensagem: null, habilitada: entidade === 'produto' || entidade === 'cliente', erros_abertos: 0,
+    entidade, ultimo_envio_em: null, ultimo_sucesso_em: null, pendentes: 0, situacao: 'ok' as const, pausada_motivo: null, pausada_mensagem: null, habilitada: entidade === 'produto' || entidade === 'cliente', proxima_tentativa_em: null, erros_abertos: 0,
   })),
   erros: [],
   conflitos: [],

@@ -40,8 +40,8 @@ import {
 } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 import { entidadeDaRota } from './operacao';
-import { EVENTOS, EVENTO_CARGA_INICIAL, MotivoPausa } from '../contracts';
-import { MSG_SEM_LICENCA, decidirCargaCompleta, decidirRetomar, entidadesParaCargaInicial, montarLogPlataforma, montarMonitor, planejarTrocaCredencial, prefixoExibido, validarConfiguracao } from '../domain';
+import { EVENTOS, EVENTO_CARGA_INICIAL, MotivoPausa, MSG_SEM_LICENCA } from '../contracts';
+import { decidirCargaCompleta, decidirRetomar, entidadesParaCargaInicial, montarLogPlataforma, montarMonitor, planejarTrocaCredencial, prefixoExibido, proximaTentativaEm, validarConfiguracao } from '../domain';
 
 const Uuid = z.string().uuid();
 const Instante = z.string().datetime();
@@ -57,7 +57,6 @@ const EstadoPortal = z.object({
       ambiente: DefinirCredencialPlataformaEntrada.shape.ambiente,
       chave_prefixo: z.string().min(1).max(8),
       criada_em: Instante,
-      ultimo_uso_em: Instante.nullable(),
     })
     .nullable(),
   entidades_habilitadas: z.array(EntidadeEnvioFdv),
@@ -68,6 +67,8 @@ const EstadoPortal = z.object({
     z.object({
       entidade: EntidadeEnvioFdv,
       pausada_motivo: MotivoPausa.nullable(),
+      /** Desde quando a pausa existe (0073); base de `proxima_tentativa_em` nas pausas sondáveis. */
+      pausada_em: Instante.nullable(),
       lote_em_voo: z.boolean(),
       ultimo_envio_em: Instante.nullable(),
       ultimo_lote: z.object({ estado: z.string(), erro_codigo: z.string().nullable(), em: Instante }).nullable(),
@@ -205,7 +206,6 @@ export function paraPlataforma(e: EstadoPortal): IntegracaoFdvPlataforma {
     ambiente: c?.ambiente ?? null,
     chave_prefixo: c?.chave_prefixo ?? null,
     criada_em: c?.criada_em ?? null,
-    ultimo_uso_em: c?.ultimo_uso_em ?? null,
     entidades_habilitadas: e.entidades_habilitadas,
     limite_registros_lote: e.limite_registros_lote,
     cadastros: e.cadastros.map((k) => ({
@@ -214,8 +214,9 @@ export function paraPlataforma(e: EstadoPortal): IntegracaoFdvPlataforma {
       ultimo_envio_em: k.ultimo_envio_em,
       falha: falhaEnvioFdv({ pausada_motivo: k.pausada_motivo, ultimo_lote_estado: k.ultimo_lote?.estado ?? null, erros_abertos: k.erros_abertos }),
       lote_em_voo: k.lote_em_voo,
+      proxima_tentativa_em: proximaTentativaEm(k.pausada_motivo, k.pausada_em)?.toISOString() ?? null,
     })),
-    ultimo_sinal: e.sinal,
+    ultimo_sinal: e.sinal ? { ...e.sinal, ultimo_codigo: e.sinal.ultimo_codigo ?? null } : null,
   });
 }
 
