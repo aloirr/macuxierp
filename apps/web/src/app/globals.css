@@ -173,6 +173,8 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 .tabela-fdv th:nth-child(4), .tabela-fdv td:nth-child(4) { min-width: 200px; }
 /* /config: a coluna Ações (5ª) cabe a principal e o "Ações" lado a lado, sem quebra. */
 .tabela-fdv th:nth-child(5), .tabela-fdv td:nth-child(5) { min-width: 260px; }
+/* /config, tela larga: respiro entre a ação principal (Log, Reprocessar…) e o "Ações" (+8 px sobre o gap de 8 px do MenuAcoes, que é estilo em linha do packages/ui). Em 390 nada muda. */
+@media (min-width: 801px) { .tabela-fdv td:last-child .mx-acoes-gatilho { margin-inline-start: 8px; } }
 /* BKO: a falha sobe para uma linha sob o nome do cadastro em tela estreita; a coluna Falha some (sem leitura dupla: só um dos dois aparece). */
 .falha-sob-nome { display: none; }
 @media (max-width: 640px) {

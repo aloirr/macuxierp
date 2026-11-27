@@ -6,7 +6,8 @@ import { useRouter } from 'next/navigation';
 import { useRef, useState, useTransition } from 'react';
 import { AMBIENTES_FDV, LIMITE_INICIAL_FDV, habilitadasApos, validarLimiteLote, acoesDaLinhaFdv, menuDaLinha, linhasCadastros, avisoLigar, type LinhaCadastroFdv } from '@/lib/config/integracao-fdv';
 import { ChavesIdempotencia } from '@/lib/config/chaves';
-import { TEXTO_SEM_LICENCA_FDV } from '@/lib/integracao-fdv-textos';
+import { MSG_SEM_LICENCA } from '@macuxierp/integracao-fdv/contracts';
+import { ERRO_CAMPOS } from '@/lib/textos';
 import { colunasStatusFdv } from '@/lib/integracao-fdv';
 import { textoZerado } from '@/lib/config/cargas';
 import type { Resultado } from '@/lib/config/executar';
@@ -61,7 +62,7 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
   const concluir = <T,>(id: string | null, r: Resultado<T>, textoOk: string, mostrar: (x: ResultadoUi) => void) => {
     chaves.current.aposResposta(id, r);
     setCampos(r.ok ? {} : r.campos);
-    mostrar(r.ok ? resultadoSucesso(textoOk) : resultadoErro(r.erro || 'Confira os campos.'));
+    mostrar(r.ok ? resultadoSucesso(textoOk) : resultadoErro(r.erro || ERRO_CAMPOS));
     if (r.ok) router.refresh();
   };
 
@@ -145,7 +146,7 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
         <BlocoEntradaApi empresaId={empresaId} dados={entrada} fuso={fuso} />
       </div>
       <div aria-label="Macuxi FDV" role="group">
-        {!dados.modulo_licenciado && <p className="faixa-aviso" role="status">{TEXTO_SEM_LICENCA_FDV}</p>}
+        {!dados.modulo_licenciado && <p className="faixa-aviso" role="status">{MSG_SEM_LICENCA}</p>}
       <section className="bloco" aria-labelledby="h-monitor">
         <div className="cabeca-cargas cabeca-monitor">
           <h2 id="h-monitor">Monitor</h2>

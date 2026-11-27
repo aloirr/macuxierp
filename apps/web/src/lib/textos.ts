@@ -8,3 +8,6 @@ export const SEM_RESPOSTA = 'Sem resposta do servidor. Tente de novo em instante
 export const INDISPONIVEL = 'Indisponível agora. Fale com a Macuxi.';
 export const SEM_PERMISSAO = 'Seu perfil ou a licença da empresa não permitem esta ação.';
 export const CARGA_GRANDE_DEMAIS = `O arquivo passa do limite de ${Math.floor(MAX_BYTES_ARQUIVO_CARGA_PORTAL / 1_048_576)} MB: divida em partes menores.`;
+/** Retornos de ação no molde do README do resultado (`docs/design/resultado-acao`): "Não foi possível <ação>. <o que fazer>." */
+export const ERRO_CAMPOS = 'Não foi possível salvar. Confira os campos marcados.';
+export const ACAO_INDISPONIVEL = 'Não foi possível abrir esta ação. Recarregue a página.';
