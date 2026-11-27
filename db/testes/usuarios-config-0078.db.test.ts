@@ -1,5 +1,5 @@
 /**
- * v0.3.28, migração 0078 (RN-CORE-01, RN-CORE-17): usuários da empresa no /config. E-mail único só entre os não
+ * v0.3.29, migração 0078 (RN-CORE-01, RN-CORE-17): usuários da empresa no /config. E-mail único só entre os não
  * excluídos; listar (e-mail mascarado), criar, editar, redefinir a senha, inativar, reativar e excluir; MXU01 no
  * último administrador ativo. Dados fictícios.
  */
@@ -66,7 +66,7 @@ interface Item {
 }
 
 describe.skipIf(!PG_DISPONIVEL)(
-  'banco macuxierp — usuários da empresa no /config (v0.3.28, 0078, RN-CORE-17)',
+  'banco macuxierp — usuários da empresa no /config (v0.3.29, 0078, RN-CORE-17)',
   () => {
     let banco: BancoDeTeste;
     let s: string;

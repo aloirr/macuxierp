@@ -1,4 +1,4 @@
--- 0078 — Usuários da empresa no /config (v0.3.28, RN-CORE-01, RN-CORE-17). Aditiva e reexecutável.
+-- 0078 — Usuários da empresa no /config (v0.3.29, RN-CORE-01, RN-CORE-17). Aditiva e reexecutável.
 -- O porquê e os erros: docs/banco/README.md, seção "Usuários da empresa no /config".
 
 SET LOCAL lock_timeout = '5s';
