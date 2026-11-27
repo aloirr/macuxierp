@@ -9,7 +9,7 @@
  *
  * Regra da agenda (vale para o portal, via funções `portal_*`): o app só ADIANTA `proximo*_em`; quem adia é o worker.
  */
-import { ConsultaClientesRecebidosFdv, LIMITE_ERROS_LOG_FDV, LIMITE_RECEBIDOS_LOG_FDV, csvDaLista, definirRota, erros, type RotaModulo, type SituacaoClienteRecebidoFdv } from '@macuxierp/platform-sdk';
+import { ConsultaClientesRecebidosFdv, LIMITE_ERROS_LOG_FDV, LIMITE_RECEBIDOS_LOG_FDV, csvDaLista, definirRota, erros, fusoDaRota, type RotaModulo, type SituacaoClienteRecebidoFdv } from '@macuxierp/platform-sdk';
 import { ConsultaPaginada, paraCsv, respostaCsv, type ColunaCsv } from '@macuxierp/platform-sdk/listas';
 import { z } from 'zod';
 import { ENTIDADE_COM_RECEBIDOS_NO_LOG, itemDoLogTenant, montarLogTenant } from '../domain';
@@ -120,7 +120,7 @@ export function criarRotas(): RotaModulo[] {
       async executar(c, e) {
         const { situacao } = e.consulta as { situacao?: SituacaoClienteRecebidoFdv };
         const p = await lerRecebidosParaExportar(c.tx, tenant(c), { situacao });
-        const csv = csvDeRecebidosLog(p.itens);
+        const csv = csvDeRecebidosLog(p.itens, fusoDaRota(c));
         if (!p.cortado) return respostaCsv(NOME_CSV_RECEBIDOS_LOG, csv);
         const total = await contarClientesRecebidos(c.tx, tenant(c), situacao);
         return csvCortado(NOME_CSV_RECEBIDOS_LOG, csv, textoRecebidosCortados(p.itens.length), Math.max(total - p.itens.length, 1));

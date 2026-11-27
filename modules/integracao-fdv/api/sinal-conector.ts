@@ -6,13 +6,18 @@
  */
 import type { ContextoAgenda, ItemAgenda, Transacao } from '@macuxierp/platform-sdk';
 import { ENTIDADES_HUB_F2, type EntidadeHub, type MotivoPausa } from '../contracts';
-import { atrasoRetentativaSegundos, classificarResposta, dataReferenciaReconciliacao, montarCorpoReconciliacao, montarCorpoSinal, proximaReconciliacaoEm, retryAfterSegundos } from '../domain';
+import { atrasoRetentativaSegundos, classificarResposta, deveSondarCredencial, ehMotivoSondavel, dataReferenciaReconciliacao, montarCorpoReconciliacao, montarCorpoSinal, proximaReconciliacaoEm, retryAfterSegundos } from '../domain';
 import {
   ESTADOS_EM_VOO,
   RespostaSinalLida,
   UMA_HORA_S,
   abrirOuPausar,
   adiarPresoAPosse,
+  avisarAgenda,
+  limparPausasSondaveis,
+  pausaSondavelMaisAntiga,
+  renovarPausaSondavel,
+  type CredencialAtiva,
   defeitoDoCliente,
   marcarUsoDaCredencial,
   mais,
@@ -23,6 +28,8 @@ import {
 
 const INTERVALO_SINAL_S = 60;
 const ESPERA_CREDENCIAL_RECUSADA_S = 300;
+/** O que o sinal registra no log da agenda (sem chave nem corpo). */
+type LogSondagem = { motivo: string; codigo: string | null; resultado: string };
 
 type ColunaSinal = Extract<ColunaSinalAgenda, 'proximo_sinal_em' | 'proxima_reconciliacao_em'>;
 const adiarSinal = (tx: Transacao, tenant: string, coluna: ColunaSinal, posseAte: Date, para: Date): Promise<void> => adiarPresoAPosse(tx, tenant, { sinal: coluna }, posseAte, para);
@@ -33,11 +40,19 @@ export async function executarSinal(item: ItemAgenda, ctx: ContextoAgenda): Prom
   const tenant = item.tenant_id;
   const agora = ctx.agora;
   const base = await ctx.emTransacao(async (tx) => {
-    const credencial = await prepararCredencial(tx, tenant, {
+    // credencial já recusada: só o sinal sonda o Hub, 1 chamada após 30 min da pausa mais antiga (decisão 25 B); antes disso não chama
+    let paraSondar = null as { c: CredencialAtiva; motivo: MotivoPausa } | null;
+    const pronta = await prepararCredencial(tx, tenant, {
       semCredencial: () => adiarSinal(tx, tenant, 'proximo_sinal_em', ctx.posseAte, mais(agora, UMA_HORA_S)),
-      recusada: () => adiarSinal(tx, tenant, 'proximo_sinal_em', ctx.posseAte, mais(agora, ESPERA_CREDENCIAL_RECUSADA_S)),
+      recusada: async (c) => {
+        const pausa = await pausaSondavelMaisAntiga(tx, tenant);
+        if (pausa && deveSondarCredencial(pausa.pausada_em, agora)) paraSondar = { c, motivo: pausa.motivo };
+        else await adiarSinal(tx, tenant, 'proximo_sinal_em', ctx.posseAte, mais(agora, ESPERA_CREDENCIAL_RECUSADA_S));
+      },
     });
+    const credencial = pronta ?? paraSondar?.c ?? null;
     if (!credencial) return null;
+    const sondagem = pronta ? null : (paraSondar?.motivo ?? null);
     const pendentes = await tx.consultar<{ entidade: EntidadeHub; registros: number; mais_antigo: Date | null }>(
       `SELECT entidade, count(*)::int AS registros, min(alterado_em) AS mais_antigo
          FROM integracao_fdv.registro_publicado WHERE tenant_id = $1 AND pendente AND deleted_at IS NULL GROUP BY entidade`,
@@ -53,7 +68,7 @@ export async function executarSinal(item: ItemAgenda, ctx: ContextoAgenda): Prom
          FROM integracao_fdv.cursor_entidade WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY entidade`,
       [tenant],
     );
-    return { credencial, pendentes, emVoo, entidades };
+    return { credencial, sondagem, pendentes, emVoo, entidades };
   });
   if (!base) return;
   const cred = await abrirOuPausar(ctx, tenant, base.credencial);
@@ -75,33 +90,51 @@ export async function executarSinal(item: ItemAgenda, ctx: ContextoAgenda): Prom
     const d = defeitoDoCliente(e);
     if (!d) throw e;
     await ctx.emTransacao((tx) => adiarSinal(tx, tenant, 'proximo_sinal_em', ctx.posseAte, mais(agora, ESPERA_CREDENCIAL_RECUSADA_S)));
-    if (d.credencial) await ctx.emTransacao((tx) => pausarEntidades(tx, tenant, null, 'credencial', base.credencial.id, agora));
+    if (d.credencial) {
+      await ctx.emTransacao((tx) => (base.sondagem ? renovarPausaSondavel(tx, tenant, 'credencial', base.credencial.id, agora) : pausarEntidades(tx, tenant, null, 'credencial', base.credencial.id, agora)));
+      avisarAgenda(ctx, { tenant_id: tenant, entidade: 'todas', motivo: 'credencial', codigo_hub: d.codigo, http: null, resultado: base.sondagem ? 'sondagem_recusada' : 'pausada' }, 'conector: sinal recusado');
+    }
     return;
   }
+  let log: LogSondagem | null = null;
   await ctx.emTransacao(async (tx) => {
     const status = resp.status;
     if (resp.tipo === 'ok') {
       const lida = RespostaSinalLida.safeParse(resp.corpo);
       await tx.consultar(
         `UPDATE integracao_fdv.sinal
-            SET ultimo_envio_em = $2, ultimo_aceito_em = $2, ultimo_http = $3, politica_versao = $4::jsonb, parado_por_versao = $5
+            SET ultimo_envio_em = $2, ultimo_aceito_em = $2, ultimo_http = $3, politica_versao = $4::jsonb, parado_por_versao = $5, ultimo_codigo = NULL
           WHERE tenant_id = $1`,
         [tenant, agora, status, lida.success && lida.data.politica_versao ? JSON.stringify(lida.data.politica_versao) : null, paradoPorVersao],
       );
       await marcarUsoDaCredencial(tx, tenant, base.credencial.id, agora);
+      if (base.sondagem) {
+        await limparPausasSondaveis(tx, tenant, base.credencial.id, agora);
+        log = { motivo: base.sondagem, codigo: null, resultado: 'sondagem_retomada' };
+      }
       await adiarSinal(tx, tenant, 'proximo_sinal_em', ctx.posseAte, mais(agora, INTERVALO_SINAL_S));
       return;
     }
-    await tx.consultar(`UPDATE integracao_fdv.sinal SET ultimo_envio_em = $2, ultimo_http = coalesce($3::int, ultimo_http), parado_por_versao = $4 WHERE tenant_id = $1`, [tenant, agora, status, paradoPorVersao]);
     const acao = classificarResposta(resp);
-    if (acao.acao === 'pausar' && (acao.motivo === 'credencial' || acao.motivo === 'licenca_fdv')) {
-      await pausarEntidades(tx, tenant, null, acao.motivo, base.credencial.id, agora);
+    // código do Hub (ou `http_<status>`); sem status (rede) mantém o anterior
+    const codigoHub = 'codigo' in acao ? acao.codigo : status != null ? `http_${status}` : null;
+    await tx.consultar(
+      `UPDATE integracao_fdv.sinal SET ultimo_envio_em = $2, ultimo_http = coalesce($3::int, ultimo_http), parado_por_versao = $4, ultimo_codigo = coalesce($5::text, ultimo_codigo) WHERE tenant_id = $1`,
+      [tenant, agora, status, paradoPorVersao, codigoHub],
+    );
+    if (acao.acao === 'pausar' && ehMotivoSondavel(acao.motivo)) {
+      if (base.sondagem) await renovarPausaSondavel(tx, tenant, acao.motivo, base.credencial.id, agora);
+      else await pausarEntidades(tx, tenant, null, acao.motivo, base.credencial.id, agora);
+      log = { motivo: acao.motivo, codigo: acao.codigo, resultado: base.sondagem ? 'sondagem_recusada' : 'pausada' };
       await adiarSinal(tx, tenant, 'proximo_sinal_em', ctx.posseAte, mais(agora, ESPERA_CREDENCIAL_RECUSADA_S));
       return;
     }
+    if (base.sondagem) log = { motivo: base.sondagem, codigo: codigoHub, resultado: 'sondagem_sem_resposta' };
     const espera = acao.acao === 'retentar' ? Math.max(INTERVALO_SINAL_S, acao.retryAfterSegundos ?? 0) : ESPERA_CREDENCIAL_RECUSADA_S;
     await adiarSinal(tx, tenant, 'proximo_sinal_em', ctx.posseAte, mais(agora, espera));
   });
+  const l = log as LogSondagem | null;
+  if (l) avisarAgenda(ctx, { tenant_id: tenant, entidade: 'todas', motivo: l.motivo, codigo_hub: l.codigo, http: resp.status, resultado: l.resultado }, 'conector: pausa da credencial');
 }
 
 // ---- reconciliação ----
@@ -150,8 +183,9 @@ export async function executarReconciliacao(item: ItemAgenda, ctx: ContextoAgend
       break;
     }
     const acao = classificarResposta(resp);
-    if (acao.acao === 'pausar' && (acao.motivo === 'credencial' || acao.motivo === 'licenca_fdv')) {
+    if (acao.acao === 'pausar' && ehMotivoSondavel(acao.motivo)) {
       await ctx.emTransacao((tx) => pausarEntidades(tx, tenant, null, acao.motivo, base.credencial.id, agora));
+      avisarAgenda(ctx, { tenant_id: tenant, entidade: 'todas', motivo: acao.motivo, codigo_hub: acao.codigo, http: resp.status, resultado: 'pausada' }, 'conector: pausa da credencial');
       break;
     }
     await ctx.emTransacao((tx) =>

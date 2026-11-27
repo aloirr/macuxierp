@@ -16,6 +16,7 @@ export * from './credencial';
 export * from './eventos';
 export * from './hub';
 export * from './monitor';
+export * from './pausa';
 
 /**
  * Cópia local, tolerante, do `PedidoParaErp` do Hub do FDV (T-0013 §5.2; nomes a conferir na T-0011/T-0017, P-1).

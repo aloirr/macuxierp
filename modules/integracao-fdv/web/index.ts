@@ -7,7 +7,7 @@ export {
 export {
   ROTULO_BAIXAR_ERROS, ROTULO_CORRIGIR, TEXTO_LEGENDA_ERROS_LOG, ROTULO_ORIGEM_LOG, ROTULO_SITUACAO_LOG, TEXTO_ESTADO_LOG, caminhoDoLogCsv, colunasDeErrosLog,
   errosForaDaListaLog, linhasDeEnviosLog, linhasDeErrosLog, nomeDoCsvDoLog, textoErrosForaDaLista,
-  NOME_CSV_RECEBIDOS_LOG, ROTULO_BAIXAR_RECEBIDOS, caminhoDoRecebidosCsv, textoRecebidosCortados, textoRecebidosForaDaLista, TEXTO_VAZIO_RECEBIDOS_LOG, TITULO_SECAO_RECEBIDOS_LOG, colunasDeRecebidosLog, csvDeRecebidosLog, linhasDeRecebidosLog, motivoDoRecebidoLog,
+  ROTULO_BAIXAR_RECEBIDOS, caminhoDoRecebidosCsv, textoRecebidosCortados, textoRecebidosForaDaLista, TEXTO_VAZIO_RECEBIDOS_LOG, TITULO_SECAO_RECEBIDOS_LOG, colunasDeRecebidosLog, linhasDeRecebidosLog, motivoDoRecebidoLog,
   type ColunaLog, type LinhaEnvioLog, type LinhaErroLog, type LinhaRecebidoLog,
 } from './log';
 export { ErroIntegracaoFdv, criarClienteIntegracaoFdv, type FetchIntegracaoFdv } from './cliente';

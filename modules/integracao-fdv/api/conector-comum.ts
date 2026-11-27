@@ -8,7 +8,7 @@
 import { ErroClienteHub, type ContextoAgenda, type CredencialHub, type ItemAgenda, type Outbox, type Transacao } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 import { AmbienteHub, CursorHub, type MotivoPausa } from '../contracts';
-import { ESTADOS_EM_VOO, proximaReconciliacaoEm } from '../domain';
+import { ESTADOS_EM_VOO, MOTIVOS_SONDAVEIS, proximaReconciliacaoEm } from '../domain';
 
 export const UMA_HORA_S = 3600;
 export { ESTADOS_EM_VOO };
@@ -22,7 +22,7 @@ export interface DepsAgendaConector {
 }
 
 /** Credencial ativa do tenant, ainda cifrada. Só colunas nomeadas (recado R-20261121-221350). */
-interface CredencialAtiva {
+export interface CredencialAtiva {
   id: string;
   conector_id: string;
   ambiente: AmbienteHub;
@@ -66,6 +66,20 @@ export async function prepararCredencial(
   return c;
 }
 
+/** Log de aviso da agenda (`ContextoAgenda.log` do SDK). Só `{ tenant_id, entidade|'todas', motivo, codigo_hub, http, resultado }`: nunca a chave, o `conectorId` nem o corpo do Hub. */
+export interface CamposLogPausa {
+  tenant_id: string;
+  entidade: string;
+  motivo: string;
+  codigo_hub: string | null;
+  http: number | null;
+  resultado: string;
+}
+/** Copia campo a campo de propósito: em tempo de execução só estes seis saem no log, mesmo que o chamador passe a mais (nunca a chave). */
+export function avisarAgenda(ctx: ContextoAgenda, campos: CamposLogPausa, mensagem: string): void {
+  ctx.log?.warn({ tenant_id: campos.tenant_id, entidade: campos.entidade, motivo: campos.motivo, codigo_hub: campos.codigo_hub, http: campos.http, resultado: campos.resultado }, mensagem);
+}
+
 /** A chave não abriu (versão desconhecida, adulterada ou de outro tenant): defeito de configuração, a credencial pausa. */
 class CredencialIlegivel extends Error {
   override readonly name = 'CredencialIlegivel';
@@ -87,6 +101,7 @@ export async function abrirOuPausar(ctx: ContextoAgenda, tenantId: string, c: Cr
   } catch (e) {
     if (!(e instanceof CredencialIlegivel)) throw e;
     await ctx.emTransacao((tx) => pausarEntidades(tx, tenantId, null, 'credencial', c.id, ctx.agora));
+    avisarAgenda(ctx, { tenant_id: tenantId, entidade: 'todas', motivo: 'credencial', codigo_hub: null, http: null, resultado: 'pausada_credencial_ilegivel' }, 'conector: credencial pausada');
     return null;
   }
 }
@@ -172,10 +187,14 @@ export async function anteciparEntidades(tx: Transacao, tenantId: string, entida
   );
 }
 
+/** Trava a credencial (`FOR NO KEY UPDATE`): primeiro lock da ordem da 0038, credencial antes do cursor. */
+async function travarCredencial(tx: Transacao, tenantId: string, credencialId: string): Promise<void> {
+  await tx.consultar(`SELECT 1 FROM integracao_fdv.credencial WHERE tenant_id = $1 AND id = $2 FOR NO KEY UPDATE`, [tenantId, credencialId]);
+}
+
 /** Pausa a(s) entidade(s) do tenant. `entidade = null` = todas as linhas ainda não pausadas. Idempotente. */
 export async function pausarEntidades(tx: Transacao, tenantId: string, entidade: string | null, motivo: MotivoPausa, credencialId: string | null, agora: Date): Promise<void> {
-  // ordem de bloqueios da 0038: credencial antes do cursor (o `credencial_id` do cursor aponta para a linha travada aqui)
-  if (credencialId) await tx.consultar(`SELECT 1 FROM integracao_fdv.credencial WHERE tenant_id = $1 AND id = $2 FOR NO KEY UPDATE`, [tenantId, credencialId]);
+  if (credencialId) await travarCredencial(tx, tenantId, credencialId);
   await tx.consultar(
     `UPDATE integracao_fdv.cursor_entidade
         SET pausada_motivo = $3, pausada_em = $4, credencial_id = coalesce($5::uuid, credencial_id)
@@ -184,12 +203,43 @@ export async function pausarEntidades(tx: Transacao, tenantId: string, entidade:
   );
 }
 
+/** A pausa 'credencial' ou 'licenca_fdv' mais antiga do tenant (a sondagem do sinal conta os 30 min dela). */
+export async function pausaSondavelMaisAntiga(tx: Transacao, tenantId: string): Promise<{ pausada_em: Date; motivo: MotivoPausa } | null> {
+  const [l] = await tx.consultar<{ pausada_em: Date; motivo: MotivoPausa }>(
+    `SELECT pausada_em, pausada_motivo AS motivo FROM integracao_fdv.cursor_entidade
+      WHERE tenant_id = $1 AND pausada_motivo = ANY($2::text[]) AND deleted_at IS NULL ORDER BY pausada_em LIMIT 1`,
+    [tenantId, MOTIVOS_SONDAVEIS],
+  );
+  return l ?? null;
+}
+
+/** Sondagem aceita: limpa as pausas 'credencial' e 'licenca_fdv' de todas as entidades e antecipa o envio (como o `portal_retomar`). Ordem da 0038. */
+export async function limparPausasSondaveis(tx: Transacao, tenantId: string, credencialId: string, agora: Date): Promise<void> {
+  await travarCredencial(tx, tenantId, credencialId);
+  await tx.consultar(
+    `UPDATE integracao_fdv.cursor_entidade SET pausada_motivo = NULL, pausada_em = NULL, proximo_em = $2
+      WHERE tenant_id = $1 AND pausada_motivo = ANY($3::text[]) AND deleted_at IS NULL`,
+    [tenantId, agora, MOTIVOS_SONDAVEIS],
+  );
+}
+
+/** Sondagem recusada de novo: renova a pausa ('credencial'/'licenca_fdv') com `pausada_em = agora` (recomeça os 30 min) e pausa as entidades ainda livres. */
+export async function renovarPausaSondavel(tx: Transacao, tenantId: string, motivo: MotivoPausa, credencialId: string, agora: Date): Promise<void> {
+  await travarCredencial(tx, tenantId, credencialId);
+  await tx.consultar(
+    `UPDATE integracao_fdv.cursor_entidade SET pausada_motivo = $2, pausada_em = $3
+      WHERE tenant_id = $1 AND pausada_motivo = ANY($4::text[]) AND deleted_at IS NULL`,
+    [tenantId, motivo, agora, MOTIVOS_SONDAVEIS],
+  );
+  await pausarEntidades(tx, tenantId, null, motivo, credencialId, agora);
+}
+
 /** Já há pausa de credencial (ou licença do FDV) para esta mesma credencial? Então nada é chamado (limite de falhas por IP). */
 async function credencialJaRecusada(tx: Transacao, tenantId: string, credencialId: string): Promise<boolean> {
   const l = await tx.consultar(
     `SELECT 1 FROM integracao_fdv.cursor_entidade
-      WHERE tenant_id = $1 AND credencial_id = $2 AND pausada_motivo IN ('credencial', 'licenca_fdv') AND deleted_at IS NULL LIMIT 1`,
-    [tenantId, credencialId],
+      WHERE tenant_id = $1 AND credencial_id = $2 AND pausada_motivo = ANY($3::text[]) AND deleted_at IS NULL LIMIT 1`,
+    [tenantId, credencialId, MOTIVOS_SONDAVEIS],
   );
   return l.length > 0;
 }

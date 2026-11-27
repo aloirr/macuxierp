@@ -21,6 +21,8 @@ export const MonitorEntidade = z.object({
   pausada_mensagem: z.string().nullable(),
   /** A entidade está em `entidades_habilitadas` da credencial ativa. */
   habilitada: z.boolean(),
+  /** Quando o sinal tenta de novo sozinho: `pausada_em` + 30 min, só para as pausas 'credencial' e 'licenca_fdv'; senão `null` (retomada manual). */
+  proxima_tentativa_em: Instante,
   erros_abertos: z.number().int().min(0),
 });
 export type MonitorEntidade = z.infer<typeof MonitorEntidade>;
@@ -87,6 +89,8 @@ export const SinalResumo = z.object({
   ultimo_aceito_em: Instante,
   ultimo_http: z.number().int().nullable(),
   parado_por_versao: z.boolean(),
+  /** Código do Hub (ou `http_<status>`) da última recusa do sinal; `null` com o sinal aceito. */
+  ultimo_codigo: z.string().max(100).nullable(),
   politica_versao: z.record(z.unknown()).nullable(),
 });
 export type SinalResumo = z.infer<typeof SinalResumo>;
