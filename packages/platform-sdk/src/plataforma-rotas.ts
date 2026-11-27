@@ -53,6 +53,8 @@ export const ACOES_PLATAFORMA = [
   'plataforma.integracao_fdv.operar',
   'plataforma.cadastros.carga',
   'plataforma.cadastros.zerar',
+  // T-0057 E3 (ADR 0014 §4): ler, criar ou trocar e revogar a credencial da /entrada/v1 (as funções `portal_entrada_*` da 0071)
+  'plataforma.cadastros.entrada',
 ] as const;
 export type AcaoPlataforma = (typeof ACOES_PLATAFORMA)[number];
 

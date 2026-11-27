@@ -12,6 +12,7 @@ import {
   criarPluginPlataformaCadastrosZerar,
   fontesHttp,
   repositoriosSql,
+  rotasEntrada,
   type Dependencias as DependenciasCadastros,
   type DependenciasZeragemPlataforma,
   type PortaCertificados,
@@ -66,6 +67,9 @@ import type { DependenciasApp } from './app';
 import { RepositorioAuthPg } from './auth/repositorio-pg';
 import { gerarHashSenha } from './auth/senha';
 import { CONFIG_AUTH_PADRAO } from './auth/servico';
+import { AutenticadorEntrada } from './entrada/autenticacao';
+import { PortaCredencialEntradaPg } from './entrada/porta-pg';
+import { criarPluginPlataformaEntrada } from './entrada/portal';
 import type { ConfigApi } from './config';
 import { criarEnvioEmail, emailDisponivel } from './email/porta';
 import { dependenciasZeragemProducao } from './plataforma/portas-zeragem';
@@ -229,6 +233,8 @@ export interface EntradaProducao {
    * log. Serve só às rotas do portal (`pluginsPlataforma`, ADR 0013); ver `ConfigApi.chaveIntegracao`.
    */
   chaveIntegracao?: Buffer | null;
+  /** `MACUXIERP_PEPPER_ENTRADA` (`ConfigApi.pepperEntrada`); sem ele a `/entrada/v1` fica montada e responde 503. */
+  pepperEntrada?: Buffer | null;
   /**
    * `email` (T-0076): sem ele, ou `desligado`, o "Esqueci a senha" segue montado com o 202 neutro, sem gravar nem enviar
    * (a situação diz indisponível).
@@ -277,13 +283,15 @@ export function montarDependenciasProducao(e: EntradaProducao): DependenciasApp 
     relogio: relogioDoSistema,
     avisosA1: avisosA1MaisRecentes,
     modulos,
+    // `/entrada/v1` (T-0057): as rotas do cadastros com a autenticação de máquina pela `cadastros.entrada_autenticar`
+    entrada: { rotas: rotasEntrada, autenticador: new AutenticadorEntrada(e.banco, new PortaCredencialEntradaPg(), e.pepperEntrada ?? null) },
     ...(email && emailDisponivel(email) ? { esqueci: { envio: criarEnvioEmail(email, e.log ? { log: e.log } : {}), repoCore } } : {}),
     ...(bancoPlataforma ? {
           plataforma: {
             banco: bancoPlataforma,
             // Transação de tenant das rotas por etapa do portal (carga, T-0058): o mesmo `Banco` do BKO (papel `macuxierp_app`).
             bancoTenant: e.banco,
-            plugins: pluginsPlataforma(modulos, { chaveIntegracao: e.chaveIntegracao ?? null, outbox, cadastros }),
+            plugins: pluginsPlataforma(modulos, { chaveIntegracao: e.chaveIntegracao ?? null, pepperEntrada: e.pepperEntrada ?? null, outbox, cadastros }),
             segredoBff: e.config.segredoBff,
           },
         } : {}),
@@ -296,6 +304,8 @@ const temPlataforma = (b: Banco): b is Banco & { plataforma(): BancoPlataformaCo
 export interface DependenciasPlataformaModulos {
   /** `MACUXIERP_CHAVE_INTEGRACAO` (versão 1), a mesma do `lerConfigApi`; nunca vai para log. Ver `ConfigApi.chaveIntegracao`. */
   chaveIntegracao: Buffer | null;
+  /** O pepper da `/entrada/v1` (`ConfigApi.pepperEntrada`): sem ele, criar ou trocar a chave no portal responde 503. */
+  pepperEntrada?: Buffer | null;
   /** Outbox da API (a mesma do `DependenciasApp`): os eventos da carga do portal saem na transação do tenant. Padrão: `OutboxPg`. */
   outbox?: Outbox;
   /** Padrão: dependenciasCadastros(new RepositorioCoreSql()). */
@@ -329,5 +339,7 @@ export function pluginsPlataforma(
     // T-0093: a porta do faturamento é ligada aqui (o pedido não importa o faturamento, regra 1); a aposZerar libera o
     // reenvio do FDV e descarta o a_faturar na mesma transação do zerar (critério 3, docs/desenho/T-0093.md; ADR 0013 A3)
     criarPluginPlataformaPedidoZerar({ faturamento: criarUsosPedidosFaturamento(), aposZerar: criarAposZerarPedidosSql() }),
+    // T-0057 E3: credencial da /entrada/v1 (a chave nasce na API; o banco guarda só o HMAC com o pepper)
+    criarPluginPlataformaEntrada({ pepper: dependencias.pepperEntrada ?? null }),
   ];
 }

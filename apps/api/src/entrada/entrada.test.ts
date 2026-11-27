@@ -5,6 +5,7 @@
 import { randomBytes } from 'node:crypto';
 import {
   CABECALHO_CONECTOR_ID_ENTRADA,
+  CODIGO_EMPRESA_INATIVA_ENTRADA,
   definirRotaEntrada,
   TRABALHO_ENTRADA_LOTE,
   type CredencialEntradaArmazenada,
@@ -15,6 +16,7 @@ import { AuditoriaMemoria, BancoMemoria, FilaDeTrabalhosMemoria, OutboxMemoria, 
 import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { criarApp } from '../app';
+import type { TenantAuth } from '../auth/portas';
 import { RepositorioAuthMemoria } from '../auth/repositorio-memoria';
 import { CONFIG_AUTH_PADRAO } from '../auth/servico';
 import { emitirTokenAcesso } from '../auth/jwt';
@@ -45,7 +47,7 @@ class PortaMemoria implements PortaCredencialEntrada {
   }
 }
 
-async function montar(o: { pepper?: Buffer | null; licencas?: Licenca[]; semEntrada?: boolean } = {}) {
+async function montar(o: { pepper?: Buffer | null; licencas?: Licenca[]; semEntrada?: boolean; situacao?: TenantAuth['situacao'] } = {}) {
   const pepper = o.pepper === undefined ? PEPPER : o.pepper;
   const porta = new PortaMemoria(
     new Map([
@@ -71,7 +73,7 @@ async function montar(o: { pepper?: Buffer | null; licencas?: Licenca[]; semEntr
     definirRotaEntrada({
       metodo: 'GET',
       caminho: '/cursores/:entidade',
-      executar: async (c, e) => ({ corpo: { entidade: e.params.entidade, tenant: tenantDaTx(c.tx) } }),
+      executar: async (c, e) => ({ corpo: { entidade: e.params.entidade, tenant: tenantDaTx(c.tx), ip_origem: c.ip_origem } }),
     }),
     definirRotaEntrada({
       metodo: 'POST',
@@ -79,12 +81,17 @@ async function montar(o: { pepper?: Buffer | null; licencas?: Licenca[]; semEntr
       executar: async (c) => c.enfileirar({ tipo: 'pedido.qualquer', payload: {} }).then(() => ({})),
     }),
   ];
+  const repoAuth = new RepositorioAuthMemoria();
+  repoAuth.tenants.push(
+    { id: TENANT, slug: 'thathyany', razao_social: 'Empresa de Teste', fuso: 'America/Manaus', situacao: o.situacao ?? 'ativo' },
+    { id: OUTRO, slug: 'outra', razao_social: 'Outra de Teste', fuso: 'America/Manaus', situacao: 'ativo' },
+  );
   const app = await criarApp({
     versao: '0.1.0',
     auth: { ...CONFIG_AUTH_PADRAO, jwtSegredo: JWT_SEGREDO_DE_TESTE, argon2: ARGON2_RAPIDO },
     cookieSeguro: true,
     banco,
-    repoAuth: new RepositorioAuthMemoria(),
+    repoAuth,
     licencas: { ler: async () => o.licencas ?? [{ modulo: 'cadastros', ativo: true, valido_ate: null }] },
     outbox: new OutboxMemoria(),
     auditoria: new AuditoriaMemoria(),
@@ -110,7 +117,8 @@ describe('T-0057 E2: /entrada/v1 com autenticação de máquina', () => {
     expect(vistos[0]!.cabecalhos).not.toHaveProperty('authorization');
     expect(trabalhos.pedidos.map((t) => [t.tipo, t.tenant_id])).toEqual([[TRABALHO_ENTRADA_LOTE, TENANT]]);
     const g = await app.inject({ method: 'GET', url: '/entrada/v1/cursores/produto', headers: cab('outro-erp', CHAVE_OUTRO) });
-    expect(g.json()).toEqual({ entidade: 'produto', tenant: OUTRO });
+    // o IP chega à rota já truncado (o inject usa 127.0.0.1)
+    expect(g.json()).toEqual({ entidade: 'produto', tenant: OUTRO, ip_origem: '127.0.0.0/24' });
   });
 
   it('o mesmo 401 neutro para chave errada, chave de outro conector, conector inexistente, sem cabeçalho, fora do formato e JWT do BKO', async () => {
@@ -151,6 +159,14 @@ describe('T-0057 E2: /entrada/v1 com autenticação de máquina', () => {
     expect(r.statusCode).toBe(403);
     expect(r.json()).toMatchObject({ codigo: 'MODULO_INATIVO' });
     expect(r.json()).not.toHaveProperty('request_id'); // só os 5xx levam o request_id no corpo
+  });
+
+  it.each(['suspenso', 'encerrado'] as const)('ADR 0014 §1: empresa %s responde 403 EMPRESA_INATIVA antes da licença, sem chamar a rota', async (situacao) => {
+    const { app, vistos, trabalhos } = await montar({ situacao });
+    const r = await app.inject({ method: 'POST', url: '/entrada/v1/lotes', headers: cab('thathyany-erp', CHAVE), payload: { entidade: 'produto' } });
+    expect(r.statusCode).toBe(403);
+    expect(r.json()).toMatchObject({ codigo: CODIGO_EMPRESA_INATIVA_ENTRADA });
+    expect([vistos, trabalhos.pedidos]).toEqual([[], []]);
   });
 
   it('a rota só enfileira trabalho do cadastros: tipo de outro módulo é erro interno, sem gravar', async () => {

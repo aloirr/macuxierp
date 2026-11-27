@@ -36,8 +36,16 @@ export const TRABALHO_ENTRADA_LOTE = 'cadastros.entrada_lote';
 export const ENTIDADES_ENTRADA = ENTIDADES_HUB_F2;
 export const EntidadeEntrada = z.enum(ENTIDADES_ENTRADA as unknown as [EntidadeHub, ...EntidadeHub[]]);
 
+/**
+ * Convenção dos códigos (achado da testes no E2): o `codigo` do envelope de erro (`ErroApi`) é sempre UPPER_SNAKE
+ * (`CARGA_COMPLETA_NAO_SUPORTADA`, `ENTIDADE_FORA_DA_FASE`, `EMPRESA_INATIVA`); o código por linha do `LoteResultado.erros`
+ * segue o Hub, em lower_snake (`CODIGOS_ERRO_LINHA_HUB`).
+ */
 export const CODIGO_CARGA_COMPLETA_NAO_SUPORTADA = 'CARGA_COMPLETA_NAO_SUPORTADA';
 export const MENSAGEM_CARGA_COMPLETA_NAO_SUPORTADA = 'carga completa ainda não suportada';
+/** 403 da empresa fora de `ativo` (suspensa ou encerrada), antes da licença (ADR 0014 §1). */
+export const CODIGO_EMPRESA_INATIVA_ENTRADA = 'EMPRESA_INATIVA';
+export const MENSAGEM_EMPRESA_INATIVA_ENTRADA = 'A empresa não está ativa; a entrada de dados está suspensa.';
 
 /** `X-Macuxi-Conector-Id`: o `conector_id` do Hub, começando por letra ou dígito, sem espaço. */
 export const ConectorIdEntrada = ConectorIdHub.regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
@@ -72,6 +80,12 @@ export const CredencialEntradaCriada = z
   .object({ conector_id: ConectorIdEntrada, chave: ChaveEntrada, prefixo: Prefixo, criada_em: Instante })
   .strict();
 export type CredencialEntradaCriada = z.infer<typeof CredencialEntradaCriada>;
+
+/** `DELETE .../entrada/credencial?conector_id=`: a consulta e a resposta (a revogação vale na hora; sem a ativa, 404). */
+export const RevogarCredencialEntrada = z.object({ conector_id: ConectorIdEntrada }).strict();
+export type RevogarCredencialEntrada = z.infer<typeof RevogarCredencialEntrada>;
+export const CredencialEntradaRevogada = z.object({ conector_id: ConectorIdEntrada, revogada_em: Instante }).strict();
+export type CredencialEntradaRevogada = z.infer<typeof CredencialEntradaRevogada>;
 
 /** Credencial na leitura do portal: sem chave e sem hash; sem "último uso" (a tela mostra o último sinal, RD-2319). */
 export const CredencialEntradaResumo = z
@@ -125,6 +139,30 @@ export interface ConectorAutenticado {
 /** O `ContextoRota` sem sessão de usuário: a `tx` tem o `app.tenant_id` da credencial (RLS). */
 export interface ContextoEntrada extends Pick<ContextoRota, 'tx' | 'request_id' | 'agora' | 'enfileirar'> {
   conector: ConectorAutenticado;
+  /** IP de origem já truncado (`truncarIpEntrada`), para o `entrada_sinal.ip_origem`; nunca o endereço inteiro. */
+  ip_origem?: string | null;
+}
+
+const IPV4 = /^((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/;
+const HEXTETO = /^[0-9a-f]{1,4}$/;
+
+/**
+ * O IP do cliente reduzido à rede (ADR 0014 §3, LGPD): IPv4 em /24 (`a.b.c.0/24`, também o IPv4 mapeado em IPv6) e IPv6
+ * em /48 (os 3 primeiros grupos). Fora do formato = `null` (o sinal grava sem IP).
+ */
+export function truncarIpEntrada(ip: string | null | undefined): string | null {
+  if (!ip) return null;
+  const v = ip.trim().toLowerCase();
+  const v4 = v.startsWith('::ffff:') ? v.slice(7) : v;
+  if (IPV4.test(v4)) return `${v4.split('.').slice(0, 3).join('.')}.0/24`;
+  const partes = v.split('::');
+  if (partes.length > 2) return null;
+  const cabeca = partes[0] ? partes[0].split(':') : [];
+  const cauda = partes.length === 2 && partes[1] ? partes[1].split(':') : [];
+  if (![...cabeca, ...cauda].every((g) => HEXTETO.test(g))) return null;
+  if (partes.length === 1 ? cabeca.length !== 8 : cabeca.length + cauda.length > 7) return null;
+  const grupos = [...cabeca, ...Array<string>(8 - cabeca.length - cauda.length).fill('0'), ...cauda];
+  return `${grupos.slice(0, 3).map((g) => Number.parseInt(g, 16).toString(16)).join(':')}::/48`;
 }
 
 export type CaminhoEntrada = (typeof CAMINHOS_ENTRADA)[keyof typeof CAMINHOS_ENTRADA];

@@ -339,7 +339,7 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
   });
 
   for (const plugin of d.modulos) montarModulo(app, plugin, d);
-  if (d.entrada) montarEntrada(app, d.entrada, { banco: d.banco, licencas: d.licencas, trabalhos: d.trabalhos, relogio: d.relogio, segredoBff });
+  if (d.entrada) montarEntrada(app, d.entrada, { banco: d.banco, licencas: d.licencas, trabalhos: d.trabalhos, relogio: d.relogio, segredoBff, repoAuth: d.repoAuth });
   return app;
 }
 

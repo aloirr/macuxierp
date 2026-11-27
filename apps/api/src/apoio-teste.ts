@@ -96,6 +96,8 @@ export interface OpcoesAppPg {
   chaveA1?: Buffer;
   /** Chave mestra do conector de teste (T-0011) para o modo `'producao'`; padrão sem chave (o `PUT /credencial` responde 503). */
   chaveIntegracao?: Buffer | null;
+  /** O pepper da `/entrada/v1` (padrão: nenhum, e a entrada responde 503). */
+  pepperEntrada?: Buffer | null;
   /** Logger da API (padrão desligado). Os testes de vazamento passam um `stream` em memória. */
   logger?: DependenciasApp['logger'];
   /** "Esqueci a senha" (T-0076); padrão: sem porta de e-mail. */
@@ -115,7 +117,7 @@ export interface OpcoesAppPg {
  */
 export async function appPgDeTeste(o: OpcoesAppPg): Promise<{ app: FastifyInstance; modulos: readonly PluginModulo[] }> {
   const jwtSegredo = o.jwtSegredo ?? JWT_SEGREDO_DE_TESTE;
-  const producao = montarDependenciasProducao({ banco: o.b.banco('macuxierp_app'), chaveA1: o.chaveA1 ?? randomBytes(32), chaveIntegracao: o.chaveIntegracao ?? null, config: { versao: o.versao ?? 'teste', jwtSegredo, cookieSeguro: true, segredoBff: o.segredoBff ?? null } });
+  const producao = montarDependenciasProducao({ banco: o.b.banco('macuxierp_app'), chaveA1: o.chaveA1 ?? randomBytes(32), chaveIntegracao: o.chaveIntegracao ?? null, pepperEntrada: o.pepperEntrada ?? null, config: { versao: o.versao ?? 'teste', jwtSegredo, cookieSeguro: true, segredoBff: o.segredoBff ?? null } });
   const modulos =
     o.modulos === undefined || o.modulos === 'teste'
       ? montarModulos({ core: dependenciasCoreDeTeste(new RepositorioCoreSql()) })
@@ -124,7 +126,7 @@ export async function appPgDeTeste(o: OpcoesAppPg): Promise<{ app: FastifyInstan
         : o.modulos;
   const plataforma =
     o.plataforma && producao.plataforma
-      ? { ...producao.plataforma, plugins: pluginsPlataforma(producao.modulos, { chaveIntegracao: o.chaveIntegracao ?? null, outbox: producao.outbox, ...o.plataforma }) }
+      ? { ...producao.plataforma, plugins: pluginsPlataforma(producao.modulos, { chaveIntegracao: o.chaveIntegracao ?? null, pepperEntrada: o.pepperEntrada ?? null, outbox: producao.outbox, ...o.plataforma }) }
       : producao.plataforma;
   const app = await criarApp({
     ...producao,

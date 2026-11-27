@@ -17,7 +17,7 @@
  * - Purga da memória do simulador: purga-simulador.ts (T-0045 §9).
  * - Expurgo diário do pré-cadastro recusado (T-0059, RN-INF-06): expurgo-pre-cadastro.ts.
  */
-import { criarConsumidorCargaInicial, criarConsumidorEstoqueNota, criarExecutorCargaInicial, exportadorCadastros, repositoriosSql } from '@macuxierp/cadastros/api';
+import { criarConsumidorCargaInicial, criarConsumidorEstoqueNota, criarExecutorCargaInicial, criarExecutorEntradaLote, entradaSql, exportadorCadastros, repositoriosSql } from '@macuxierp/cadastros/api';
 import {
   criarConsumidorEmpresaDaFilial,
   destinoAvisosSql,
@@ -110,6 +110,8 @@ export function montarExecutores(d: DependenciasModulosWorker): readonly Executo
   return registrarExecutores([
     criarExecutorExportacao({ registro: registroExportacoesSql, exportadores: EXPORTADORES, armazenamento: d.armazenamento, catalogo: d.catalogo, agora: d.agora }),
     criarExecutorCargaInicial({ repositorios: repositoriosSql, fila: d.fila ?? new FilaDeTrabalhosPg(), outbox: d.outbox ?? new OutboxPg(), agora: d.agora }),
+    // Lote da /entrada/v1 (T-0057, C3): aplica o delta do conector do cliente nos cadastros.
+    criarExecutorEntradaLote({ repositorios: repositoriosSql, entrada: entradaSql, outbox: d.outbox ?? new OutboxPg(), auditoria: new AuditoriaPg(), fila: d.fila ?? new FilaDeTrabalhosPg(), agora: d.agora }),
     ...(d.faturamento?.executores ?? []),
   ]);
 }
