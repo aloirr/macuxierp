@@ -102,6 +102,8 @@ export interface RepositorioCore {
   usuarioPorId(tx: Transacao, id: string): Promise<LinhaUsuario | null>;
   usuarioPorEmail(tx: Transacao, email: string): Promise<LinhaUsuario | null>;
   usuarioPorExternalId(tx: Transacao, externalId: string): Promise<LinhaUsuario | null>;
+  /** RN-CORE-18: existe e-mail vivo (já normalizado) em outra conta, de qualquer empresa ou superadmin. Banco-dados 0079 entrega a visão global; `exceto_usuario_id` é o próprio usuário na edição. */
+  existeEmailVivoEmOutraConta(tx: Transacao, email: string, exceto_usuario_id?: string): Promise<boolean>;
   criarUsuario(tx: Transacao, u: NovoUsuario, agora: Date): Promise<LinhaUsuario>;
   /** token: 0 linhas = null */
   atualizarUsuario(tx: Transacao, id: string, patch: PatchUsuario, agora: Date, token?: Date): Promise<LinhaUsuario | null>;

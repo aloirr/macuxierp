@@ -69,6 +69,15 @@ export class RepositorioCoreSql implements RepositorioCore {
     return u ?? null;
   }
 
+  /** RN-CORE-18. Enquanto a visão global da 0079 (banco-dados) não chega, enxerga só o tenant da transação (RLS). */
+  async existeEmailVivoEmOutraConta(tx: Transacao, email: string, exceto?: string): Promise<boolean> {
+    const [u] = await tx.consultar<{ id: string }>(
+      'SELECT id FROM plataforma.usuario WHERE lower(email::text) = $1 AND deleted_at IS NULL AND ($2::uuid IS NULL OR id <> $2::uuid) LIMIT 1',
+      [email, exceto ?? null],
+    );
+    return Boolean(u);
+  }
+
   async usuarioPorExternalId(tx: Transacao, externalId: string): Promise<LinhaUsuario | null> {
     const [u] = await tx.consultar<LinhaUsuario>(`SELECT ${COLUNAS_USUARIO} FROM plataforma.usuario WHERE external_id = $1 AND deleted_at IS NULL`, [externalId]);
     return u ?? null;

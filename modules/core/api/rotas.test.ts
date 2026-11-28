@@ -196,6 +196,18 @@ describe('RF-CORE-02: usuários', () => {
     await expect(t.chamar('POST', '/usuarios', { corpo: { ...novo, email: 'MARIA@piloto.test' } })).rejects.toMatchObject({ status: 409 });
   });
 
+  it('RN-CORE-18: e-mail vivo em outra empresa ou superadmin é recusado com EMAIL_EM_USO e nada é gravado', async () => {
+    const t = montar();
+    t.repo.emailsEmOutrasContas.add('rita@outra.test');
+    const antes = t.repo.usuarios.length;
+    await expect(t.chamar('POST', '/usuarios', { corpo: { ...novo, email: ' RITA@Outra.test ' } })).rejects.toMatchObject({
+      status: 409,
+      codigo: 'EMAIL_EM_USO',
+      message: 'Este e-mail já está em uso em outra empresa. Use outro e-mail.',
+    });
+    expect(t.repo.usuarios).toHaveLength(antes);
+  });
+
   it('RN-CORE-01: um perfil por usuário e ao menos uma filial (400)', async () => {
     const t = montar();
     await expect(t.chamar('POST', '/usuarios', { corpo: { ...novo, perfil: 'dono' } })).rejects.toThrow();
