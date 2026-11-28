@@ -14,7 +14,14 @@ import { PainelSegredo } from './painel-segredo';
 import { escrever } from '@/lib/acoes-cliente';
 
 /** Largura do campo na grade de 12 colunas do formulário (regra 11): curto (2), médio (4), longo (6, padrão) ou largo (12). */
+/** Endereço em duas linhas de 12 colunas (padrão de mercado): CEP 2 + Logradouro 8 + Número 2; Complemento 3 + Bairro 3 + Município 4 + UF 2. */
+export const LARGURA_ENDERECO: Readonly<Record<string, string>> = {
+  end_cep: ' campo-curto', end_logradouro: ' campo-8', end_numero: ' campo-curto',
+  end_complemento: ' campo-3', end_bairro: ' campo-3', end_municipio_ibge: ' campo-medio', end_uf: ' campo-curto',
+};
+
 export function larguraDoCampo(c: { nome: string; tipo: string }): string {
+  if (c.nome in LARGURA_ENDERECO) return LARGURA_ENDERECO[c.nome] as string;
   if (c.tipo === 'area') return ' campo-largo';
   if (c.tipo === 'data' || c.tipo === 'numero' || /(^|_)(codigo|uf|cep|telefone|numero|serie|ncm|cfop|quantidade|preco|latitude|longitude|municipio_ibge)(_|$)/.test(c.nome)) return ' campo-curto';
   if (c.tipo === 'cadastro' || c.tipo === 'selecao') return ' campo-medio';

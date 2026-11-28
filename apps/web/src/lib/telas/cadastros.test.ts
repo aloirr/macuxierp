@@ -5,7 +5,8 @@ import type { EuResposta } from '@macuxierp/platform-sdk';
 import { escritaDeclarada, telaDaRota, telaFormulario } from '../telas';
 import { MANIFESTOS } from '../manifestos';
 import { montarMenu, resolverPagina } from '../menu';
-import { EDITAR_CLIENTE, LISTA_CLIENTES, NOVO_CLIENTE, ROTA_CLIENTE, ROTA_CLIENTE_NOVO, ROTA_CLIENTES } from './cadastros';
+import { larguraDoCampo } from '../../components/descritor/formulario-generico';
+import { NOVA_FILIAL, EDITAR_CLIENTE, LISTA_CLIENTES, NOVO_CLIENTE, ROTA_CLIENTE, ROTA_CLIENTE_NOVO, ROTA_CLIENTES } from './cadastros';
 
 const FUSO = 'America/Manaus';
 const ID = '3f1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c70';
@@ -95,5 +96,23 @@ describe('adaptador do cadastros: Clientes (v0.3.28)', () => {
     const semEditar = PERFIS.find((p) => rota(p, ['cadastros'], ROTA_CLIENTES) !== undefined && rota(p, ['cadastros'], ROTA_CLIENTE_NOVO) === undefined);
     if (semEditar) expect(rota(semEditar, ['cadastros'], ROTA_CLIENTE_NOVO)).toBeUndefined();
     expect(PERFIS.filter((p) => rota(p, ['cadastros'], ROTA_CLIENTE_NOVO) !== undefined)).toContain('gerente');
+  });
+});
+
+describe('Nova filial: endereço em 12 colunas (marca, v0.3.30)', () => {
+  const SPAN: Record<string, number> = { ' campo-curto': 2, ' campo-medio': 4, ' campo-3': 3, ' campo-8': 8 };
+  const campos = NOVA_FILIAL.camposDoPerfil?.('gerente') ?? NOVA_FILIAL.campos;
+  const endereco = campos.filter((c) => c.nome.startsWith('end_'));
+  const largura = (n: string) => SPAN[larguraDoCampo(endereco.find((c) => c.nome === n)!)];
+
+  it('ordem: CEP, Logradouro, Número, Complemento, Bairro, Município, UF', () => {
+    expect(endereco.map((c) => c.nome)).toEqual(['end_cep', 'end_logradouro', 'end_numero', 'end_complemento', 'end_bairro', 'end_municipio_ibge', 'end_uf']);
+  });
+
+  it('linha 1 fecha 12 (2+8+2) e linha 2 fecha 12 (3+3+4+2)', () => {
+    expect(['end_cep', 'end_logradouro', 'end_numero'].map(largura)).toEqual([2, 8, 2]);
+    expect(['end_complemento', 'end_bairro', 'end_municipio_ibge', 'end_uf'].map(largura)).toEqual([3, 3, 4, 2]);
+    expect(['end_cep', 'end_logradouro', 'end_numero'].reduce((t, n) => t + (largura(n) ?? 0), 0)).toBe(12);
+    expect(['end_complemento', 'end_bairro', 'end_municipio_ibge', 'end_uf'].reduce((t, n) => t + (largura(n) ?? 0), 0)).toBe(12);
   });
 });

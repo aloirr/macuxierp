@@ -37,7 +37,7 @@ describe('Clientes no renderizador genérico', () => {
     expect(h).toMatch(/class="campo campo-curto"[^>]*for="campo-end_cep"|for="campo-end_cep"/);
     expect(larguraDoCampo({ nome: 'end_uf', tipo: 'texto' })).toBe(' campo-curto');
     expect(larguraDoCampo({ nome: 'end_cep', tipo: 'texto' })).toBe(' campo-curto');
-    expect(larguraDoCampo({ nome: 'end_logradouro', tipo: 'texto' })).toBe(' campo-largo');
+    expect(larguraDoCampo({ nome: 'end_logradouro', tipo: 'texto' })).toBe(' campo-8');
     expect(h.indexOf('barra-acoes')).toBeGreaterThan(h.indexOf('campo-end_cep')); // botões depois do último campo, na mesma barra
     expect((h.match(/class="barra-acoes"/g) ?? []).length).toBe(1);
   });
