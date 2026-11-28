@@ -29,6 +29,8 @@ function idDoBuild(): string {
 /** Páginas: tudo menos `/_next/static`, `/_next/image`, `/favicon.ico` e caminhos com extensão de arquivo. */
 export const REGRA_SEM_CACHE = '/((?!_next/static|_next/image|favicon\\.ico|.*\\.[a-zA-Z0-9]+$).*)';
 
+export const ROTAS_ANTIGAS_DO_LOGIN = ['/login', '/config/entrar'];
+
 const config: NextConfig = {
   env: { NEXT_PUBLIC_BUILD_ID: idDoBuild() },
   turbopack: { resolveAlias: aliasUi },
@@ -36,6 +38,10 @@ const config: NextConfig = {
   poweredByHeader: false,
   // Os manifestos dos módulos e os pacotes do workspace são TypeScript puro.
   transpilePackages: doWorkspace,
+  /** Login único na raiz (v0.3.27, decisão 42 = A): as rotas antigas do login passam a '/' em 308; o fragmento do link do e-mail (`#codigo=…&email=…`) o navegador mantém. */
+  async redirects() {
+    return ROTAS_ANTIGAS_DO_LOGIN.map((source) => ({ source, destination: '/', permanent: true }));
+  },
   async headers() {
     return [
       {

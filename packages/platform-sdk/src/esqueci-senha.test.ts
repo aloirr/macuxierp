@@ -143,7 +143,7 @@ describe('RN-CORE-13: e-mail da senha temporária', () => {
         '',
         'Vale por 72 horas e serve para entrar uma vez só. Ela também desbloqueia a conta.',
         '',
-        'Abrir o Macuxi ERP: https://erp.macuxifdv.com.br/login#codigo=AM2808&email=ana%40exemplo.invalid',
+        'Abrir o Macuxi ERP: https://erp.macuxifdv.com.br/#codigo=AM2808&email=ana%40exemplo.invalid',
         '',
         '--',
         'Equipe Macuxi ERP · Boa Vista, RR · erp.macuxifdv.com.br',
@@ -153,7 +153,7 @@ describe('RN-CORE-13: e-mail da senha temporária', () => {
     expect(e.html).toContain('>AM2808</td>');
     expect(e.html).toContain('>ana@exemplo.invalid</td>');
     expect(e.html).toContain('>Tmp#2026ab</td>');
-    expect(e.html).toContain(`href="${URL_MACUXI_ERP}/login#codigo=AM2808&amp;email=ana%40exemplo.invalid"`);
+    expect(e.html).toContain(`href="${URL_MACUXI_ERP}/#codigo=AM2808&amp;email=ana%40exemplo.invalid"`);
     expect(e.html).not.toContain('Tmp#2026ab"');
     expect(e.html).not.toMatch(/\{\{/);
   });
@@ -193,7 +193,7 @@ describe('RN-CORE-15 (T-0111): 423 CONTA_BLOQUEADA', () => {
 describe('44 B: o botão abre o login com o código e o e-mail preenchidos (fragmento, nunca a senha)', () => {
   it('o link leva código e e-mail no fragmento (#), não na query, e nunca a senha', () => {
     const url = urlEntrarPreenchida('AM2808', 'ana+teste@exemplo.invalid');
-    expect(url).toBe('https://erp.macuxifdv.com.br/login#codigo=AM2808&email=ana%2Bteste%40exemplo.invalid');
+    expect(url).toBe('https://erp.macuxifdv.com.br/#codigo=AM2808&email=ana%2Bteste%40exemplo.invalid');
     const u = new URL(url);
     expect(u.search).toBe('');
     expect(u.pathname).toBe(ROTA_TELA_LOGIN);

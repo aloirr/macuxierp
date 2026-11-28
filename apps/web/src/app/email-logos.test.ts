@@ -28,6 +28,7 @@ describe('logos do e-mail em /email/', () => {
     expect(existsSync(new URL('middleware.ts', src))).toBe(false);
     expect(existsSync(new URL('proxy.ts', src))).toBe(false);
     const config = readFileSync(new URL('../../next.config.ts', import.meta.url), 'utf8');
-    expect(config).not.toMatch(/\b(rewrites|redirects|basePath)\b/);
+    expect(config).not.toMatch(/\b(rewrites|basePath)\b/);
+    expect(config).not.toMatch(/source: '\/email/); // os únicos redirects são os do login (ROTAS_ANTIGAS_DO_LOGIN)
   });
 });

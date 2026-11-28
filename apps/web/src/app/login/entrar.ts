@@ -7,7 +7,7 @@ import { COOKIE_CONFIG_WEB, opcoesConfig, ROTA_SENHA as ROTA_SENHA_CONFIG } from
 import { registrarFalha } from '@/lib/falha-log';
 import { loginUnico, type SessaoAberta } from '@/lib/login-unico';
 import { contaBloqueada, TEXTOS_LOGIN, validarComSdk, type ErrosLogin } from '@/lib/login-regras';
-import { COOKIE_ACESSO, COOKIE_REFRESH, destinoSeguro, opcoesAcesso, opcoesLongas } from '@/lib/sessao';
+import { COOKIE_ACESSO, COOKIE_REFRESH, opcoesAcesso, opcoesLongas } from '@/lib/sessao';
 import { ROTA_SENHA } from '@/lib/troca-pendente';
 
 /** Volta sempre com algo a mostrar ou, entrando, com o `entrou` (destino e rota). A senha nunca volta. */
@@ -70,5 +70,5 @@ async function entrar(dados: FormData): Promise<EstadoLogin> {
   await gravarSessao(r.sessao);
   const destino = r.sessao.destino;
   if (await trocaPendente(r.sessao)) return { entrou: { destino, para: destino === 'config' ? ROTA_SENHA_CONFIG : ROTA_SENHA } };
-  return { entrou: { destino, para: destino === 'config' ? '/config' : destinoSeguro(String(dados.get('destino') ?? '')) } };
+  return { entrou: { destino, para: destino === 'config' ? '/config' : '/' } };
 }
