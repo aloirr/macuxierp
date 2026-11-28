@@ -157,3 +157,15 @@ Os achados RD-0001 a RD-0019 foram registrados em rodadas anteriores (PRs #7, #1
 | RD-2416 | 28/11/2026 | T-0133 | Entrada "/": acao-versao.ts:8-62: o rascunho da recarga guarda a empresa | código | média | engenheiro-apps | aberto, v0.3.30 | 2026-11-28-acesso-sem-empresa.md |
 | RD-2417 | 28/11/2026 | T-0133 | Web: comentários de formulario.tsx:18, 84, next.config.ts:41, tela.tsx:4 falam do código e do #codigo | doc | baixa | engenheiro-apps | aberto, v0.3.30 | 2026-11-28-acesso-sem-empresa.md |
 | RD-2418 | 28/11/2026 | T-0133 | E2E: login-raiz.mjs:7-101, versao-nova.mjs:4-114: getByLabel('Código da empresa') e o link #codigo= | teste | baixa | engenheiro-apps | aberto, v0.3.30 | 2026-11-28-acesso-sem-empresa.md |
+| RD-2419 | 28/11/2026 | T-0135 | BKO Auditoria: listas.ts:62-66, telas/core.ts:177-198: ação "cadastros.carga.iniciar", entidade "carga_portal", registro e usuário em UUID; o filtro Usuário recebe o id | texto (A0) | alta | modulo-core + engenheiro-apps | aberto, v0.3.31 | 2026-11-28-telas-v0331.md |
+| RD-2420 | 28/11/2026 | T-0135 | BKO Novo produto: produtos.ts:41: dica "Código fiscal do produto; precisa existir e estar vigente." | texto (A0) | alta | modulo-cadastros | aberto, v0.3.31 | 2026-11-28-telas-v0331.md |
+| RD-2421 | 28/11/2026 | T-0135 | BKO: as licenças em duas telas (/licencas e /core/licencas) | layout | média | engenheiro-apps + modulo-core | aberto | 2026-11-28-telas-v0331.md |
+| RD-2422 | 28/11/2026 | T-0135 | /config Integrações: as colunas Registros e Com erro repetem a linha e o selo | indicador | média | engenheiro-apps | aberto | 2026-11-28-telas-v0331.md |
+| RD-2423 | 28/11/2026 | T-0135 | /config Integrações ERP → FDV: "Desligado — —" 10 vezes sem chave | indicador | média | engenheiro-apps | aberto | 2026-11-28-telas-v0331.md |
+| RD-2424 | 28/11/2026 | T-0135 | BKO Novo produto: grade fora da regra 11 | layout | média | modulo-cadastros | aberto | 2026-11-28-telas-v0331.md |
+| RD-2425 | 28/11/2026 | T-0135 | /config ficha: ficha-receita.tsx:181: o CNAE cru e formatado, e o código dos secundários duas vezes | texto | média | engenheiro-apps | aberto | 2026-11-28-telas-v0331.md |
+| RD-2426 | 28/11/2026 | T-0135 | BKO listas: a 1ª coluna vazia (resto da RD-2383) | layout | média | engenheiro-apps | aberto | 2026-11-28-telas-v0331.md |
+| RD-2427 | 28/11/2026 | T-0135 | BKO Títulos: paginas.ts:80: o filtro "Situação" e a coluna "Status" | texto | média | modulo-faturamento | aberto | 2026-11-28-telas-v0331.md |
+| RD-2428 | 28/11/2026 | T-0135 | BKO listas: comum.ts:8: o vazio sem padrão | texto | baixa | engenheiro-apps | aberto | 2026-11-28-telas-v0331.md |
+| RD-2429 | 28/11/2026 | T-0135 | BKO formulários: cadastros.ts:119: "Salvar cliente" e outros repetem o h1 | texto | baixa | engenheiro-apps | aberto | 2026-11-28-telas-v0331.md |
+| RD-2430 | 28/11/2026 | T-0135 | /config ficha: o Regime sozinho na linha do bloco Na Receita | layout | baixa | engenheiro-apps | aberto | 2026-11-28-telas-v0331.md |

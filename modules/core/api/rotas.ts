@@ -100,14 +100,15 @@ function licencaDto(l: LinhaLicenca) {
 
 /** Minimização (LGPD): a lista e o CSV levam quem, o quê e quando; `antes`/`depois` ficam no banco. */
 function auditoriaDto({ antes: _a, depois: _d, ...a }: LinhaAuditoria): AuditoriaItemLista {
-  return { ...a, ocorrido_em: a.ocorrido_em.toISOString() };
+  return { ...a, usuario_nome: a.usuario_nome ?? null, ocorrido_em: a.ocorrido_em.toISOString() };
 }
 
 /** Filtros da auditoria (lista e CSV): o período chega em texto e vai ao repositório como `Date`. */
-function filtroAuditoria(consulta: { entidade?: string; usuario_id?: string; de?: string; ate?: string }) {
+function filtroAuditoria(consulta: { entidade?: string; usuario_id?: string; usuario?: string; de?: string; ate?: string }) {
   return {
     entidade: consulta.entidade,
     usuario_id: consulta.usuario_id,
+    usuario: consulta.usuario,
     de: consulta.de ? new Date(consulta.de) : undefined,
     ate: consulta.ate ? new Date(consulta.ate) : undefined,
   };

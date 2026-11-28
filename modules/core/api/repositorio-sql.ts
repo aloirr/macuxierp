@@ -191,14 +191,17 @@ export class RepositorioCoreSql implements RepositorioCore {
     );
   }
 
-  async auditoria(tx: Transacao, f: { entidade?: string; usuario_id?: string; de?: Date; ate?: Date; limite: number; cursor?: string }): Promise<LinhaAuditoria[]> {
+  async auditoria(tx: Transacao, f: { entidade?: string; usuario_id?: string; usuario?: string; de?: Date; ate?: Date; limite: number; cursor?: string }): Promise<LinhaAuditoria[]> {
+    // RD-2419: nome de quem fez, pelo join no mesmo schema (a RLS do tenant vale nas duas tabelas); o filtro por nome é ILIKE com % e _ escapados.
     return tx.consultar<LinhaAuditoria>(
-      `SELECT id, usuario_id, acao, entidade, entidade_id::text AS entidade_id, antes, depois, ocorrido_em FROM plataforma.auditoria
-        WHERE ($1::text IS NULL OR entidade = $1) AND ($2::timestamptz IS NULL OR ocorrido_em >= $2)
-          AND ($3::timestamptz IS NULL OR ocorrido_em <= $3) AND ($4::uuid IS NULL OR id > $4::uuid)
-          AND ($6::uuid IS NULL OR usuario_id = $6::uuid)
-        ORDER BY id LIMIT $5`,
-      [f.entidade ?? null, f.de ?? null, f.ate ?? null, f.cursor ?? null, f.limite, f.usuario_id ?? null],
+      `SELECT a.id, a.usuario_id, u.nome AS usuario_nome, a.acao, a.entidade, a.entidade_id::text AS entidade_id, a.antes, a.depois, a.ocorrido_em
+         FROM plataforma.auditoria a LEFT JOIN plataforma.usuario u ON u.id = a.usuario_id
+        WHERE a.deleted_at IS NULL AND ($1::text IS NULL OR a.entidade = $1) AND ($2::timestamptz IS NULL OR a.ocorrido_em >= $2)
+          AND ($3::timestamptz IS NULL OR a.ocorrido_em <= $3) AND ($4::uuid IS NULL OR a.id > $4::uuid)
+          AND ($6::uuid IS NULL OR a.usuario_id = $6::uuid)
+          AND ($7::text IS NULL OR u.nome ILIKE '%' || replace(replace(replace($7, '\\', '\\\\'), '%', '\\%'), '_', '\\_') || '%')
+        ORDER BY a.id LIMIT $5`,
+      [f.entidade ?? null, f.de ?? null, f.ate ?? null, f.cursor ?? null, f.limite, f.usuario_id ?? null, f.usuario ?? null],
     );
   }
 
