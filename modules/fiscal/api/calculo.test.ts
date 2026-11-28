@@ -47,6 +47,15 @@ describe('adaptador CalculoFiscal sobre fiscal.calculo@1', () => {
     expect(sem.saida.totais.calc_st).toBeUndefined();
     expect(sem.saida.itens[0]?.calc_st).toBeUndefined();
   });
+  it('RN-FIS-05: adaptador (pedido/FDV) com emitente industrial sem regra de IPI: sem erro e calc_ipi omitido; no modo emissão, REGRA_NAO_ENCONTRADA', async () => {
+    const ind: EmitenteFiscal = { ...normal, industrial_ipi: true };
+    const previa = await montar(ind, [regra()]).calc.calcular(tx, entrada());
+    if (!previa.ok) throw new Error(JSON.stringify(previa.erros));
+    expect(previa.saida.itens[0]?.regra_aplicada?.ipi).toBe(false);
+    expect(previa.saida.itens[0]?.calc_ipi).toBeUndefined();
+    const emissao = await criarCalculoFiscal({ emitentes: { emitente: async () => ind, producaoPropria: async () => new Set() }, repositorio: { regras: async () => [regra()], cargas: async () => new Map() }, modo: 'emissao' }).calcular(tx, entrada());
+    expect(emissao).toMatchObject({ ok: false, erros: [{ codigo: 'REGRA_NAO_ENCONTRADA' }] });
+  });
   it('RN-FIS-01: pedido misto escolhe o CFOP por item (fabricado × revenda): interna e interestadual contribuinte', async () => {
     const itens = [item(1), item(2)];
     const regras = [regra({ cfop: '5101' }), regra({ cfop: '5102' }), regra({ cfop: '6101' }), regra({ cfop: '6102' })];

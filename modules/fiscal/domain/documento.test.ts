@@ -293,7 +293,20 @@ describe('total do FCP-ST retido (vFCPSTRet)', () => {
       expect(r.valor.itens[0]).toMatchObject({ regra_aplicada: { ipi: false } });
       expect(r.valor.itens[0]).not.toHaveProperty('calc_ipi');
       expect(r.valor.totais).not.toHaveProperty('calc_ipi');
-      expect(calcularDocumento(base({ emitente: ind, regras: [regra({ codigo: '00' })] }))).toMatchObject({ ok: false, erros: [{ codigo: 'REGRA_NAO_ENCONTRADA' }] });
+    });
+    it('RN-FIS-05: industrial sem regra de IPI — prévia (pedido/FDV): sem erro e calc_ipi omitido', () => {
+      const r = calcularDocumento(base({ emitente: ind, regras: [regra({ codigo: '00' })] }), { modo: 'previa' });
+      if (!r.ok) throw new Error(JSON.stringify(r.erros));
+      expect(r.valor.itens[0]).toMatchObject({ regra_aplicada: { ipi: false } });
+      expect(r.valor.itens[0]).not.toHaveProperty('calc_ipi');
+      expect(r.valor.itens[0]).not.toHaveProperty('ipi');
+      expect(r.valor.totais).not.toHaveProperty('calc_ipi');
+      expect(r.valor.totais.v_ipi).toBe(0);
+    });
+    it('RN-FIS-01: industrial sem regra de IPI — emissão: REGRA_NAO_ENCONTRADA como antes (padrão e modo explícito)', () => {
+      const e = base({ emitente: ind, regras: [regra({ codigo: '00' })] });
+      expect(calcularDocumento(e)).toMatchObject({ ok: false, erros: [{ codigo: 'REGRA_NAO_ENCONTRADA' }] });
+      expect(calcularDocumento(e, { modo: 'emissao' })).toMatchObject({ ok: false, erros: [{ codigo: 'REGRA_NAO_ENCONTRADA' }] });
     });
     it('RN-FIS-05: IPI 0 com regra (CST 53, sem valor) sai calc_ipi zerado; por unidade usa o valor da regra sem alíquota inventada', () => {
       const a = calcularDocumento(base({ emitente: ind, regras: [regra({ codigo: '00' }), rIpi({ cst_ipi: '53', aliquota_ipi: null })] }));

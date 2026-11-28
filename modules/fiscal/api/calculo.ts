@@ -40,6 +40,8 @@ export interface DepsCalculoFiscal {
   emitentes: ConsultaEmitenteFiscal;
   /** Padrão: leitura SQL de `fiscal.regra_tributaria` e `fiscal.carga_aproximada`. */
   repositorio?: RepositorioFiscal;
+  /** Padrão 'previa': este adaptador serve o pedido e o FDV, onde a falta de regra de IPI não trava (RN-FIS-05). A emissão da NF-e usa o motor no modo 'emissao'. */
+  modo?: 'emissao' | 'previa';
 }
 
 const falha = (codigo: ErroFiscal['codigo'], mensagem: string, rn = 'RN-FIS-01'): ResultadoCalculoFiscal => ({ ok: false, erros: [{ rn, codigo, mensagem }] });
@@ -103,7 +105,7 @@ export function criarCalculoFiscal(deps: DepsCalculoFiscal): CalculoFiscalDoFisc
       for (let passada = 0; passada < 2; passada++) {
         const e = montar(cfops);
         if (!e.success) return falha('ENTRADA_INVALIDA', `Entrada do cálculo inválida: ${e.error.issues[0]?.path.join('.') ?? ''}.`);
-        const r = calcularDocumento(e.data);
+        const r = calcularDocumento(e.data, { modo: deps.modo ?? 'previa' });
         if (!r.ok) return { ok: false, erros: r.erros };
         const novos: Record<number, string> = {};
         for (const it of r.valor.itens) {

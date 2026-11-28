@@ -28,6 +28,11 @@ function selecionarOpcional(regras: RegraTributaria[], alvo: AlvoRegra): Resulta
  */
 export interface OpcoesDocumento {
   arredondamento?: ModoArredondamento;
+  /**
+   * 'emissao' (padrão): emitente industrial sem regra de IPI é erro REGRA_NAO_ENCONTRADA (RN-FIS-01), como sempre.
+   * 'previa' (cálculo do pedido/FDV, decisão do PO 28/11/2026): sem regra de IPI o campo é omitido (regra_aplicada.ipi = false) e o pedido não trava.
+   */
+  modo?: 'emissao' | 'previa';
 }
 
 /**
@@ -82,9 +87,9 @@ export function calcularDocumento(entrada: CalculoEntrada, opcoes: OpcoesDocumen
     let item = itemEntrada;
     let ipi: ItemResultado['ipi'];
     if (entrada.emitente.industrial_ipi) {
-      const s = selecionarRegra(entrada.regras, alvo('ipi'));
+      const s = opcoes.modo === 'previa' ? selecionarOpcional(entrada.regras, alvo('ipi')) : selecionarRegra(entrada.regras, alvo('ipi'));
       if (!s.ok) falha(s.erros);
-      else {
+      else if (s.valor) {
         const r = calcularIpiItem(itemEntrada, s.valor);
         if (!r.ok) erroCalculo(r, [s.valor.id]);
         else {
