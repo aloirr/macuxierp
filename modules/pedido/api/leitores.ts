@@ -5,7 +5,7 @@
 import { z } from 'zod';
 
 /** ST e IPI por regra (RN-FIS-05, 63 A), como o cálculo fiscal os entrega: todos opcionais; ausente = sem regra. */
-const ImpostoLido = z.object({ v_bc: z.number().int().min(0), p_aliq: z.number().int().min(0), v_valor: z.number().int().min(0) });
+const ImpostoLido = z.object({ v_bc: z.number().int().min(0), p_aliq: z.number().int().min(0).max(1_000_000), v_valor: z.number().int().min(0) });
 
 /** Item da nota: o pedido usa sequência, quantidade e valor, e repassa regra_aplicada e calc_st/calc_ipi quando vierem. */
 export const ItemNotaLido = z.object({
