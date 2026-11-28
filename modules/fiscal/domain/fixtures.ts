@@ -14,6 +14,8 @@ export function regra(p: Partial<RegraTributaria> = {}): RegraTributaria {
     cfop: null,
     codigo: '00',
     aliquota_icms: 180000,
+    // Sem default no contrato: a fábrica diz "não ajusta" de forma explícita; os testes de "não informado" passam null.
+    ajustar_mva: false,
     // Regime normal exige PIS/COFINS (cumulativo: 0,65% e 3%); os testes de ICMS usam a linha única.
     cst_pis: '01',
     aliquota_pis: 6500,
