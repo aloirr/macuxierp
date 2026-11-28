@@ -151,7 +151,7 @@ export function TabelaDensa<T>(props: TabelaDensaProps<T>) {
         )}
       </tbody>
     </table>
-    {aoCarregarMais ? <AnuncioLeitor texto={linhas.length > 0 ? `${linhas.length} registros carregados.` : ''} /> : null}
+    {aoCarregarMais ? <AnuncioLeitor texto={linhas.length > 0 ? `${linhas.length} ${linhas.length === 1 ? 'registro carregado' : 'registros carregados'}.` : ''} /> : null}
     {temMais && aoCarregarMais ? (
       <button type="button" onClick={aoCarregarMais} disabled={carregandoMais} style={botaoSecundario(carregandoMais)}>
         {carregandoMais ? 'Carregando…' : 'Carregar mais'}
