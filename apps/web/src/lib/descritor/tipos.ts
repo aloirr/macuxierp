@@ -15,6 +15,8 @@ export interface FiltroTela {
   chave: string;
   rotulo: string;
   tipo: 'texto' | 'data' | 'selecao' | 'cadastro';
+  /** Dica de largura na linha de filtros, em colunas da grade de 12 (1 a 12). Opcional: sem ela o shell reparte a linha. */
+  colunas?: number;
   /** `selecao`: valores fixos (ex.: status). */
   opcoes?: readonly { valor: string; rotulo: string }[];
   /** `cadastro`: de onde ler as opções (cadastros). */
@@ -229,6 +231,8 @@ export interface TelaDetalhe extends ExecutorDeAcoes {
 }
 
 export type TipoCampo = 'texto' | 'area' | 'data' | 'numero' | 'selecao' | 'cadastro';
+/** Colunas permitidas por campo na grade de 12. */
+export type ColunasCampo = 1 | 2 | 3 | 4 | 6 | 8 | 12;
 export interface CampoFormulario {
   nome: string;
   rotulo: string;
@@ -237,6 +241,8 @@ export interface CampoFormulario {
   fonte?: FonteOpcoes;
   opcoes?: readonly { valor: string; rotulo: string }[];
   ajuda?: string;
+  /** Largura do campo na grade de 12 colunas do formulário (regra 11). Ausente = a heurística de larguraDoCampo. */
+  colunas?: ColunasCampo;
   /** Mostra o campo só quando a condição vale (ex.: regime de PIS/COFINS só com CRT 3). É função: roda no navegador, nunca atravessa do servidor como dado. */
   mostrarSe?: (valores: Readonly<Record<string, string>>) => boolean;
 }

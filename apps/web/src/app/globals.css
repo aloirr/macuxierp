@@ -80,20 +80,23 @@ tbody tr:nth-child(even) { background: var(--mx-cor-linha-alternada); }
 /* Coluna "Item" de largura fixa no diálogo da parcial. */
 .itens-parcial thead th:first-child, .itens-parcial tbody th { width: 28ch; }
 /* MC-0205 (regra 11): grade de 12 colunas; cada campo ocupa 2; no celular, 2 por linha (span 6). */
-.filtros { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 8px 16px; align-items: end; margin-bottom: 16px; }
-.filtros .campo { grid-column: span 2; margin: 0; min-width: 0; }
+.filtros { display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); gap: 8px 8px; align-items: end; margin-bottom: 16px; }
+.filtros .campo { grid-column: span 4; margin: 0; min-width: 0; }
+.filtros .campo.filtro-col-2 { grid-column: span 2; } .filtros .campo.filtro-col-3 { grid-column: span 3; } .filtros .campo.filtro-col-4 { grid-column: span 4; } .filtros .campo.filtro-col-5 { grid-column: span 5; } .filtros .campo.filtro-col-6 { grid-column: span 6; } .filtros .campo.filtro-col-7 { grid-column: span 7; } .filtros .campo.filtro-col-8 { grid-column: span 8; } .filtros .campo.filtro-col-9 { grid-column: span 9; } .filtros .campo.filtro-col-10 { grid-column: span 10; } .filtros .campo.filtro-col-11 { grid-column: span 11; } .filtros .campo.filtro-col-12 { grid-column: span 12; }
 /* RD-2382: sem "Filtrar" com JS (aplica ao mudar); sem JS o botão aparece. "Limpar filtros" é link ao lado dos filtros. */
 .filtros-enviar { display: none; }
 /* O "x" nativo da busca sai: o link "Limpar filtros" já cobre isso. */
 .filtros input[type="search"]::-webkit-search-cancel-button { display: none; }
-@media (scripting: none) { .filtros-enviar { display: inline-flex; grid-column: span 1; justify-self: start; } }
-.filtros-limpar { grid-column: span 2; align-self: end; padding-bottom: 8px; white-space: nowrap; color: inherit; }
-@media (max-width: 640px) { .filtros .campo, .filtros-limpar { grid-column: span 6; } }
+@media (scripting: none) { .filtros-enviar { display: inline-flex; grid-column: span 2; justify-self: start; } }
+.filtros-limpar { grid-column: span 4; align-self: end; padding-bottom: 8px; white-space: nowrap; color: inherit; }
+@media (max-width: 640px) { .filtros .campo, .filtros .campo[class*='filtro-col-'], .filtros-limpar { grid-column: span 12; } }
 /* O U+00A0 do "R$ 1.234,56" não quebra, mas a célula estreita sim: dinheiro e número ficam numa linha só. */
 .sem-quebra { white-space: nowrap; }
 .total-pedido { margin: 12px 0 0; text-align: right; font-weight: var(--mx-peso-titulo); font-variant-numeric: var(--mx-fonte-numeros); white-space: nowrap; }
 .filtros select, .filtros input, .formulario select, .formulario input, .formulario textarea { width: 100%; padding: 8px; font: inherit; border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; background: var(--mx-cor-branco); color: var(--mx-cor-grafite); }
-.filtros select, .filtros input { font-size: var(--mx-tamanho-texto); }
+.filtros select, .filtros input, .formulario select, .formulario input, .formulario textarea { font-size: var(--mx-tamanho-texto); }
+/* Select de 1 coluna: "Todos"/"Todas" cabem (RD-2383); o mesmo recuo nos filtros e no formulário. */
+.filtros select { padding: 0 2px 0 8px; text-overflow: clip; }
 /* MC-0206 (regra 12): rodapé do cartão da tabela, depois das linhas e antes da paginação; botões juntos, à esquerda. */
 .barra-acoes { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
 .selo-aviso { background: var(--mx-cor-aviso-fundo); color: var(--mx-cor-aviso-texto); }
@@ -175,8 +178,17 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 .formulario > .campo.campo-8 { grid-column: span 8; }
 .formulario > .campo.campo-3 { grid-column: span 3; }
 .formulario > .campo.campo-curto.campo-inicio-linha { grid-column: 1 / span 2; }
+.formulario > .campo.campo-col-1 { grid-column: span 1; }
+.formulario > .campo.campo-col-2 { grid-column: span 2; }
+.formulario > .campo.campo-col-3 { grid-column: span 3; }
+.formulario > .campo.campo-col-4 { grid-column: span 4; }
+.formulario > .campo.campo-col-6 { grid-column: span 6; }
+.formulario > .campo.campo-col-8 { grid-column: span 8; }
+.formulario > .campo.campo-col-12 { grid-column: span 12; }
 @media (max-width: 1100px) { .formulario > .campo { grid-column: 1 / -1; } .formulario > .campo.campo-curto, .formulario > .campo.campo-curto.campo-inicio-linha { grid-column: span 3; } .formulario > .campo.campo-medio, .formulario > .campo.campo-3 { grid-column: span 6; } .formulario > .campo.campo-8 { grid-column: 1 / -1; } }
 @media (max-width: 640px) { .formulario > .campo, .formulario > .campo.campo-curto.campo-inicio-linha, .formulario > .campo.campo-curto, .formulario > .campo.campo-medio, .formulario > .campo.campo-3, .formulario > .campo.campo-8 { grid-column: 1 / -1; } }
+@media (max-width: 1100px) { .formulario > .campo.campo-col-1, .formulario > .campo.campo-col-2, .formulario > .campo.campo-col-3 { grid-column: span 3; } .formulario > .campo.campo-col-4, .formulario > .campo.campo-col-6 { grid-column: span 6; } .formulario > .campo.campo-col-8, .formulario > .campo.campo-col-12 { grid-column: 1 / -1; } }
+@media (max-width: 640px) { .formulario > .campo[class*='campo-col-'] { grid-column: 1 / -1; } }
 /* Texto corrido: no máximo 72 caracteres por linha, só nos blocos de texto (nunca no contêiner). */
 .apoio, p.erro, .aviso-sucesso, .faixa-aviso { max-width: 72ch; }
 .senha-provisoria { display: block; font-size: var(--mx-tamanho-grande); font-weight: 600; padding: 8px 0; word-break: break-all; user-select: all; }
@@ -371,7 +383,7 @@ button.link { background: none; border: 0; padding: 0; color: inherit; font: inh
 .ligacao .campo > span { color: var(--mx-cor-rotulo-destaque); }
 
 /* Parecer da marca (v0.3.28): MC-0205 filtros em 3 colunas com o menu aberto; MC-0206 cartão da tabela. */
-@media (min-width: 801px) and (max-width: 1100px) { .filtros .campo { grid-column: span 3; } }
+@media (min-width: 801px) and (max-width: 1100px) { .filtros .campo, .filtros .campo[class*='filtro-col-'] { grid-column: span 8; } }
 .cartao-tabela { background: var(--mx-cor-branco); border: 1px solid var(--mx-cor-borda-tabela); border-radius: 8px; margin: 0 0 16px; }
 .cartao-tabela > .tabela-rolavel { border-radius: 8px; }
 /* RD-2381: a barra da lista é a do rodapé da página, com a paginação junta, à direita. */

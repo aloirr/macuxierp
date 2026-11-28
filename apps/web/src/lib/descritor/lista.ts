@@ -51,3 +51,37 @@ export function textoTodos(rotulo: string): 'Todas' | 'Todos' {
   const primeiro = rotulo.trim().split(/\s+/)[0]?.toLowerCase() ?? '';
   return FILTROS_FEMININOS.has(primeiro) ? 'Todas' : 'Todos';
 }
+
+/** Filtro como entra no cálculo da grade: `colunas` (1 a 12) é a dica do descritor, opcional. */
+export interface FiltroGrade { tipo: 'busca' | 'texto' | 'data' | 'selecao' | 'cadastro'; chave?: string; colunas?: number }
+const NOME_LONGO = /(cliente|vendedor|fornecedor|produto|usuario)/;
+/**
+ * Largura de cada filtro na grade de 24 avos da linha de filtros (RD-2383; 2 avos = 1 das 12 colunas da página, para o
+ * "De" e o "Até" caberem em 3 avos cada). Fecha sempre as 24 quando a soma passa de 24 se corta, quando falta se reparte:
+ * texto e nome longo (cliente, vendedor) partem com 4 (2 colunas), select com 2, data com 3. `colunas` do descritor vale como dica (x2).
+ */
+export function colunasDosFiltros(filtros: readonly FiltroGrade[]): number[] {
+  const base = (f: FiltroGrade): number => (f.colunas ? f.colunas * 2 : f.tipo === 'busca' || f.tipo === 'texto' ? 4 : f.tipo === 'data' ? 3 : f.chave && NOME_LONGO.test(f.chave) ? 4 : 2);
+  const minimo = (f: FiltroGrade): number => (f.colunas ? f.colunas * 2 : f.tipo === 'data' ? 3 : f.tipo === 'busca' || f.tipo === 'texto' ? 3 : 2);
+  const pesos = filtros.map(base);
+  const soma = () => pesos.reduce((a, b) => a + b, 0);
+  // Corta 1 avo por vez do maior que ainda pode encolher (o último em empate).
+  while (soma() > 24) {
+    const candidatos = pesos.map((p, i) => ({ p, i })).filter((x) => x.p > minimo(filtros[x.i] as FiltroGrade));
+    if (candidatos.length === 0) break; // o excedente desce para a linha seguinte
+    const maior = Math.max(...candidatos.map((x) => x.p));
+    pesos[candidatos.filter((x) => x.p === maior).at(-1)!.i] = maior - 1;
+  }
+  // Reparte a sobra de 2 em 2 (1 coluna) pelos selects sem dica, até 4, e depois pelo texto, até 6.
+  for (const [alvo, teto] of [[['selecao', 'cadastro'], 4], [['texto', 'busca'], 6]] as const) {
+    let mudou = true;
+    while (soma() + 2 <= 24 && mudou) {
+      mudou = false;
+      for (let i = 0; i < pesos.length && soma() + 2 <= 24; i++) {
+        const f = filtros[i] as FiltroGrade;
+        if (!f.colunas && (alvo as readonly string[]).includes(f.tipo) && (pesos[i] as number) + 2 <= teto) { pesos[i] = (pesos[i] as number) + 2; mudou = true; }
+      }
+    }
+  }
+  return pesos;
+}

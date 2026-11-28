@@ -28,10 +28,10 @@ async function opcoes(fonte: string, acesso: string, perfil: Perfil): Promise<re
 }
 
 /** Escolhe lista, detalhe ou formulário pelo descritor. Erros da API viram mensagem fixa, sem dado do registro. */
-export async function TelaGenerica({ tela, titulo, rotaDaPagina, rota, params, busca, perfil, acesso, fuso }: { tela: TelaDescrita; titulo: string; rotaDaPagina: string; rota: string; params: Readonly<Record<string, string>>; busca: URLSearchParams; perfil: Perfil; acesso: string; fuso: string }) {
+export async function TelaGenerica({ tela, titulo, rotaDaPagina, rota, params, busca, perfil, acesso, fuso, outrasSecoes }: { outrasSecoes?: readonly { rota: string; titulo: string }[]; tela: TelaDescrita; titulo: string; rotaDaPagina: string; rota: string; params: Readonly<Record<string, string>>; busca: URLSearchParams; perfil: Perfil; acesso: string; fuso: string }) {
   try {
     if (tela.tipo === 'quadro') return null; // quadros têm componente próprio, escolhido pela página (page.tsx)
-    if (tela.tipo === 'lista') return <ListaGenerica tela={tela} rota={rota} rotaDaPagina={rotaDaPagina} busca={busca} perfil={perfil} acesso={acesso} fuso={fuso} />;
+    if (tela.tipo === 'lista') return <ListaGenerica outrasSecoes={outrasSecoes} tela={tela} rota={rota} rotaDaPagina={rotaDaPagina} busca={busca} perfil={perfil} acesso={acesso} fuso={fuso} />;
     if (tela.tipo === 'detalhe') {
       const id = params.id ?? '';
       if (!UUID.safeParse(id).success) notFound();

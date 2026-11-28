@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import { quadroEmpresaFiscal, TEXTO_AMBIENTE_HOMOLOGACAO } from '@macuxierp/core/web';
+import { quadroEmpresaFiscal, ROTULO_MODULO, rotuloDaAcao, TEXTO_AMBIENTE_HOMOLOGACAO } from '@macuxierp/core/web';
 import { AmbienteFiscal, Empresa } from '@macuxierp/core/contracts';
 import { VistaAmbienteFiscal, VistaPerfis } from './vistas';
 import { matrizDePerfis } from '@/lib/telas/core';
@@ -20,7 +20,7 @@ const amb = (filial_id: string, ambiente: 'homologacao' | 'producao') => Ambient
 describe('ambiente fiscal no BKO (T-0088): só exibição', () => {
   it('mostra empresa, filiais pelo nome do cadastros e o texto de homologação; nenhum botão, formulário nem troca', () => {
     const h = renderToStaticMarkup(<VistaAmbienteFiscal quadro={quadroEmpresaFiscal(empresa, [amb(F1, 'homologacao'), amb(F2, 'producao')], { [F1]: 'Matriz Manaus', [F2]: 'Filial Parintins' })} />);
-    expect(h).toContain('Distribuidora Rio Negro Ltda');
+    expect(h).not.toContain('Distribuidora Rio Negro Ltda'); // RD-2397: a ficha da empresa mora na aba Empresa
     expect(h).toContain('Matriz Manaus');
     expect(h).toContain('Filial Parintins');
     expect(h).toContain(TEXTO_AMBIENTE_HOMOLOGACAO);
@@ -28,7 +28,7 @@ describe('ambiente fiscal no BKO (T-0088): só exibição', () => {
     for (const t of ['Voltar para homologação', 'Trocar', 'Mudar para produção', 'Ir para produção', 'Passar para produção']) expect(h, t).not.toContain(t);
   });
   it('empresa sem filial com ambiente avisa em vez de tabela vazia', () => {
-    expect(renderToStaticMarkup(<VistaAmbienteFiscal quadro={quadroEmpresaFiscal(empresa, [])} />)).toContain('Nenhuma filial com ambiente fiscal configurado.');
+    expect(renderToStaticMarkup(<VistaAmbienteFiscal quadro={quadroEmpresaFiscal(empresa, [])} />)).toContain('Nenhuma filial configurada.');
   });
 });
 
@@ -37,8 +37,9 @@ describe('perfis e permissões no BKO (T-0087)', () => {
   it('tabela com uma coluna por perfil, em português, e só leitura (sem botão nem campo)', () => {
     const h = renderToStaticMarkup(<VistaPerfis matriz={matrizDePerfis(itens)} />);
     for (const p of ['Administrador', 'Gerente', 'Faturista', 'Fiscal', 'Vendedor', 'Leitura', 'Analista de implantação']) expect(h, p).toContain(p);
-    expect(h).toContain('title="core.usuario.gerir">usuario.gerir<'); // o grupo diz o módulo; o código completo fica no title
-    expect(h).toContain('Plataforma');
+    expect(h).toContain(`title="core.usuario.gerir">${rotuloDaAcao('core.usuario.gerir')}<`); // texto em português; o código completo fica no title
+    expect(rotuloDaAcao('core.usuario.gerir')).not.toBe('core.usuario.gerir');
+    expect(h).toContain(ROTULO_MODULO.core as string);
     expect(h).not.toMatch(/<button|<form|<input|<select/);
     expect(h).toContain('scope="col"');
     expect(h).toContain('scope="row"');

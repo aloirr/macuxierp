@@ -73,7 +73,7 @@ describe('barra do rodapé e busca sem "Filtrar" (RD-2381, RD-2382)', () => {
   it('a busca se chama "Buscar"; o "Filtrar" só existe para quem está sem JS; o formulário continua GET', async () => {
     const h = await render(LISTA_PEDIDOS, 'busca=123', '/pedido/pedidos');
     expect(h).toContain('<form class="filtros" role="search" aria-label="Filtros" action="/pedido/pedidos" method="get">');
-    expect(h).toContain('<label class="campo"><span>Buscar</span><input type="search" maxLength="80" placeholder="Número do pedido" name="busca" value="123"/></label>');
+    expect(h).toContain('<label class="campo filtro-col-4"><span>Buscar</span><input type="search" maxLength="80" placeholder="Número do pedido" name="busca" value="123"/></label>');
     expect(h).toContain('<button class="mx-botao filtros-enviar" type="submit">Filtrar</button>');
     expect(h).not.toContain('filtros-acoes');
   });
