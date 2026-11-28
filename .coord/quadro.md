@@ -245,6 +245,7 @@ Gerente ativo: session_019xHEXorMcUM7hAvrbsGwJd. PO: session_019xHEXqMSs1piLUgLS
 - **Backlog do shell** (Alexandre, pelo PO): T-0138 (acordeão do menu), T-0139 (perfil no topo à direita), T-0140 (/config no formato do ERP, que absorve o 133 B) e T-0136 (mão dupla da /v1/entrada).
 - **Chave ST/IPI ao FDV:** o PR que liga o 1º tenant em TENANTS_ENVIA_ST_IPI só sai depois que o Gerente Sênior disser que a v1.0.44 do FDV está no ar (ADR 0077 do FDV, campos v_icms_st_cents e v_ipi_cents), e no mesmo PR normaliza o hash ou o Hub aceita o reenvio idempotente.
 - **Para a v0.3.32 (lembretes):** RD-2421 a RD-2430 do corretor (#962, fora a RD-2422, fechada na T-0137); os 🟡 do engenheiro da v0.3.31; RD do testes para rodar os 6 e2e de tests/e2e/rodar-*.sh automaticamente (hoje são manuais; o último verde do portal-integracao e da ficha-receita antes do #965 era da v0.3.24); a regra de re-rodada parcial (PO, 06h16): mudança só em tests/ re-roda a pasta tests/ inteira e TODOS os rodar-*.sh das telas da versão; a nota do doc 04 de que a plataforma é do modulo-core.
+- **Horas de hoje:** o quadro não tem nenhum horário entre 06h10 e 06h35 de 28/11; os horários do gerente que saíram adiantados nesse intervalo (o PO apontou às 06h16 e às 06h21) estão só nos recados e nas mensagens ao PO, que são imutáveis. Vale o carimbo UTC de cada recado; desde então toda hora sai do `TZ=America/Manaus date`. A correção de 06h52 → 06h50 também já foi avisada ao PO.
 - **Próxima livre:** T-0141; migração 0082.
 
 ## 28/11 manhã — v0.3.31 em andamento (Manaus)
