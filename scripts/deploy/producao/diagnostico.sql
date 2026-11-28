@@ -25,7 +25,8 @@ SELECT e.tenant_id, t.situacao, count(*) FILTER (WHERE e.receita_fonte = 'manual
 SELECT count(*) FILTER (WHERE receita_fonte = 'manual') AS total_manual, count(*) FILTER (WHERE receita_fonte = 'manual' AND receita_consultada_em IS NULL) AS manual_sem_data FROM core.empresa WHERE deleted_at IS NULL;
 
 -- 5. regras tributárias vigentes por tenant e UF de origem (C-5: o cálculo não pode cair em REGRA_NAO_ENCONTRADA)
-\echo '== 5. regras tributárias vigentes por tenant e UF de origem (C-5 sem REGRA_NAO_ENCONTRADA; uf_origem nula = tenant sem regra)'
+\echo '== 5. regras tributárias vigentes por tenant e UF de origem (uf_origem nula: regras_vivas = 0 é tenant sem regra; > 0 são regras para todas as UFs — RN-FIS-01 e 0013)'
+-- vigência comparada com current_date do servidor do banco (UTC)
 SELECT t.id AS tenant_id, t.situacao, r.uf_origem, count(r.id) FILTER (WHERE r.deleted_at IS NULL) AS regras_vivas, count(r.id) FILTER (WHERE r.deleted_at IS NULL AND r.vigencia_inicio <= current_date AND (r.vigencia_fim IS NULL OR r.vigencia_fim >= current_date)) AS regras_vigentes, count(r.id) FILTER (WHERE r.deleted_at IS NULL AND r.vigencia_inicio <= current_date AND (r.vigencia_fim IS NULL OR r.vigencia_fim >= current_date) AND r.tributo = 'icms') AS vigentes_icms FROM plataforma.tenant t LEFT JOIN fiscal.regra_tributaria r ON r.tenant_id = t.id WHERE t.situacao = 'ativo' AND t.id <> plataforma.tenant_referencia() GROUP BY t.id, t.situacao, r.uf_origem ORDER BY t.id, r.uf_origem NULLS FIRST;
 
 ROLLBACK;
