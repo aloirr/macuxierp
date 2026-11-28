@@ -5,7 +5,7 @@ import { manifest } from '../manifest';
 import { regra } from '../domain/fixtures';
 import { RegraLinha } from '../contracts';
 import { situacaoDaRegra } from '../domain';
-import { CAMPOS_REGRA, GRUPOS_REGRA, PAGINAS_FISCAL, acoesDaRegra, corpoDaRegra, inteiro4, paginaCatalogo, paginaRegras, texto4, textoPercentual, valoresDaRegra } from './index';
+import { CAMPOS_REGRA, GRUPOS_REGRA, PAGINAS_FISCAL, acoesDaRegra, corpoDaRegra, inteiro4, opcoesDoCampo, paginaCatalogo, paginaRegras, texto4, textoPercentual, valoresDaRegra } from './index';
 
 describe('páginas do fiscal', () => {
   it('RN-CORE-02: o menu do manifesto tem página, a nova só para quem edita e o detalhe fica fora do menu', () => {
@@ -100,5 +100,13 @@ describe('formulário da regra (grade de 12 colunas, regra 11)', () => {
     expect(ids.indexOf('fonte_tipo')).toBe(ids.indexOf('fonte') - 1);
     const linha = RegraLinha.parse({ ...regra(), updated_at: '2026-01-01T00:00:00.000Z', situacao: 'vigente' });
     expect(paginaRegras.colunas.find((c) => c.id === 'fonte')!.valor(linha)).toBe(linha.fonte!.referencia);
+  });
+  it('RN-FIS-04: a lista do CST/CSOSN traz todos os códigos da tabela oficial (02, 15, 53 e 61) e o código salvo fora dela não se perde', () => {
+    const cod = CAMPOS_REGRA.find((c) => c.nome === 'codigo')!;
+    const valores = cod.opcoes!.map((o) => o.valor);
+    expect(valores).toEqual(expect.arrayContaining(['00', '02', '10', '15', '20', '30', '40', '41', '50', '51', '53', '60', '61', '70', '90', '101', '500', '900']));
+    expect(cod.opcoes!.find((o) => o.valor === '61')!.rotulo).toBe('61 – Tributação monofásica sobre combustíveis cobrada anteriormente');
+    expect(opcoesDoCampo(cod, '61')).toBe(cod.opcoes);
+    expect(opcoesDoCampo(cod, '77').at(-1)).toEqual({ valor: '77', rotulo: '77 – código não listado' });
   });
 });

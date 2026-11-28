@@ -46,15 +46,34 @@ const MOD_BC_ST = [
   { valor: '2', rotulo: '2 – Lista positiva' },
   { valor: '3', rotulo: '3 – Lista neutra' },
 ] as const;
+/** CST (Tabela B) e CSOSN do ICMS, com os nomes de `db/tabelas-fiscais/cst/tradicionais-2026-11-21.csv` (fonte: ver `fontes.json`; inclui 02, 15, 53 e 61 da NT 2023.001). */
 const CST_ICMS = [
   { valor: '', rotulo: 'Não informado' },
-  { valor: '00', rotulo: '00 – Tributada integralmente' }, { valor: '10', rotulo: '10 – Tributada com ST' }, { valor: '20', rotulo: '20 – Com redução de base' },
-  { valor: '30', rotulo: '30 – Isenta ou não tributada, com ST' }, { valor: '40', rotulo: '40 – Isenta' }, { valor: '41', rotulo: '41 – Não tributada' },
-  { valor: '50', rotulo: '50 – Suspensão' }, { valor: '51', rotulo: '51 – Diferimento' }, { valor: '60', rotulo: '60 – Cobrada antes por ST' },
-  { valor: '70', rotulo: '70 – Redução de base, com ST' }, { valor: '90', rotulo: '90 – Outras' },
-  { valor: '101', rotulo: '101 – Simples, com crédito' }, { valor: '102', rotulo: '102 – Simples, sem crédito' }, { valor: '103', rotulo: '103 – Simples, faixa isenta' },
-  { valor: '201', rotulo: '201 – Simples, com crédito e ST' }, { valor: '202', rotulo: '202 – Simples, sem crédito e com ST' }, { valor: '203', rotulo: '203 – Simples, faixa isenta e com ST' },
-  { valor: '300', rotulo: '300 – Simples, imune' }, { valor: '400', rotulo: '400 – Simples, não tributada' }, { valor: '500', rotulo: '500 – Simples, ST cobrada antes' }, { valor: '900', rotulo: '900 – Simples, outros' },
+  { valor: '00', rotulo: '00 – Tributada integralmente' },
+  { valor: '02', rotulo: '02 – Tributação monofásica própria sobre combustíveis' },
+  { valor: '10', rotulo: '10 – Tributada e com cobrança do ICMS por substituição tributária' },
+  { valor: '15', rotulo: '15 – Tributação monofásica própria e com responsabilidade pela retenção sobre combustíveis' },
+  { valor: '20', rotulo: '20 – Com redução de base de cálculo' },
+  { valor: '30', rotulo: '30 – Isenta ou não tributada e com cobrança do ICMS por substituição tributária' },
+  { valor: '40', rotulo: '40 – Isenta' },
+  { valor: '41', rotulo: '41 – Não tributada' },
+  { valor: '50', rotulo: '50 – Suspensão' },
+  { valor: '51', rotulo: '51 – Diferimento' },
+  { valor: '53', rotulo: '53 – Tributação monofásica sobre combustíveis com recolhimento diferido' },
+  { valor: '60', rotulo: '60 – ICMS cobrado anteriormente por substituição tributária' },
+  { valor: '61', rotulo: '61 – Tributação monofásica sobre combustíveis cobrada anteriormente' },
+  { valor: '70', rotulo: '70 – Com redução de base de cálculo e cobrança do ICMS por substituição tributária' },
+  { valor: '90', rotulo: '90 – Outras' },
+  { valor: '101', rotulo: '101 – Tributada pelo Simples Nacional com permissão de crédito' },
+  { valor: '102', rotulo: '102 – Tributada pelo Simples Nacional sem permissão de crédito' },
+  { valor: '103', rotulo: '103 – Isenção do ICMS no Simples Nacional para faixa de receita bruta' },
+  { valor: '201', rotulo: '201 – Tributada pelo Simples Nacional com permissão de crédito e com cobrança do ICMS por substituição tributária' },
+  { valor: '202', rotulo: '202 – Tributada pelo Simples Nacional sem permissão de crédito e com cobrança do ICMS por substituição tributária' },
+  { valor: '203', rotulo: '203 – Isenção do ICMS no Simples Nacional para faixa de receita bruta e com cobrança do ICMS por substituição tributária' },
+  { valor: '300', rotulo: '300 – Imune' },
+  { valor: '400', rotulo: '400 – Não tributada pelo Simples Nacional' },
+  { valor: '500', rotulo: '500 – ICMS cobrado anteriormente por substituição tributária (substituído) ou por antecipação' },
+  { valor: '900', rotulo: '900 – Outros' },
 ] as const;
 const CRT_OPCOES = [TODAS, { valor: '1', rotulo: '1 Simples' }, { valor: '2', rotulo: '2 Sublimite' }, { valor: '3', rotulo: '3 Normal' }, { valor: '4', rotulo: '4 MEI' }] as const;
 
@@ -126,6 +145,12 @@ export const GRUPOS_REGRA: readonly GrupoRegra[] = [
     ],
   },
 ];
+
+/** Opções do campo para o valor atual: código salvo que não está na lista aparece como "código não listado" em vez de abrir vazio. */
+export function opcoesDoCampo(campo: CampoRegra, atual: string): readonly { valor: string; rotulo: string }[] {
+  const o = campo.opcoes ?? [];
+  return campo.tipo !== 'selecao' || atual === '' || o.some((x) => x.valor === atual) ? o : [...o, { valor: atual, rotulo: `${atual} – código não listado` }];
+}
 
 export const CAMPOS_REGRA: readonly CampoRegra[] = GRUPOS_REGRA.flatMap((g) => g.campos);
 export type ValoresRegra = Readonly<Record<string, string>>;
