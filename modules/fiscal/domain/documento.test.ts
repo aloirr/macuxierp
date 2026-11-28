@@ -283,6 +283,15 @@ describe('total do FCP-ST retido (vFCPSTRet)', () => {
       expect(r.valor.totais).not.toHaveProperty('calc_st');
       expect(r.valor.totais.v_st).toBe(0);
     });
+    it('RN-FIS-05: ST retido no Simples (CSOSN 500) também é repasse: sem calc_st e v_st 0', () => {
+      const r = calcularDocumento(base({ emitente: { uf: 'AM', crt: 1 }, itens: [item({ id: 'a', st_retido: { v_bc_st_ret: 50000, p_st: 180000, v_icms_substituto: 0, v_icms_st_ret: 9000 } })], regras: [regra({ codigo: '500', aliquota_icms: null, cst_pis: '99', cst_cofins: '99', aliquota_pis: null, aliquota_cofins: null })] }));
+      if (!r.ok) throw new Error(JSON.stringify(r.erros));
+      expect(r.valor.itens[0]?.regra_aplicada).toEqual({ st: false, ipi: false });
+      expect(r.valor.itens[0]).not.toHaveProperty('calc_st');
+      expect(r.valor.itens[0]?.icms).toMatchObject({ csosn: '500', v_icms_st_ret: 9000 });
+      expect(r.valor.totais).not.toHaveProperty('calc_st');
+      expect(r.valor.totais.v_st).toBe(0);
+    });
     it('RN-FIS-05: IPI ad valorem com regra: base 1.050,00 × 10% = 105,00 em calc_ipi do item e do total', () => {
       const r = calcularDocumento(base({ emitente: ind, itens: [item({ id: 'a', frete_centavos: 5000 })], regras: [regra({ codigo: '00' }), rIpi()] }));
       expect(r).toMatchObject({ ok: true, valor: { itens: [{ regra_aplicada: { st: false, ipi: true }, calc_ipi: { v_bc: 105000, p_aliq: 100000, v_valor: 10500 } }], totais: { v_ipi: 10500, calc_ipi: { v_bc: 105000, v_valor: 10500 } } } });

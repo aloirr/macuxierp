@@ -255,3 +255,20 @@ describe('CSOSN 900 sem pCredSN (caso do MEI)', () => {
     expect((r as { icms: object }).icms).not.toHaveProperty('v_cred_icms_sn');
   });
 });
+
+describe('ST: recusas até existir pauta e ajuste explícito da MVA (RN-FIS-05)', () => {
+  // `forcar` entra depois do parse do schema (que não aceita ajustar_mva nulo): simula o chamador que não passou pelo contrato.
+  const rodar = (r: Record<string, unknown>, interestadual = false, forcar: Record<string, unknown> = {}) =>
+    calcularIcmsItem({ item: item(), regra: { ...regra({ codigo: '10', aliquota_icms: 120000, mva_original: 400000, aliquota_interna_destino: 180000, ...r }), ...forcar } as ReturnType<typeof regra>, interestadual, ipi_na_bc: false });
+  it('RN-FIS-05: modBCST 0..3 e 5 (pauta, preço tabelado, lista) é recusado com CODIGO_NAO_SUPORTADO; 4 e não informado calculam por MVA', () => {
+    for (const m of [0, 1, 2, 3, 5]) expect(rodar({ mod_bc_st: m, mva_original: null })).toMatchObject({ ok: false, codigo: 'CODIGO_NAO_SUPORTADO' });
+    expect(rodar({ mod_bc_st: 4 })).toMatchObject({ ok: true, icms: { mod_bc_st: 4, v_bc_st: 140000 } });
+    expect(rodar({})).toMatchObject({ ok: true, icms: { mod_bc_st: 4 } });
+  });
+  it('RN-FIS-05: interestadual com ajustar_mva ausente/nulo e sem MVA ajustada é recusado (REGRA_INCOMPLETA); false explícito do contrato segue com a MVA original', () => {
+    expect(rodar({}, true, { ajustar_mva: null })).toMatchObject({ ok: false, codigo: 'REGRA_INCOMPLETA' });
+    expect(rodar({}, true, { ajustar_mva: undefined })).toMatchObject({ ok: false, codigo: 'REGRA_INCOMPLETA' });
+    expect(rodar({ ajustar_mva: false }, true)).toMatchObject({ ok: true, icms: { p_mva_st: 400000 } });
+    expect(rodar({ mva_ajustada: 500000 }, true, { ajustar_mva: null })).toMatchObject({ ok: true, icms: { p_mva_st: 500000 } });
+  });
+});
