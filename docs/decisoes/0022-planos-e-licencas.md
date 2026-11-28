@@ -53,7 +53,7 @@ Os adicionais vendidos somam ao teto do item:
 - `integracao_fdv`, nos planos que não a incluem, libera o módulo.
 
 Regras de contagem:
-- o usuário desativado (inativo) ou excluído não conta; o bloqueado por senha (RN-CORE-15) continua contando (premissa provisória a);
+- o usuário desativado (inativo) ou excluído não conta; o bloqueado por senha (RN-CORE-15) continua contando (regra a, decisão 138 A do Alexandre);
 - um perfil por usuário (RN-CORE-01), então uma conta ocupa no máximo uma licença;
 - o perfil marcado `nao_conta` no mapa não ocupa licença;
 - **carência do analista de implantação** (RN-CORE-09): o usuário com esse perfil não ocupa licença nos primeiros 60 dias, contados do `created_at` da conta (premissa provisória b); a partir do 61º dia, conta pelo tipo do mapa;
@@ -85,7 +85,7 @@ O tenant lê a própria assinatura e o histórico só sob RLS (`SELECT` para o `
   Ela vale no BKO (core) e no `/config` (`empresa_usuario_criar` e as demais funções da 0078).
 - **Na mesma transação** do insert ou update, quem grava chama `plataforma.licencas_do_tenant()`. A função é `SECURITY INVOKER`, roda sob RLS, faz `FOR UPDATE` na linha da assinatura e devolve, por item, o contratado (plano + adicionais) e o em uso. O `FOR UPDATE` serializa duas criações simultâneas, que assim nunca passam do limite. Nas funções `SECURITY DEFINER` do `/config`, a mesma conferência roda dentro da função, antes do insert.
 - **Recusa:** 422 com `codigo = 'LICENCAS_ESGOTADAS'` e `detalhes = { item, contratado, em_uso }`. A mensagem é "O plano da empresa não tem mais licenças de <item>. Fale com a Macuxi para ampliar." (texto final com o designer-ux; regra 125 B, sem rótulo no início). No banco, a recusa é SQLSTATE 22023 com o código no `hint`, como na ADR 0047.
-- **Teste vencido sem pagamento** (`teste_ate` no passado e `paga = false`): trava só a criação, com 422 `TESTE_VENCIDO`; não bloqueia o uso nem o login: nota, pedido e consulta continuam (premissa provisória c).
+- **Teste vencido sem pagamento** (`teste_ate` no passado e `paga = false`): trava só a criação, com 422 `TESTE_VENCIDO`; não bloqueia o uso nem o login: nota, pedido e consulta continuam (regra c, decisão 139 A do Alexandre).
 - **A trava nunca bloqueia quem já usa:** ela só olha a mudança pedida. Uma empresa acima do teto (por exemplo, por uma carência que venceu) continua usando tudo; só não cresce.
 - **Sem assinatura, não trava:** a empresa anterior aos planos segue como hoje até ganhar uma assinatura.
 - **Filial emissora:** marcar `emissora` é do módulo cadastros. Por isso, a conferência da filial é do modulo-cadastros (§9, pedido à parte). A contagem fica dentro da `licencas_do_tenant()`, que é infraestrutura do banco-dados, como a `tenant_modulo`. Nenhum módulo lê `cadastros.filial` direto (regra 1).
@@ -184,13 +184,15 @@ Ordem: E1 → E2 (banco e SDK em paralelo) → E3 (core e API) → E4 (telas) �
 2. **Tetos por plano:** usuários e filiais emissoras de cada plano do A, e se o D tem teto de filial. **PENDENTE.**
 3. **Mapa perfil → tipo de licença:** para cada perfil da RN-CORE-01 (administrador, gerente, faturista, fiscal, vendedor, leitura e analista de implantação), se ocupa `usuario` ou `nao_conta`. **PENDENTE.**
 
-## Premissas PROVISÓRIAS (decisão do PO, 28/11/2026, 07h13, Manaus; valem até a resposta do Alexandre)
-1. **(a) PROVISÓRIA:** o usuário bloqueado por senha continua ocupando licença. Só o usuário **desativado** libera a licença. Vai ao Alexandre na pergunta 134.
-2. **(b) PROVISÓRIA:** a carência de 60 dias do analista conta da criação da conta (`created_at`), e não do início da assinatura.
-3. **(c) PROVISÓRIA:** o teste vencido sem pagamento trava só os cadastros novos. Nota, pedido e consulta continuam. Vai ao Alexandre na pergunta 134.
-4. **(d) PROVISÓRIA:** o TOTP do superadmin fica obrigatório no momento em que a senha do `macuxierp_config` for criada (ADR 0012, emenda §7-A).
+## Regras decididas pelo Alexandre (28/11/2026, 07h19, Manaus, via PO)
+- **(a) REGRA, decisão 138 A:** o usuário bloqueado por senha ocupa licença. Só o usuário **desativado** (ou excluído) libera a licença.
+- **(c) REGRA, decisão 139 A:** o teste vencido sem pagamento trava só os cadastros novos. Nota, pedido e consulta continuam.
 
-Se a resposta do Alexandre mudar (a) ou (c), muda a `licencas_do_tenant()` e a `conferirNovoUsuario`, por emenda desta ADR. Preços e tetos seguem PENDENTES (seção acima).
+## Premissas PROVISÓRIAS (decisão do PO, 28/11/2026, 07h13, Manaus; valem até a resposta do Alexandre)
+- **(b) PROVISÓRIA:** a carência de 60 dias do analista conta da criação da conta (`created_at`), e não do início da assinatura.
+- **(d) PROVISÓRIA:** o TOTP do superadmin fica obrigatório no momento em que a senha do `macuxierp_config` for criada (ADR 0012, emenda §7-A).
+
+Se a resposta do Alexandre mudar (b), muda a `licencas_do_tenant()` e a `conferirNovoUsuario`, por emenda desta ADR; se mudar (d), muda a emenda §7-A da ADR 0012. Preços, tetos e o mapa perfil → tipo seguem PENDENTES (seção acima).
 
 Também valem, sem pergunta aberta:
 - o administrador do tenant só vê a ficha, e quem troca de plano é só o superadmin;
