@@ -13,3 +13,13 @@ export function ehEmailEmUso(e: unknown): boolean {
   const { constraint, message } = e as { constraint?: unknown; message?: unknown };
   return constraint === INDICE_EMAIL_GLOBAL || (typeof message === 'string' && (message.includes(INDICE_EMAIL_GLOBAL) || message.includes('email_em_uso')));
 }
+
+/** Índice único do `external_id` do usuário (0001: `preparar_tabela` cria `<tabela>_external_id_uq`, com as linhas excluídas). */
+const INDICE_EXTERNAL_ID_USUARIO = 'usuario_external_id_uq';
+
+/** 23505 do `external_id` de usuário já usado (inclusive por usuário excluído, que `usuarioPorExternalId` não enxerga). */
+export function ehExternalIdEmUso(e: unknown): boolean {
+  if (sqlstate(e) !== '23505') return false;
+  const { constraint, message } = e as { constraint?: unknown; message?: unknown };
+  return constraint === INDICE_EXTERNAL_ID_USUARIO || (typeof message === 'string' && message.includes(INDICE_EXTERNAL_ID_USUARIO));
+}

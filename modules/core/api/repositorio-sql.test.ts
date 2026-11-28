@@ -28,6 +28,16 @@ describe('repositório SQL do core', () => {
     }
   });
 
+  it('RN-CORE-05: 23505 do índice do external_id vira 409, sem eco do valor; outro erro segue como veio', async () => {
+    const falha = (e: unknown) => ({ consultar: async () => { throw e; } }) as never;
+    const novo = { id: 'u', nome: 'N', email: 'e@x.test', perfil: 'leitura' as const, filial_ids: [], ativo: true, external_id: 'ext-secreto', senha_hash: '$argon2id$x' };
+    const r = new RepositorioCoreSql();
+    const e = await r.criarUsuario(falha({ code: '23505', constraint: 'usuario_external_id_uq' }), novo).catch((x: unknown) => x);
+    expect(e).toMatchObject({ status: 409 });
+    expect(JSON.stringify(e)).not.toContain('ext-secreto');
+    await expect(r.criarUsuario(falha({ code: '23505', constraint: 'outro_uq' }), novo)).rejects.toMatchObject({ code: '23505' });
+  });
+
   it('RLS: as inserções usam plataforma.tenant_atual() e nenhuma recebe tenant_id por parâmetro', async () => {
     const { tx, chamadas } = gravador();
     const r = new RepositorioCoreSql();
