@@ -34,6 +34,7 @@ const FILTRO_INATIVOS: FiltroTela = { chave: 'inativos', rotulo: 'Situação', t
 
 const SIM_NAO = [{ valor: 'true', rotulo: 'Sim' }, { valor: 'false', rotulo: 'Não' }] as const;
 
+const inicioLinhaDe = (c: CampoEdicao): boolean => (c as { inicioLinha?: boolean }).inicioLinha === true;
 const colunasDe = (c: CampoEdicao): ColunasCampo | undefined => (c as { colunas?: ColunasCampo }).colunas;
 
 /** Campo do descritor do módulo no campo do formulário genérico (dinheiro digita como número, em reais; sim/não vira seleção). */
@@ -43,6 +44,8 @@ export const paraCampo = (c: CampoEdicao): CampoFormulario => ({
   ...(c.tipo === 'booleano' ? { opcoes: SIM_NAO } : c.opcoes ? { opcoes: c.opcoes } : {}), ...(c.mostrarSe ? { mostrarSe: c.mostrarSe } : {}),
   // T-0135: `colunas` chega do cadastros num PR do dono; a leitura tolerante compila com e sem o campo no tipo.
   ...(colunasDe(c) ? { colunas: colunasDe(c) as ColunasCampo } : {}),
+  // v0.3.31: `inicioLinha` (opcional, do cadastros) força começar linha nova; leitura tolerante como `colunas`.
+  ...(inicioLinhaDe(c) ? { inicioLinha: true } : {}),
 });
 const camposDe = (campos: (perfil: Perfil, modo: Modo) => CampoEdicao[], modo: Modo) => (perfil: Perfil): readonly CampoFormulario[] => campos(perfil, modo).map(paraCampo);
 
