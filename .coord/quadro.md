@@ -1,7 +1,7 @@
 # Quadro — Macuxi ERP
 
 > Dono: gerente-projetos. Status: aberta → em_andamento → em_teste → em_revisao → concluida (ou bloqueada). Horários de Manaus.
-> Fase atual: **v0.3.26 em produção** (27/11, 18h56: tag v0.3.26 → 18790b6; publicar 46079081310, issue #879). Hoje à noite (decisão 60 B): **v0.3.27** (login único, chave das actions e BUILD_ID) ~23h40–00h00 → **v0.3.28** (marca MC e Início) ~01h00 → **v0.3.29** (0078, Usuários e Config v4) ~03h20. Ver a seção "27/11 noite".
+> Fase atual: **v0.3.26 em produção**; **v0.3.28** (login único + conserto do laço da troca) com liberar verde (#895, tag → 28fa735), publicando. A v0.3.27 (a4c05fc) voltou atrás sozinha às 22h50 e não vai ao ar (decisão 107 A). Seguem **v0.3.29** (marca, Início, cadastros, menu) ~01h40 e **v0.3.30** (0078, Usuários, Config v4, T-0113) ~04h00. Ver "28/11 madrugada".
 > Empresa piloto: **thathyany** (R-20261120-231848-gerente-projetos). Biblioteca NF-e: ADR 0002 opção A (R-20261120-231934-gerente-projetos).
 
 | Tarefa | Título | Fase | Dono | Status | Onde |
@@ -104,14 +104,25 @@
 | [T-0110](tarefas/T-0110.md) | Recebidos do FDV no Log de clientes, sem a tela Clientes recebidos | v0.3.16 | modulo-integracao-fdv | em_revisao | R-20261125-153839; 21 A; #713, #717, #718, #724 |
 | [T-0111](tarefas/T-0111.md) | Senha: conta bloqueada, Recuperar a senha, temporária que desbloqueia e e-mail igual ao do FDV | v0.3.16 | engenheiro-software | em_andamento | R-20261125-215303; 22 B; #705, #710, #715, #716, #722, #725, #727, #728; #732 e PR da testes em andamento |
 | [T-0112](tarefas/T-0112.md) | Prazos que não chegam ao FDV: parcelas_dias em texto e prazo médio fora da faixa | v0.3.26 | modulo-integracao-fdv | concluida | 24 A (R-20261126-184513); 0069 do banco; RN-CAD-15 no cadastros; hotfix do Hub na v0.3.26: #875 → f73c17b e #876 → 5fadaaa |
-| [T-0113](tarefas/T-0113.md) | Razão social e IE propagando para a filial padrão e para o FDV (decisão do PO, 27/11 ~10h37) | v0.3.29 | modulo-core | aberta | com o PR do core da T-0117 |
-| [T-0114](tarefas/T-0114.md) | Login único na raiz com destino pelo perfil (42 A), chave das actions e BUILD_ID; absorve a T-0083 | v0.3.27 | engenheiro-apps | em_andamento | #884 → bb71764 (Dockerfile); #886 (login na raiz); #887 (governança, autorizo do Alexandre); sdk ROTA "/" em seguida; render-telas do testes antes do liberar |
+| [T-0113](tarefas/T-0113.md) | Razão social e IE propagando para a filial padrão e para o FDV (decisão do PO, 27/11 ~10h37) | v0.3.30 | modulo-core | aberta | com o PR do core da T-0117 |
+| [T-0114](tarefas/T-0114.md) | Login único na raiz com destino pelo perfil (42 A), chave das actions e BUILD_ID; absorve a T-0083 | v0.3.28 | engenheiro-apps | em_andamento | #884 → bb71764 (Dockerfile); #886 (login na raiz); #887 (governança, autorizo do Alexandre); sdk ROTA "/" em seguida; render-telas do testes antes do liberar |
 | [T-0115](tarefas/T-0115.md) | Aviso de versão nova, no-store e 4xx com mensagem; 422 do superadmin (#874) | v0.3.26 | engenheiro-apps | concluida | #873 → 5792aca, #874 → 08611ab, #877 → 18790b6; no ar 18h56 |
-| [T-0116](tarefas/T-0116.md) | Config v4 do superadmin (decisões 40, 44, 45, 46, 52 e 53) | v0.3.29 | engenheiro-apps | em_andamento | simulação aprovada 445e459 (designer-ux/T-0101-config-simulacao); PR ~02h15, depois do shell e do core |
-| [T-0117](tarefas/T-0117.md) | Usuários na Config e no BKO do tenant, Inativar × Excluir (RN-CORE-01, RN-CORE-17), migração 0078 | v0.3.29 | modulo-core | em_andamento | #883 (0078, banco-dados, 🟢 do engenheiro); #885 (ações do SDK); PR do core ~01h00; empresa.mjs (engenheiro) |
-| [T-0118](tarefas/T-0118.md) | Marca no padrão do FDV, MC-0201 a MC-0213 (decisões 51 a 54) | v0.3.28 | engenheiro-apps | em_andamento | #878 → fcd7b3b e #882 → 6a8fb9b (auditoria); #881 (tokens, designer-ux, pronto); shell agente/v0328-web-shell-marca; descritores do pedido, integracao-fdv e cadastros |
-| [T-0119](tarefas/T-0119.md) | Início mínimo do BKO (decisões 58 e 59, MC-0213) | v0.3.28 | engenheiro-apps | em_andamento | simulação d72c974; branch agente/v0328-web-inicio (261dd01), validação da marca em curso |
-| [T-0120](tarefas/T-0120.md) | Workflow producao-diagnostico, só leitura, com consultas fixas e sem dado pessoal; C-5 como comando, se couber | v0.3.27 ou v0.3.28 | engenheiro-software | aberta | governança (.github): autorizo do Alexandre e merge pelo Gerente Sênior; previsão pedida ao dono |
+| [T-0116](tarefas/T-0116.md) | Config v4 do superadmin (decisões 40, 44, 45, 46, 52 e 53) | v0.3.30 | engenheiro-apps | em_andamento | simulação aprovada 445e459 (designer-ux/T-0101-config-simulacao); PR ~02h15, depois do shell e do core |
+| [T-0117](tarefas/T-0117.md) | Usuários na Config e no BKO do tenant, Inativar × Excluir (RN-CORE-01, RN-CORE-17), migração 0078 | v0.3.30 | modulo-core | em_andamento | #883 (0078, banco-dados, 🟢 do engenheiro); #885 (ações do SDK); PR do core ~01h00; empresa.mjs (engenheiro) |
+| [T-0118](tarefas/T-0118.md) | Marca no padrão do FDV, MC-0201 a MC-0213 (decisões 51 a 54) | v0.3.29 | engenheiro-apps | em_andamento | #878 → fcd7b3b e #882 → 6a8fb9b (auditoria); #881 (tokens, designer-ux, pronto); shell agente/v0328-web-shell-marca; descritores do pedido, integracao-fdv e cadastros |
+| [T-0119](tarefas/T-0119.md) | Início mínimo do BKO (decisões 58 e 59, MC-0213) | v0.3.29 | engenheiro-apps | em_andamento | simulação d72c974; branch agente/v0328-web-inicio (261dd01), validação da marca em curso |
+| [T-0120](tarefas/T-0120.md) | Workflow producao-diagnostico, só leitura, com consultas fixas e sem dado pessoal; C-5 como comando, se couber | v0.3.29 | engenheiro-software | em_teste | #891 → 15cc146 (script e SQL, conferido pelo banco-dados); #892 → a29dbda (workflow, autorizo 104 do Alexandre); primeiro disparo depois de o Alexandre criar o environment DIAGNOSTICO (PROD_HOST, PROD_USER, PROD_SSH_KEY, PROD_SSH_KNOWN_HOSTS) |
+| T-0121 | Conteúdo em largura total (sem max-width de 1100 px; h1 + p sem margem) | v0.3.29 | engenheiro-apps | em_andamento | no shell agente/v0328-web-shell-marca |
+| T-0122 | (resolvida pela T-0116) | v0.3.30 | engenheiro-apps | concluida | absorvida pela Config v4 |
+| T-0123 | Cadastros no BKO: Estoque, Condições, Equipe e carteira, Tabelas oficiais e itens da tabela de preço | v0.3.31 | engenheiro-apps | aberta | ocultas no menu até lá (decisão do PO) |
+| T-0124 | Exportar meus dados (LGPD) com a chave S3 própria do ERP (decisão 90 B) | v0.3.31 | modulo-core | aberta | ~3h11; sem os secrets S3 a publicação segue e o item fica oculto; o XML autorizado continua no banco |
+| T-0125 | Página Empresa no BKO (o item abre o Ambiente fiscal até lá) | v0.3.31 | modulo-core | aberta | |
+| T-0126 | Editar pedido no BKO | v0.3.31 | modulo-pedido | aberta | nenhuma tela linka o Editar até lá |
+| T-0127 | Regras fiscais no BKO e catálogo regra_base | v0.3.31 | modulo-fiscal | aberta | banco ~3h17, fiscal ~7h; desenho aprovado |
+| T-0128 | DIFAL e acabamento do cálculo (RN-FIS-05) | v0.3.31 | modulo-fiscal | aberta | hoje bloqueado fail-closed (icms.ts:109), sem reservar número |
+| T-0129 | Formulário só leitura sem a permissão de editar (campo `editar` no descritor; 403 com mensagem do cadastros) | v0.3.30 | engenheiro-software | aberta | 🟡 do shell de Clientes (27/11 20h38) |
+| T-0130 | Filiais no cadastro de usuário do /config (GET de filiais por empresa na plataforma) | v0.3.31 | modulo-core | aberta | campo oculto até lá |
+| T-0131 | Integrações da Config: contadores Enviados/Aceitos/Gravados, histórico de envios por ligação e cabeçalho do Contato só leitura | v0.3.31 | modulo-integracao-fdv | aberta | divergências de contrato da Config v4 |
 | [T-0055](tarefas/T-0055.md) | Catálogo: atributos por empresa e compatibilidade por veículo (FDV e ERP; nova versão de produto no Hub + ADR) | backlog | engenheiro-software | backlog | "BACKLOG" do Alexandre (23/11 ~12h20, pelo PO); sem data, depois da v0.3.4 e da T-0054; o lado do FDV vai ao PO do FDV |
 | T-0079 | Cadeia ICP-Brasil obrigatória para o A1 em produção | backlog | engenheiro-software | backlog | "BACKLOG" do Alexandre (23/11 22h17, pelo PO); proposta (C) da brecha do A1 autoassinado aceito no upload |
 | T-0113 | API pública e documentada de saída do ERP para qualquer força de vendas (lê cadastros, envia pedidos) | backlog | engenheiro-software | backlog | "49) A backlog" do Alexandre (27/11 ~10h22, pelo PO); docs/backlog.md |
@@ -215,6 +226,14 @@ Gerente ativo: session_019xHEXorMcUM7hAvrbsGwJd. PO: session_019xHEXqMSs1piLUgLS
 - Entraram depois do #301: #302 → a902d3b, #303 → 98f306e, #304 → c547f5d, #305 → b696132, #306 → e6d2903, #307 → 7aec401, #309 → ae55aa9 e #311 → 1b1587e (08h55).
 - Entraram depois do #286: #287, #288, #289, #290, #291, #292, #293, #294, #295, #296, #297, #298 e #299.
 - Entraram: #279 → 818e4ad, #284 → 2047e0b, #285 → 30fe879 e #275 → 41b39c7. O #273 (quadro de 22/11, 07h38) foi fechado e substituído por este.
+
+## 28/11 madrugada — v0.3.27 volta atrás, v0.3.28 sai (Manaus)
+- **v0.3.27 (a4c05fc):** suíte verde; liberar #893; publicar 46099454260 voltou atrás sozinho às 22h50: o laço da troca exigia 200 em /login, que responde 308 desde o #886. Produção ficou na v0.3.26, saudável. A tag não vai ao ar.
+- **Decisão 107 A:** numeração nova. v0.3.28 = v0.3.27 + conserto do laço (#894 → 28fa735, 5 casos novos com 308 em /login e 200 em "/"); v0.3.29 = a antiga v0.3.28; v0.3.30 = a antiga v0.3.29; v0.3.31 e v0.3.32 = as antigas v0.3.30 e v0.3.31. Títulos dos PRs abertos trocados (#881 → v0.3.29; #883 e #885 → v0.3.30).
+- **v0.3.28:** suíte completa na sessão no 28fa735, Node 24.22.3, sem cache: pacotes 5827/0, db 674/0, tests/ 1823/0, scripts 348/0, deploy 71/0, render 41/0; liberar 46103760930 → #895.
+- **Decisões 85 A, 89 A, 90 B e 104:** environment DIAGNOSTICO; v0.3.30 = T-0116, T-0117 e T-0113; T-0124 com a chave própria do ERP; autorizo do #892.
+- **Pendências de texto:** RN-CORE-17 no doc 03 com o PR do core; curl -f em /login no producao-publicar.yml:365 (passa com 308) vai num PR de governança; 2 RD do corretor no #894 num PR seguinte do engenheiro; a regra de aprovação do deploy no CLAUDE.md e na skill agente-po fica com o Alexandre.
+- Próxima livre **T-0132**; próxima migração **0079**.
 
 ## 27/11 noite — v0.3.26 no ar, v0.3.27 a v0.3.29 (Manaus)
 - **v0.3.26 no ar às 18h56** (tag → 18790b6; publicar 46079081310; issue #879): #873, #874, #875, #876 e #877. Troca sem 000 nem 5xx; worker de pé; suíte completa verde nas rodadas do engenheiro e do testes.
