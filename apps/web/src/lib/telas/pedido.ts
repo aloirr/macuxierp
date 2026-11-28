@@ -2,19 +2,19 @@
  * Adaptador do pedido: transforma os descritores de `@macuxierp/pedido/web` (lista, detalhe, ações e formulário) nos tipos do
  * renderizador genérico. Nenhuma regra de negócio aqui: pendências, ações por perfil, motivos e validação vêm do módulo.
  */
-import { formatarCentavos } from '@macuxierp/platform-sdk/formatar';
+import { formatarCentavos, interpretarCentavos, interpretarQuantidade } from '@macuxierp/platform-sdk/formatar';
 import {
-  FILTROS_TELA, ITEM_VAZIO, ROTULO_BUSCA, ROTULO_STATUS, acoesDoPedido, avisoDoMotivo, cabecalhoDoPedido, calcularTotal as totalDoModulo, colunasDaTela, linhaDaTela, linhasDeHistorico, linhasDeItens,
+  FILTROS_TELA, ITEM_VAZIO, ROTULO_BUSCA, ROTULO_STATUS, acoesDoPedido, avisoDoMotivo, cabecalhoDoPedido, edicaoDoPedido, falhaDaEdicao, rotaDeEdicao, calcularTotal as totalDoModulo, colunasDaTela, linhaDaTela, linhasDeHistorico, linhasDeItens,
   linhasDePendencias, motivosDaDecisao, totalDoFormulario, novaChaveDoFormulario, paginaPedidos, resumoDaDecisao, textoCentavos, tituloDaColuna, validarAprovacao, validarFormulario, validarMotivo,
   type DecisaoComMotivo, type ItemListaPedido,
 } from '@macuxierp/pedido/web';
 import { CatalogoMotivos, Pedido, type StatusPedido } from '@macuxierp/pedido/contracts';
 import type { ItemLinha } from '@macuxierp/ui';
 import { primeiroErro } from '../descritor/formulario';
-import type { AcaoVista, DetalheVista, EntradaAcao, ItemFormulario, ResultadoAcao, TelaDescrita, TelaDetalhe, TelaFormulario, SeloVista, TelaLista, ValoresFormulario } from '../descritor/tipos';
+import type { AcaoDaLinha, AcaoVista, DetalheVista, EntradaAcao, ItemFormulario, ResultadoAcao, TelaDescrita, TelaDetalhe, TelaFormulario, SeloVista, TelaLista, ValoresFormulario } from '../descritor/tipos';
 
 const BASE = '/v1/pedido/pedidos';
-const [LISTA, NOVO, DETALHE] = ['/pedido/pedidos', '/pedido/pedidos/novo', '/pedido/pedidos/:id'] as const;
+const [LISTA, NOVO, DETALHE, EDITAR] = ['/pedido/pedidos', '/pedido/pedidos/novo', '/pedido/pedidos/:id', '/pedido/pedidos/:id/editar'] as const;
 
 const TOM: Readonly<Record<StatusPedido, 'ok' | 'aviso' | 'erro' | 'neutro'>> = {
   recebido: 'neutro', em_analise: 'aviso', aprovado: 'ok', recusado: 'erro', faturado_parcial: 'ok', faturado: 'ok', cancelado: 'neutro',
@@ -22,6 +22,20 @@ const TOM: Readonly<Record<StatusPedido, 'ok' | 'aviso' | 'erro' | 'neutro'>> = 
 
 /** Colunas numéricas da lista: à direita, com algarismos tabulares (ColunaLista ainda não traz o tipo). */
 const TIPO_DA_COLUNA: Readonly<Record<string, 'numero' | 'dinheiro' | 'data'>> = { numero: 'numero', total_centavos: 'dinheiro', pendencias: 'numero', emitido_em: 'data' };
+
+/** "Editar" é só navegação para a tela de edição; quem pode (perfil, status e origem) é do módulo (`acoesDoPedido().editar`, RN-PED-02). */
+const acaoEditar = (id: string, quem: Parameters<typeof acoesDoPedido>[0], p: { status: StatusPedido; origem: Pedido['origem'] }): AcaoVista | null =>
+  acoesDoPedido(quem, { ...p, pendencias: [] }).editar
+    ? { id: 'editar', rotulo: 'Editar', metodo: 'PUT', caminho: `${BASE}/${id}`, entrada: 'nenhum', rota: rotaDeEdicao(id) }
+    : null;
+
+/** Coluna "Ações" da lista: só o link Editar (sem escrita nenhuma neste executor). */
+const EDITAR_NA_LINHA: AcaoDaLinha = {
+  acao: (l, perfil) => acaoEditar(String(l.id), perfil, { status: l.status as StatusPedido, origem: l.origem as Pedido['origem'] }),
+  validarAcao: () => ({ ok: true }),
+  escritas: [],
+  novaChave: novaChaveDoFormulario,
+};
 
 export const LISTA_PEDIDOS: TelaLista = {
   tipo: 'lista',
@@ -36,6 +50,7 @@ export const LISTA_PEDIDOS: TelaLista = {
     return TOM[status] ? { status: [{ texto: ROTULO_STATUS[status], tom: TOM[status] }] } : {};
   },
   novo: { rota: NOVO, rotulo: 'Novo pedido', criar: 'pedido.pedido.lancar' },
+  acaoDaLinha: EDITAR_NA_LINHA,
   rotaDaLinha: (l) => `/pedido/pedidos/${String(l.id)}`,
   rotuloDaLinha: (l) => `Abrir pedido ${String(l.numero)}`,
 };
@@ -72,6 +87,8 @@ export function vistaDoPedido(p: Pedido, perfil: Parameters<typeof acoesDoPedido
   if (a.recusar) acoes.push(decisaoComMotivo('recusar', 'Recusar'));
   if (a.cancelar) acoes.push(decisaoComMotivo('cancelar', 'Cancelar pedido'));
   if (a.revalidar) acoes.push({ id: 'revalidar', rotulo: 'Revalidar', metodo: 'POST', caminho: caminho('revalidar'), entrada: 'nenhum' });
+  const editar = a.editar ? acaoEditar(p.id, perfil, p) : null;
+  if (editar) acoes.push(editar);
 
   const decisao = resumoDaDecisao(p, fuso);
   return {
@@ -149,6 +166,13 @@ const calcularTotal = (i: ItemLinha): number => {
     return 0;
   }
 };
+/** Inverso de `paraTexto` (abre a edição): quantidade em unidades e preço e desconto em centavos, lidos pelo SDK; texto ilegível vira 0 e a validação do módulo acusa. */
+const daTexto = (i: ItemFormulario, chave: string): ItemLinha => ({
+  chave, produtoId: i.produto_id || null,
+  quantidade: (interpretarQuantidade(i.quantidade) ?? 0) / 10_000,
+  precoUnitarioCentavos: interpretarCentavos(i.preco) ?? 0,
+  descontoCentavos: i.desconto ? (interpretarCentavos(i.desconto) ?? 0) : 0,
+});
 /** Texto que o módulo valida: "1,5" e "12,50" (o módulo interpreta; 0 vira texto e falha na validação do módulo). */
 const paraTexto = (i: ItemLinha): ItemFormulario => ({
   produto_id: i.produtoId ?? '',
@@ -159,7 +183,7 @@ const paraTexto = (i: ItemLinha): ItemFormulario => ({
 
 const itens = (linhas: readonly ItemFormulario[]) => linhas.map((i) => ({ produto_id: i.produto_id, quantidade: i.quantidade, preco: i.preco, desconto: i.desconto ?? '' }));
 const formulario = (v: ValoresFormulario, linhas: readonly ItemFormulario[]) => ({
-  filial_id: v.filial_id ?? '', cliente_id: v.cliente_id ?? '', condicao_pagamento_id: v.condicao_pagamento_id ?? '', endereco_entrega_id: '', observacao: v.observacao ?? '', itens: itens(linhas),
+  filial_id: v.filial_id ?? '', cliente_id: v.cliente_id ?? '', condicao_pagamento_id: v.condicao_pagamento_id ?? '', endereco_entrega_id: v.endereco_entrega_id ?? '', observacao: v.observacao ?? '', itens: itens(linhas),
 });
 
 export const NOVO_PEDIDO: TelaFormulario = {
@@ -170,7 +194,7 @@ export const NOVO_PEDIDO: TelaFormulario = {
     { nome: 'condicao_pagamento_id', rotulo: 'Condição de pagamento', tipo: 'cadastro', fonte: '/v1/cadastros/condicoes-pagamento' },
     { nome: 'observacao', rotulo: 'Observação', tipo: 'area' },
   ],
-  itens: { fonte: '/v1/cadastros/produtos', rotuloProduto: 'Produto', novoItem, calcularTotal, erroItem, paraTexto, formatarCentavos, totalTexto: (linhas) => totalDoFormulario(linhas.map((l) => ({ ...l, desconto: l.desconto ?? '' }))).texto },
+  itens: { fonte: '/v1/cadastros/produtos', rotuloProduto: 'Produto', novoItem, calcularTotal, erroItem, paraTexto, daTexto, formatarCentavos, totalTexto: (linhas) => totalDoFormulario(linhas.map((l) => ({ ...l, desconto: l.desconto ?? '' }))).texto },
   validar: (v, linhas) => {
     const r = validarFormulario(formulario(v, linhas));
     return r.ok ? {} : r.erros;
@@ -187,5 +211,29 @@ export const NOVO_PEDIDO: TelaFormulario = {
   novaChave: novaChaveDoFormulario,
 };
 
+/**
+ * Editar pedido (T-0126, RF-PED-02): o mesmo formulário do "Novo", aberto com o pedido (GET), itens preenchidos e `PUT /pedidos/:id`
+ * com `If-Match` = `updated_at`. Versão velha (412 ou 409) e pedido fora de análise (422 RN-PED-02) pedem recarregar; o texto é do módulo.
+ */
+export const EDITAR_PEDIDO: TelaFormulario = {
+  ...NOVO_PEDIDO,
+  edicao: {
+    metodo: 'PUT',
+    ler: (id) => `${BASE}/${encodeURIComponent(id)}`,
+    abrir: (corpo) => {
+      const p = Pedido.parse(corpo);
+      const { formulario: f, versao } = edicaoDoPedido(p);
+      return {
+        valores: { filial_id: f.filial_id, cliente_id: f.cliente_id, condicao_pagamento_id: f.condicao_pagamento_id, endereco_entrega_id: f.endereco_entrega_id, observacao: f.observacao },
+        original: p, versao, itens: f.itens,
+      };
+    },
+    montarPatch: () => null, // PUT: o corpo inteiro vem de `montar`
+    voltarPara: (id) => `/pedido/pedidos/${id}`,
+    rotuloRecarregar: 'Recarregar pedido',
+    falha: (r) => falhaDaEdicao({ status: r.status ?? (r.desatualizado ? 412 : 0), codigo: r.codigo ?? '', message: r.mensagem }),
+  },
+  enviar: 'Salvar alterações',
+};
 
-export const TELAS_PEDIDO: Readonly<Record<string, TelaDescrita>> = { [LISTA]: LISTA_PEDIDOS, [NOVO]: NOVO_PEDIDO, [DETALHE]: DETALHE_PEDIDO };
+export const TELAS_PEDIDO: Readonly<Record<string, TelaDescrita>> = { [LISTA]: LISTA_PEDIDOS, [NOVO]: NOVO_PEDIDO, [EDITAR]: EDITAR_PEDIDO, [DETALHE]: DETALHE_PEDIDO };

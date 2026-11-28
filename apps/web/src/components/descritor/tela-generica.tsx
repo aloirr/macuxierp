@@ -7,7 +7,7 @@ import { recomecarLista } from '@macuxierp/platform-sdk/listas';
 import type { TelaDescrita } from '@/lib/descritor/tipos';
 import { z } from 'zod';
 import { DetalheGenerico } from './detalhe-generico';
-import { FormularioGenerico } from './formulario-generico';
+import { FormularioGenerico, type Aberto } from './formulario-generico';
 import { ListaGenerica } from './lista-generica';
 import { TEXTO_SEM_PERMISSAO } from '@/lib/telas/comum';
 import { FalhaIndisponivel } from '@/components/falha-indisponivel';
@@ -60,7 +60,7 @@ export async function TelaGenerica({ tela, titulo, rotaDaPagina, rota, params, b
     const todos = tela.camposDoPerfil?.(perfil) ?? tela.campos;
     const campos = todos.filter((c) => c.tipo === 'cadastro' && c.fonte);
     // Edição: abre com o registro (valores iniciais e original para o diff do PATCH); sem registro, 404.
-    let aberto: { valores: Readonly<Record<string, string>>; original: unknown; id: string } | undefined;
+    let aberto: Aberto | undefined;
     if (tela.edicao) {
       const id = params.id ?? '';
       if (!UUID.safeParse(id).success) notFound();

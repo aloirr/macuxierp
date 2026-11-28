@@ -38,7 +38,7 @@ const DATA = '2026-11-21';
 const EMITIDA = '2026-11-21T18:00:00.000Z';
 const CHAVE = '13261112345678000199550010000001231876543210';
 /** NCMs da massa: cada um casa com uma regra de ICMS só (prefixo), e o IPI tem regra só nos dois primeiros. */
-const NCM = { st: '22021000', stZero: '85044000', semSt: '33049900' } as const;
+const NCM = { st: '22021000', stZero: '85044000', semSt: '33049900', mvaNula: '39241000' } as const;
 const NORMAL: EmitenteFiscal = { uf: 'AM', crt: 3, regime_pis_cofins: 'cumulativo' };
 const INDUSTRIAL: EmitenteFiscal = { ...NORMAL, industrial_ipi: true };
 /** Valor × regra (Manual da NF-e, o IPI compõe a BC-ST): (1000,00 + 50,00 de IPI) × 1,40 = 1470,00; 18% × 1470,00 − 18% × 1000,00 = 264,60 − 180,00 = 84,60. */
@@ -52,27 +52,31 @@ describe.skipIf(!PG_DISPONIVEL)('T-0132 (63 A): ICMS-ST e IPI do fiscal ao Hub d
   let A: string;
   const admin = async (sql: string, p: unknown[] = []) => (await efemero.admin.query(sql, p)).rows;
   const FONTE = `'convenio', 'Convênio ICMS 142/2018', '2026.1', '2026-01-01'`;
-  /** Regra de ICMS (com PIS/COFINS na linha única, regime cumulativo). */
-  const regraIcms = (ncm: string, o: { codigo: string; mva?: number; aliqDestino?: number }) =>
+  /**
+   * Regra de ICMS (com PIS/COFINS na linha única, regime cumulativo). Desde a 0082 a coluna `ajustar_mva` não tem default
+   * (nulo = "não informado", RN-FIS-05, T-0127): cada regra diz o valor de que o caso precisa.
+   */
+  const regraIcms = (ncm: string, o: { codigo: string; mva?: number; aliqDestino?: number; ajustarMva: boolean | null }) =>
     admin(
       `INSERT INTO fiscal.regra_tributaria (tenant_id, tributo, ncm_prefixo, codigo, aliquota_icms, mva_original, aliquota_interna_destino, ajustar_mva,
          cst_pis, aliquota_pis, cst_cofins, aliquota_cofins, fonte_tipo, fonte_referencia, versao, vigencia_inicio)
-       VALUES ($1, 'icms', $2, $3, 180000, $4, $5, false, '01', 6500, '01', 30000, ${FONTE})`,
-      [A, ncm, o.codigo, o.mva ?? null, o.aliqDestino ?? null],
+       VALUES ($1, 'icms', $2, $3, 180000, $4, $5, $6, '01', 6500, '01', 30000, ${FONTE})`,
+      [A, ncm, o.codigo, o.mva ?? null, o.aliqDestino ?? null, o.ajustarMva],
     );
+  /** Regra de IPI: sem ST, `ajustar_mva` não se aplica e vai nulo explícito (sem default desde a 0082). */
   const regraIpi = (ncm: string, cst: string, aliquota: number | null) =>
     admin(
-      `INSERT INTO fiscal.regra_tributaria (tenant_id, tributo, ncm_prefixo, cst_ipi, aliquota_ipi, c_enq, fonte_tipo, fonte_referencia, versao, vigencia_inicio)
-       VALUES ($1, 'ipi', $2, $3, $4, '999', ${FONTE})`,
+      `INSERT INTO fiscal.regra_tributaria (tenant_id, tributo, ncm_prefixo, cst_ipi, aliquota_ipi, c_enq, ajustar_mva, fonte_tipo, fonte_referencia, versao, vigencia_inicio)
+       VALUES ($1, 'ipi', $2, $3, $4, '999', NULL, ${FONTE})`,
       [A, ncm, cst, aliquota],
     );
 
   /** fiscal.calculo@1 de verdade: lê as regras do tenant no banco (RLS) e calcula (modo padrão = emissão). */
-  const calcular = (emitente: EmitenteFiscal, itens: ItemMassa[]) => {
+  const calcular = (emitente: EmitenteFiscal, itens: ItemMassa[], ufDestino = 'AM') => {
     const calc = criarCalculoFiscal({ emitentes: { emitente: async () => emitente, producaoPropria: async () => new Set<string>() } });
     const entrada: EntradaCalculoDoFiscal = {
       filial_id: randomUUID(), data_emissao: DATA,
-      pedido: { pedido: { cliente_retrato: { tipo_pessoa: 'PJ', ind_ie_dest: '1', endereco: { uf: 'AM' } } } },
+      pedido: { pedido: { cliente_retrato: { tipo_pessoa: 'PJ', ind_ie_dest: '1', endereco: { uf: ufDestino } } } },
       itens: itens.map((i) => ({
         sequencia: i.sequencia, produto_id: `p${i.sequencia}`, ncm: i.ncm, origem: '0', quantidade: 1, preco_unitario_centavos: i.valor,
         valor_centavos: i.valor, desconto_centavos: 0, frete_centavos: 0, outras_centavos: 0,
@@ -123,9 +127,10 @@ describe.skipIf(!PG_DISPONIVEL)('T-0132 (63 A): ICMS-ST e IPI do fiscal ao Hub d
     efemero = await criarBancoEfemero();
     app = efemero.banco('macuxierp_app');
     A = await criarTenant(efemero.admin, 'st-ipi-63a', ['fiscal']);
-    await regraIcms(NCM.st, { codigo: '10', mva: 400000, aliqDestino: 180000 }); // MVA 40%: ST = 18% × 1,4 × v − 18% × v
-    await regraIcms(NCM.stZero, { codigo: '10', mva: 0, aliqDestino: 180000 }); // MVA 0 e mesma alíquota: ST calculado = 0
-    await regraIcms(NCM.semSt, { codigo: '00' });
+    await regraIcms(NCM.st, { codigo: '10', mva: 400000, aliqDestino: 180000, ajustarMva: false }); // MVA 40%: ST = 18% × 1,4 × v − 18% × v
+    await regraIcms(NCM.stZero, { codigo: '10', mva: 0, aliqDestino: 180000, ajustarMva: false }); // MVA 0 e mesma alíquota: ST calculado = 0
+    await regraIcms(NCM.semSt, { codigo: '00', ajustarMva: false });
+    await regraIcms(NCM.mvaNula, { codigo: '10', mva: 400000, aliqDestino: 180000, ajustarMva: null }); // ST sem a decisão de ajustar a MVA
     await regraIpi(NCM.st, '50', 50000); // 5%
     await regraIpi(NCM.stZero, '50', 0); // alíquota 0: IPI calculado = 0
     // NCM.semSt sem regra de IPI (caso do emitente industrial)
@@ -218,6 +223,29 @@ describe.skipIf(!PG_DISPONIVEL)('T-0132 (63 A): ICMS-ST e IPI do fiscal ao Hub d
       expect(c.calculo.itens[0]).toMatchObject({ regra_aplicada: { st: true, ipi: true }, calc_ipi: { v_bc: 100000, p_aliq: 50000, v_valor: 5000 }, calc_st: { v_bc: 147000, v_valor: ST_INDUSTRIAL } });
       expect(itemHub(c.corpo, 1).v_ipi_cents).toBe(5000);
       expect(c.corpo.nota?.v_ipi_cents).toBe(5000);
+    });
+  });
+
+  describe('ajustar_mva sem default (0082, T-0127): o ST interestadual exige a decisão', () => {
+    it('RN-FIS-05: ST interestadual (AM → PA) com ajustar_mva nulo e sem MVA ajustada recusa com CODIGO_NAO_SUPORTADO, lido do banco', async () => {
+      const [linha] = await admin(`SELECT ajustar_mva FROM fiscal.regra_tributaria WHERE tenant_id = $1 AND ncm_prefixo = $2 AND tributo = 'icms'`, [A, NCM.mvaNula]);
+      expect(linha).toEqual({ ajustar_mva: null });
+      const r = await calcular(NORMAL, [{ sequencia: 1, ncm: NCM.mvaNula, valor: 100000 }], 'PA');
+      expect(r.ok).toBe(false);
+      if (r.ok) return;
+      expect(r.erros).toEqual([expect.objectContaining({ codigo: 'CODIGO_NAO_SUPORTADO', mensagem: expect.stringContaining('ajustar_mva nulo') })]);
+    });
+    it('RN-FIS-05: a mesma regra (ajustar_mva nulo) na operação interna (AM → AM) calcula o ST pela MVA original: (1000,00 × 1,40) × 18% − 180,00 = 72,00', async () => {
+      const r = await calcular(NORMAL, [{ sequencia: 1, ncm: NCM.mvaNula, valor: 100000 }]);
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      expect(r.saida.itens[0]).toMatchObject({ calc_st: { v_bc: 140000, v_valor: 7200 } });
+    });
+    it('RN-FIS-05: com ajustar_mva false explícito o ST interestadual (AM → PA) calcula pela MVA original', async () => {
+      const r = await calcular(NORMAL, [{ sequencia: 1, ncm: NCM.st, valor: 100000 }], 'PA');
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      expect(r.saida.itens[0]).toMatchObject({ calc_st: { v_bc: 140000, v_valor: 7200 } });
     });
   });
 

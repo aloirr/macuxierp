@@ -588,6 +588,9 @@ importers:
       '@macuxierp/core':
         specifier: workspace:*
         version: link:../core
+      '@macuxierp/fiscal':
+        specifier: workspace:*
+        version: link:../fiscal
       '@macuxierp/platform-sdk':
         specifier: workspace:*
         version: link:../../packages/platform-sdk

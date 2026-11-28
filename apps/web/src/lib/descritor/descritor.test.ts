@@ -17,9 +17,9 @@ import type { AcaoVista } from './tipos';
 const ID = '3f1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c70';
 
 describe('rota do pedido no shell (T-0015)', () => {
-  it('as três páginas estão registradas e só a lista entra no menu (sem /:id/editar, decisão do PO)', () => {
+  it('as quatro páginas estão registradas e só a lista entra no menu (novo, editar e detalhe ficam ocultos)', () => {
     expect(PAGINAS_REGISTRADAS.filter((p) => p.modulo === 'pedido').map((p) => [p.rota, Boolean(p.ocultaNoMenu)])).toEqual([
-      ['/pedido/pedidos', false], ['/pedido/pedidos/novo', true], ['/pedido/pedidos/:id', true],
+      ['/pedido/pedidos', false], ['/pedido/pedidos/novo', true], ['/pedido/pedidos/:id/editar', true], ['/pedido/pedidos/:id', true],
     ]);
     expect(paginasDoMenu('pedido', 'Pedidos').map((p) => p.rota)).toEqual(['/pedido/pedidos']);
   });
@@ -29,9 +29,11 @@ describe('rota do pedido no shell (T-0015)', () => {
     expect(c?.pagina.rota).toBe('/pedido/pedidos/:id');
     expect(c?.params).toEqual({ id: ID });
     expect(casarRota(`/pedido/pedidos/${ID}/x`)).toBeUndefined();
-    // /:id/editar saiu de PAGINAS_PEDIDO (decisão do PO): a rota não casa com nenhuma página.
-    expect(casarRota(`/pedido/pedidos/${ID}/editar`)).toBeUndefined();
-    expect(telaDaRota('/pedido/pedidos/:id/editar')).toBeUndefined();
+    // T-0126: /:id/editar volta a existir e vence /:id (o fixo antes do parâmetro); a tela é o formulário de edição.
+    const editar = casarRota(`/pedido/pedidos/${ID}/editar`);
+    expect(editar?.pagina.rota).toBe('/pedido/pedidos/:id/editar');
+    expect(editar?.params).toEqual({ id: ID });
+    expect(telaDaRota('/pedido/pedidos/:id/editar')?.tipo).toBe('formulario');
     expect(casarRota('/pedido/pedidos/%E0%A4%A')).toBeUndefined();
   });
   it('o menu aponta para a lista e a resolução exige licença, perfil e `ver` da página', () => {

@@ -27,7 +27,7 @@ function registrar(modulo: ModuloId, p: PaginaBase, extra: { ocultaNoMenu?: bool
  * Para voltar ao menu, tire a rota da lista no dia em que a tela entrar.
  */
 export const ROTAS_SEM_TELA: ReadonlySet<string> = new Set([
-  '/cadastros/condicoes-pagamento', '/cadastros/equipe', // cadastros: sem descritor de lista no shell (Estoque e Tabelas oficiais entraram na T-0123, lote A)
+  // cadastros: Estoque, Tabelas oficiais, Condições e Equipe entraram na T-0123 (lotes A e B); nenhuma rota do cadastros fica sem tela
   '/core/empresa/certificado', '/core/empresa/exportacao', // core: a Empresa (com o Ambiente fiscal) fica; certificado e exportação ainda sem tela
   '/fiscal/regras-fiscais', // fiscal: o módulo ainda não declara páginas
 ]);

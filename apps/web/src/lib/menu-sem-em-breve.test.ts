@@ -28,10 +28,10 @@ describe('menu sem páginas "em breve" (decisão do PO, v0.3.28)', () => {
     }
   });
 
-  it('saem do menu: Condições de pagamento, Equipe e carteira e Regras fiscais; ficam Clientes, Produtos, Tabelas de preço, Filiais, Estoque e Tabelas oficiais (T-0123, lote A)', () => {
+  it('sai do menu só Regras fiscais; ficam Clientes, Produtos, Tabelas de preço, Filiais, Estoque, Condições, Equipe e Tabelas oficiais (T-0123)', () => {
     const rotulos = montarMenu(TODOS, MANIFESTOS, 'administrador').flatMap((g) => g.itens.map((i) => i.rotulo));
-    for (const fora of ['Condições de pagamento', 'Equipe e carteira', 'Regras fiscais']) expect(rotulos).not.toContain(fora);
-    for (const dentro of ['Clientes', 'Produtos', 'Tabelas de preço', 'Filiais', 'Estoque', 'Tabelas oficiais', 'Usuários e perfis', 'Pedidos']) expect(rotulos).toContain(dentro);
+    for (const fora of ['Regras fiscais']) expect(rotulos).not.toContain(fora);
+    for (const dentro of ['Clientes', 'Produtos', 'Tabelas de preço', 'Filiais', 'Estoque', 'Condições de pagamento', 'Equipe e carteira', 'Tabelas oficiais', 'Usuários e perfis', 'Pedidos']) expect(rotulos).toContain(dentro);
   });
 
   it('Empresa (T-0125): o item abre na própria Empresa, com o Ambiente fiscal como bloco; Ambiente fiscal, Certificado A1 e Exportar saem do menu', () => {
@@ -48,7 +48,9 @@ describe('menu sem páginas "em breve" (decisão do PO, v0.3.28)', () => {
     expect(PAGINAS_REGISTRADAS.find((p) => p.rota === ROTA_AMBIENTE_FISCAL)?.ocultaNoMenu).toBe(true);
   });
 
-  it('nenhuma tela linka para "Editar pedido": a rota /pedido/pedidos/:id/editar não está registrada', () => {
-    expect(PAGINAS_REGISTRADAS.find((p) => p.rota.endsWith('/:id/editar'))).toBeUndefined();
+  it('"Editar pedido" (T-0126) está registrada, oculta no menu e com tela: não cai em "Disponível em breve"', () => {
+    const editar = PAGINAS_REGISTRADAS.filter((p) => p.rota.endsWith('/:id/editar') && p.modulo === 'pedido');
+    expect(editar.map((p) => [p.rota, p.ocultaNoMenu])).toEqual([['/pedido/pedidos/:id/editar', true]]);
+    expect(ROTAS_SEM_TELA.has('/pedido/pedidos/:id/editar')).toBe(false);
   });
 });

@@ -3,13 +3,14 @@ import { PERFIS, type Perfil } from '@macuxierp/platform-sdk';
 import { paraCsv } from '@macuxierp/platform-sdk/listas';
 import { manifest } from '../manifest';
 import type { Pedido } from '../contracts';
-import { acoesDoPedido, avisoDoMotivo, validarAprovacao, validarMotivo } from './acoes';
+import { acoesDoPedido, avisoDoMotivo, rotaDeEdicao, validarAprovacao, validarMotivo } from './acoes';
+import { falhaDaEdicao, MENSAGEM_CONFLITO_EDICAO } from './erros';
 import { criarClientePedido, ErroPedido } from './cliente';
 import { cabecalhoDoPedido, linhasDeHistorico, linhasDeItens, linhasDePendencias, resumoDaDecisao } from './detalhe';
 import { formatarCentavos, formatarDataHora, formatarPontosBase, formatarQuantidade } from '@macuxierp/platform-sdk/formatar';
 import { calcularTotal } from './total';
 import { semEspacoDuro } from './apoio-teste';
-import { formularioVazio, novaChaveDoFormulario, retornoDoLancamento, formularioDoPedido, validarFormulario, type Formulario } from './formulario';
+import { formularioVazio, novaChaveDoFormulario, retornoDoLancamento, formularioDoPedido, edicaoDoPedido, validarFormulario, type Formulario } from './formulario';
 import { colunasDaTela, colunasDoCsv, FILTROS_TELA, linhaDaTela } from './lista';
 import { caminhoDaConsulta, caminhoDosEnderecos, FONTE_CLIENTE, FONTE_PRODUTO, opcoesDeEndereco } from './fontes';
 import { PAGINAS_PEDIDO, paginaPedidos, paginaPedidosNoFuso, type ColunaPedido, type ItemListaPedido } from './paginas';
@@ -110,10 +111,10 @@ describe('formatação', () => {
 const pedido = (status: Pedido['status'], origem: Pedido['origem'], bloqueante: boolean[] = []) => ({ status, origem, pendencias: bloqueante.map((b) => ({ bloqueante: b })) });
 
 describe('ações do detalhe por status e perfil (RN-PED-02)', () => {
-  it('gerente e administrador aprovam e recusam o bko em análise; faturista só revalida; ninguém edita enquanto a tela não existe (v0.3.30); vendedor e leitura nada', () => {
+  it('gerente e administrador aprovam e recusam o bko em análise; faturista revalida e edita; vendedor e leitura nada', () => {
     const p = pedido('em_analise', 'bko', [false]);
-    for (const perfil of ['administrador', 'gerente'] as Perfil[]) expect(acoesDoPedido(perfil, p), perfil).toMatchObject({ aprovar: true, recusar: true, revalidar: true, editar: false, cancelar: false });
-    expect(acoesDoPedido('faturista', p)).toMatchObject({ aprovar: false, recusar: false, revalidar: true, editar: false });
+    for (const perfil of ['administrador', 'gerente'] as Perfil[]) expect(acoesDoPedido(perfil, p), perfil).toMatchObject({ aprovar: true, recusar: true, revalidar: true, editar: true, cancelar: false });
+    expect(acoesDoPedido('faturista', p)).toMatchObject({ aprovar: false, recusar: false, revalidar: true, editar: true });
     for (const perfil of ['vendedor', 'leitura'] as Perfil[]) expect(acoesDoPedido(perfil, p), perfil).toMatchObject({ aprovar: false, recusar: false, revalidar: false, editar: false, cancelar: false });
   });
   it('pendência não bloqueante pede justificativa; bloqueante desabilita o aprovar (RN-PED-03)', () => {
@@ -293,9 +294,35 @@ describe('formulário do pedido manual', () => {
 });
 
 describe('edição, endereço de entrega e fontes dos seletores (T-0015, lote 3b)', () => {
-  it('sem tela de edição no BKO (v0.3.30): a página "Editar pedido" não é declarada e nenhum perfil vê o botão', () => {
-    expect(PAGINAS_PEDIDO.find((p) => p.id === 'editar' || p.rota.endsWith('/editar'))).toBeUndefined();
-    for (const perfil of ['administrador', 'gerente', 'faturista'] as Perfil[]) expect(acoesDoPedido(perfil, pedido('em_analise', 'bko')).editar, perfil).toBe(false);
+  it('T-0126: a página "Editar pedido" é declarada, oculta do menu, com a permissão de lançar e antes do detalhe', () => {
+    const i = PAGINAS_PEDIDO.findIndex((p) => p.id === 'editar');
+    expect(PAGINAS_PEDIDO[i]).toMatchObject({ tipo: 'editar', rota: '/pedido/pedidos/:id/editar', ver: 'pedido.pedido.lancar', ocultaNoMenu: true });
+    expect(i).toBeLessThan(PAGINAS_PEDIDO.findIndex((p) => p.id === 'detalhe'));
+    expect(rotaDeEdicao(U1)).toBe(`/pedido/pedidos/${U1}/editar`);
+  });
+  it('RN-PED-02: o botão Editar só aparece no pedido bko em análise e só para quem lança; nunca no FDV nem em outro status', () => {
+    for (const perfil of PERFIS) expect(acoesDoPedido(perfil, pedido('em_analise', 'bko')).editar, perfil).toBe(['administrador', 'gerente', 'faturista'].includes(perfil));
+    for (const s of ['recebido', 'aprovado', 'recusado', 'faturado_parcial', 'faturado', 'cancelado'] as const) expect(acoesDoPedido('gerente', pedido(s, 'bko')).editar, s).toBe(false);
+    expect(acoesDoPedido('gerente', pedido('em_analise', 'fdv')).editar).toBe(false);
+  });
+  it('a edição abre com o pedido e leva o updated_at como versão do If-Match', () => {
+    const e = edicaoDoPedido({ filial_id: U2, cliente_id: U3, condicao_pagamento_id: null, endereco_entrega: null, observacao: 'x', itens: [], updated_at: '2026-11-22T10:00:00.000Z' });
+    expect(e).toMatchObject({ versao: '2026-11-22T10:00:00.000Z', formulario: { filial_id: U2, cliente_id: U3, observacao: 'x' } });
+  });
+  it('412 e 409 do If-Match pedem recarregar; pedido fora de análise (422) também; o resto mostra a mensagem da API', () => {
+    expect(falhaDaEdicao({ status: 412, codigo: 'PRECONDICAO', message: 'm' })).toEqual({ mensagem: MENSAGEM_CONFLITO_EDICAO, recarregar: true });
+    expect(falhaDaEdicao({ status: 409, codigo: 'CONFLITO', message: 'm' })).toEqual({ mensagem: MENSAGEM_CONFLITO_EDICAO, recarregar: true });
+    expect(falhaDaEdicao({ status: 422, codigo: 'RN-PED-02', message: 'm' })).toEqual({ mensagem: MENSAGEM_CONFLITO_EDICAO, recarregar: true });
+    expect(falhaDaEdicao({ status: 422, codigo: 'RN-PED-03', message: 'Pendência' })).toEqual({ mensagem: 'Pendência', recarregar: false });
+    expect(MENSAGEM_CONFLITO_EDICAO).toBe('O pedido foi alterado por outra pessoa. Recarregue para ver a versão atual.');
+  });
+  it('o 412 do servidor chega como ErroPedido e vira a mensagem de recarregar', async () => {
+    const cliente = criarClientePedido({ baseUrl: 'http://api', token: () => 't', fetch: async () => ({ status: 412, ok: false, headers: { get: () => 'application/json' }, json: async () => ({ codigo: 'PRECONDICAO', mensagem: 'velho' }) }) });
+    const r = validarFormulario(valido());
+    if (!r.ok) throw new Error('inválido');
+    const erro = await cliente.editar(U1, r.entrada, '2026-11-22T00:00:00.000Z').catch((e: unknown) => e);
+    expect(erro).toBeInstanceOf(ErroPedido);
+    expect(falhaDaEdicao(erro as ErroPedido).recarregar).toBe(true);
   });
   it('o PUT da edição leva o If-Match com o updated_at carregado', async () => {
     const chamadas: { url: string; method: string; headers: Record<string, string> }[] = [];
