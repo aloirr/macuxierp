@@ -69,6 +69,8 @@
 - **RN-FIS-02** Simples Nacional usa CSOSN; regime normal usa CST. O CRT vem da filial emissora.
 - **RN-FIS-03** IBS, CBS e IS seguem a NT 2025.002-RTC na versão registrada em ADR; a versão em uso aparece na tela de regras. Os valores de IBS, CBS e IS (vBC, vIBSUF, vIBSMun, vCBS, vIS) são arredondados uma vez por campo, na casa do leiaute, pelo modo **meio-para-par** (ABNT NBR 5891), igual à Calculadora RTC da RFB (github.com/ReceitaFederal/calculadora-rtc-regime-regular, ADR003); a conta interna é exata (decisão do Alexandre, 22/11, 00h15).
 - **RN-FIS-04** Toda regra guarda a fonte (NT, convênio, anexo) e a vigência.
+- **RN-FIS-05** ICMS-ST e IPI calculados por regra (decisão 63 A, T-0132): cada item leva `regra_aplicada` (st, ipi) e, só quando houve regra, `calc_st`/`calc_ipi` (base, alíquota e valor, em centavos). O valor **0 só existe com regra aplicada**; sem regra o campo é **omitido**, nunca 0, e nenhuma alíquota é inventada. O total de cada imposto só sai se **todos** os itens têm regra dele (item misto → total omitido); em nota parcial, conta só os itens da nota. ST retido (CST 60/CSOSN 500) não gera `calc_st`. O XML da NF-e segue o Manual (vST/vIPI = 0 sem regra); a omissão vale para os eventos e para o retorno ao FDV, que só leva os campos para os tenants da bandeira `TENANTS_ENVIA_ST_IPI` (desligada por padrão). Na emissão, industrial sem regra de IPI continua com `REGRA_NAO_ENCONTRADA`.
+- **RN-FIS-06** DIFAL e acabamento do cálculo (T-0128, v0.3.32); até lá, a operação com DIFAL é bloqueada (fail-closed).
 
 ## Faturamento (RN-FAT)
 - **RN-FAT-01** Numeração da NF-e sequencial por série e filial, **sem buraco**: o número é reservado na mesma transação que grava a nota; número perdido só sai por inutilização.
