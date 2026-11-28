@@ -42,10 +42,10 @@ import {
   type Exportacao,
   type Usuario,
   type UsuarioExcluido,
-  MENSAGEM_EMAIL_EM_USO,
+  MENSAGEM_EMAIL_EM_USO_NA_EMPRESA,
 } from '../contracts';
 import { ORIGEM_CERTIFICADO_PADRAO } from '@macuxierp/platform-sdk/certificado-origem';
-import { alertaVencimento, avaliarCertificado, avaliarTrocaAmbienteTenant, diasParaVencer, gerarSenhaProvisoria, situacaoDoUsuario } from '../domain';
+import { alertaVencimento, avaliarCertificado, normalizarEmailUsuario, avaliarTrocaAmbienteTenant, diasParaVencer, gerarSenhaProvisoria, situacaoDoUsuario } from '../domain';
 import { alterarUsuarioComTrava, excluirUsuarioComTrava, type OpcoesAlterarUsuario } from './alterar-usuario';
 import { cifrarColunasA1 } from './colunas-a1';
 import { sqlstate } from './erro-pg';
@@ -246,13 +246,14 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
       acao: 'core.usuario.gerir',
       corpo: UsuarioCriar,
       async executar(c, { corpo }) {
-        const email = corpo.email;
+        const email = normalizarEmailUsuario(corpo.email);
         // RN-CORE-05: o reenvio com o mesmo external_id devolve o usuário já criado, sem senha nova.
         if (corpo.external_id) {
           const repetido = await repo.usuarioPorExternalId(c.tx, corpo.external_id);
           if (repetido) return { status: 200, corpo: usuarioDto(repetido, c.agora) };
         }
-        if (await repo.usuarioPorEmail(c.tx, email)) throw erros.conflito(MENSAGEM_EMAIL_EM_USO);
+        if (await repo.usuarioPorEmail(c.tx, email)) throw erros.conflito(MENSAGEM_EMAIL_EM_USO_NA_EMPRESA);
+        // RN-CORE-18: o e-mail de outra empresa a RLS esconde daqui; quem barra é o índice global (0079), traduzido no repositório.
         const senha = gerarSenhaProvisoria(aleatorios(256));
         const criado = await repo.criarUsuario(
           c.tx,

@@ -104,6 +104,12 @@ const regra = async (p: Promise<unknown>, codigo: string) => {
   return e as ErroApi;
 };
 
+/** O corpo do 409 do SDK (`erros.emailEmUso()`), sem repetir o texto. */
+const corpoEmailEmUso = (): object => {
+  const e = erros.emailEmUso();
+  return { status: e.status, codigo: e.codigo, message: e.message, campos: e.campos, detalhes: e.detalhes };
+};
+
 describe('permissões por ação (RN-CORE-02, matriz do doc 03)', () => {
   it('RN-CORE-02: só o administrador edita empresa, gere usuários e troca ambiente; fiscal e faturista só veem o ambiente', async () => {
     const t = montar();
@@ -194,6 +200,14 @@ describe('RF-CORE-02: usuários', () => {
     expect(b.corpo).not.toHaveProperty('senha_provisoria');
     expect(t.repo.usuarios).toHaveLength(2);
     await expect(t.chamar('POST', '/usuarios', { corpo: { ...novo, email: 'MARIA@piloto.test' } })).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('RN-CORE-18: e-mail vivo em outra empresa é recusado com 409 email_em_uso e nada é gravado', async () => {
+    const t = montar();
+    t.repo.emailsEmOutrasContas.add('rita@outra.test');
+    const antes = t.repo.usuarios.length;
+    await expect(t.chamar('POST', '/usuarios', { corpo: { ...novo, email: ' RITA@Outra.test ' } })).rejects.toMatchObject(corpoEmailEmUso());
+    expect(t.repo.usuarios).toHaveLength(antes);
   });
 
   it('RN-CORE-01: um perfil por usuário e ao menos uma filial (400)', async () => {

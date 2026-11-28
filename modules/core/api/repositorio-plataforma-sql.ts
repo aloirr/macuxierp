@@ -6,7 +6,7 @@
  */
 import { DETALHE_CODIGO_RESERVADO, erros, MENSAGEM_CODIGO_RESERVADO, type EmpresaPlataforma, type Licenca, type SituacaoEmpresaEntrada, type Transacao } from '@macuxierp/platform-sdk';
 import {
-  MENSAGEM_EMAIL_EM_USO,
+  MENSAGEM_EMAIL_EM_USO_NA_EMPRESA,
   MENSAGEM_ULTIMO_ADMIN,
   type CampoContato,
   type CnaeDescrito,
@@ -17,7 +17,7 @@ import {
   type UsuarioExcluido,
 } from '../contracts';
 import { codigosParaDescrever, descreverFicha, MENSAGEM_SEM_CNPJ } from '../domain';
-import { sqlstate } from './erro-pg';
+import { ehEmailEmUso, sqlstate } from './erro-pg';
 import type { AcaoSituacaoUsuario, ItemUsuarioBanco, RepositorioPlataforma } from './plataforma';
 
 /** SQLSTATE da `empresa_trocar_cnpj` que viram bloqueio tratado (RN-CORE-16). */
@@ -37,6 +37,7 @@ async function semRepetido<R>(fn: () => Promise<R>): Promise<R | null> {
   try {
     return await fn();
   } catch (e) {
+    if (ehEmailEmUso(e)) throw erros.emailEmUso();
     if (repetido(e)) return null;
     throw e;
   }
@@ -96,13 +97,14 @@ async function comErrosDeUsuario<R>(fn: () => Promise<R>): Promise<R> {
   try {
     return await fn();
   } catch (e) {
+    if (ehEmailEmUso(e)) throw erros.emailEmUso();
     switch (sqlstate(e)) {
       case 'P0002':
         throw erros.naoEncontrado('Usuário');
       case 'MXU01':
         throw erros.regra('RN-CORE-01', MENSAGEM_ULTIMO_ADMIN);
       case '23505':
-        throw erros.conflito(MENSAGEM_EMAIL_EM_USO);
+        throw erros.conflito(MENSAGEM_EMAIL_EM_USO_NA_EMPRESA);
       case '23514':
         throw erros.regra('RN-CORE-17', 'Os dados do usuário foram recusados', { usuario: 'Dados inválidos' });
       default:

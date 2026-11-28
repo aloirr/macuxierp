@@ -40,7 +40,7 @@ export const ROTULO_ULTIMO_ADMIN = 'último administrador';
 /** RN-CORE-01: mensagem da recusa (MXU01 no banco, 422 na API), igual nos dois lados. */
 export const MENSAGEM_ULTIMO_ADMIN = 'A empresa precisa de ao menos um administrador ativo';
 /** RN-CORE-17: e-mail de usuário não excluído (ativo, bloqueado ou inativo) do mesmo tenant. */
-export const MENSAGEM_EMAIL_EM_USO = 'Já existe usuário com este e-mail';
+export const MENSAGEM_EMAIL_EM_USO_NA_EMPRESA = 'Já existe usuário com este e-mail';
 
 /** Linha da tabela Usuários da Config. `email_mascarado`: 2 primeiros caracteres + '****@' + domínio. */
 export const UsuarioConfig = z.object({
