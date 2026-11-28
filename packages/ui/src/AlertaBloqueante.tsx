@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { canto, cor, espaco, faixaLateral, texto, tons } from './estilos.js';
+import { exigirSemPrefixo } from './semPrefixo.js';
 
 export interface AlertaBloqueanteProps {
   /** O que foi bloqueado, em uma frase (vira o título do alerta). */
@@ -35,6 +36,8 @@ function Icone() {
 
 /** Alerta bloqueante: a ação só segue depois de resolver. Ícone, barra lateral de 4 px em erro-texto, role="alert". */
 export function AlertaBloqueante({ titulo, children, acao, focar = true }: AlertaBloqueanteProps) {
+  exigirSemPrefixo(titulo, 'AlertaBloqueante');
+  if (typeof children === 'string') exigirSemPrefixo(children, 'AlertaBloqueante');
   const raiz = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (focar && deveFocarAlerta(document.activeElement, raiz.current)) raiz.current?.focus();

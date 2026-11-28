@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { canto, espaco, texto, tons } from './estilos.js';
+import { exigirSemPrefixo } from './semPrefixo.js';
 
 /** Tom do resultado: sucesso (deu certo), aviso (deu certo com ressalva) ou erro (não deu; diz o que fazer). */
 export type TomResultado = 'sucesso' | 'aviso' | 'erro';
@@ -47,6 +48,7 @@ export function precisaRolar(r: Pick<DOMRect, 'top' | 'bottom'>, alturaTela: num
 }
 
 function Conteudo({ r }: { r: Resultado }) {
+  exigirSemPrefixo(r.texto, 'ResultadoAcao');
   return (
     <div style={caixa(r.tom)}>
       <span>{r.texto}</span>
