@@ -14,7 +14,7 @@
  */
 import { mkdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { argumento, criarRoteiro, entrar, exigir, LARGURAS_PRINT, semDefeitoVisivel } from './apoio-e2e.mjs';
+import { abrirNavegador, argumento, carregadoSemData, criarRoteiro, entrar, exigir, exigirQuandoLigada, LARGURAS_PRINT, novoContexto, semDefeitoVisivel } from './apoio-e2e.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -35,12 +35,12 @@ async function fraseEmMono(d, onde) {
   exigir(/mono|courier|consolas|menlo/i.test(fonte), `${onde}: frase sem fonte mono (${fonte})`);
 }
 
-const navegador = await chromium.launch();
+const navegador = await abrirNavegador(chromium);
 const r = criarRoteiro(SAIDA);
 
 for (const larg of LARGURAS_PRINT) {
   const sufixo = `-${larg.nome}.png`;
-  const p = await (await navegador.newContext({ viewport: larg.viewport, deviceScaleFactor: 2, locale: 'pt-BR', timezoneId: 'America/Manaus' })).newPage();
+  const p = await (await novoContexto(navegador, { viewport: larg.viewport, deviceScaleFactor: 2 })).newPage();
   p.setDefaultTimeout(90_000);
   const empresa = (id) => `${BASE}/config/empresas/${encodeURIComponent(id)}`;
   const rolarAte = (loc) => loc.evaluate((el) => el.scrollIntoView({ block: 'start' }));
@@ -87,6 +87,20 @@ for (const larg of LARGURAS_PRINT) {
       await semDefeitoVisivel(p, caso);
       if (larg.nome === '390') await rolarAte(h);
       await r.print(p, `${caso}${sufixo}`);
+    });
+  }
+
+  // T-0135 (quadro de 28/11, "Para o testes"): na aba Integrações o selo "Carregado" só sai com a data da última carga.
+  // A massa tem os dois casos: filial e vendedor carregados por planilha (com data) e cadastros com registro ativo vindo
+  // de fora da planilha (filial da empresa sem ficha). Desligada até o PR do dono (`exigirQuandoLigada`, apoio-e2e.mjs).
+  for (const [caso, id] of [['com ficha', dados.empresas.comFicha], ['sem ficha', dados.empresas.semFicha]]) {
+    await r.passo(`[${larg.nome}] Integrações (${caso}): o selo "Carregado" só com a data da última carga`, async () => {
+      await p.goto(`${empresa(id)}?aba=integracao`);
+      await p.locator('tbody tr').first().waitFor();
+      const { lidas, defeito } = await carregadoSemData(p, caso);
+      // Contra a asserção vazia: a empresa com ficha tem filial e vendedor carregados por planilha.
+      if (id === dados.empresas.comFicha) exigir(lidas >= 2, `${caso}: só ${lidas} linha(s) "Carregado" na aba Integrações`);
+      exigirQuandoLigada('carregadoSoComData', defeito === '', defeito);
     });
   }
 

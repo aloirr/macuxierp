@@ -11,7 +11,7 @@
  */
 import { mkdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { argumento, criarRoteiro, entrar, exigir, LARGURAS_PRINT } from './apoio-e2e.mjs';
+import { abrirNavegador, argumento, criarRoteiro, entrar, exigir, LARGURAS_PRINT, novoContexto } from './apoio-e2e.mjs';
 
 const { chromium } = createRequire(import.meta.url)('playwright');
 const BASE = argumento('base', 'http://localhost:3103');
@@ -29,10 +29,10 @@ const ESPERADA = {
 const cnpjFormatado = (c) => `${c.slice(0, 2)}.${c.slice(2, 5)}.${c.slice(5, 8)}/${c.slice(8, 12)}-${c.slice(12)}`;
 const PROIBIDOS = [/Algo deu errado/i, /\bundefined\b/, /\bNaN\b/, /\[object Object\]/, /Internal Server Error/i, /TimeoutError|aborted/i];
 
-const nav = await chromium.launch();
+const nav = await abrirNavegador(chromium);
 const r = criarRoteiro(SAIDA);
 for (const { nome: larg, viewport } of LARGURAS_PRINT) {
-  const p = await (await nav.newContext({ viewport, deviceScaleFactor: 2, locale: 'pt-BR', timezoneId: 'America/Manaus' })).newPage();
+  const p = await (await novoContexto(nav, { viewport, deviceScaleFactor: 2 })).newPage();
   p.setDefaultTimeout(60_000);
   await r.passo(`[${larg}] superadmin entra no /config`, async () => {
     await entrar(p, BASE, dados.superadmin);

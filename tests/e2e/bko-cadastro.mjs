@@ -17,7 +17,7 @@
  */
 import { mkdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { argumento, criarRoteiro, ehNaoEncontrada, entrar as entrarNoLogin, exigir } from './apoio-e2e.mjs';
+import { abrirNavegador, argumento, criarRoteiro, ehNaoEncontrada, entrar as entrarNoLogin, exigir, novoContexto } from './apoio-e2e.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -50,8 +50,8 @@ async function exigirLogin() {
 
 const { resultados, prints, passo, print } = criarRoteiro(SAIDA);
 
-const navegador = await chromium.launch();
-const contexto = await navegador.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2, locale: 'pt-BR', timezoneId: 'America/Manaus' });
+const navegador = await abrirNavegador(chromium);
+const contexto = await novoContexto(navegador, { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
 const p = await contexto.newPage();
 // O next dev compila cada página no primeiro acesso: prazo maior que o padrão.
 p.setDefaultTimeout(60_000);

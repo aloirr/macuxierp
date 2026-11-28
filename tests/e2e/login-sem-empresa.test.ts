@@ -17,7 +17,7 @@ import { createRequire } from 'node:module';
 import { join, relative } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MENSAGEM_EMPRESA_SUSPENSA, MENSAGEM_ESQUECI_NEUTRA } from '../../packages/platform-sdk/src/index';
-import { entrar } from './apoio-e2e.mjs';
+import { abrirNavegador, entrar, novoContexto } from './apoio-e2e.mjs';
 
 const RAIZ = join(__dirname, '../..');
 
@@ -138,7 +138,7 @@ describe.runIf(BASE !== '' && DADOS !== '')('T-0133: as telas do login sem empre
   let dados: DadosE2e;
   const caminho = (p: Pagina) => new URL(p.url()).pathname;
   const novaPagina = async (): Promise<Pagina> => {
-    const ctx = await navegador.newContext({ viewport: { width: 1366, height: 800 }, locale: 'pt-BR', timezoneId: 'America/Manaus' });
+    const ctx = await novoContexto(navegador, { viewport: { width: 1366, height: 800 } });
     const p = await ctx.newPage();
     p.setDefaultTimeout(90_000); // o next dev compila cada página no primeiro acesso
     return p;
@@ -150,8 +150,8 @@ describe.runIf(BASE !== '' && DADOS !== '')('T-0133: as telas do login sem empre
   };
 
   beforeAll(async () => {
-    const { chromium } = createRequire(import.meta.url)('playwright') as { chromium: { launch(): Promise<Navegador> } };
-    navegador = await chromium.launch();
+    const { chromium } = createRequire(import.meta.url)('playwright') as { chromium: { launch(o?: object): Promise<Navegador> } };
+    navegador = await abrirNavegador(chromium);
     dados = JSON.parse(readFileSync(DADOS, 'utf8')) as DadosE2e;
   }, 120_000);
   afterAll(async () => {

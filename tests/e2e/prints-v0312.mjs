@@ -17,7 +17,7 @@
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
-import { argumento, criarRoteiro, exigir, LARGURAS_PRINT, semDefeitoVisivel } from './apoio-e2e.mjs';
+import { abrirNavegador, argumento, criarRoteiro, exigir, LARGURAS_PRINT, novoContexto, semDefeitoVisivel } from './apoio-e2e.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -33,16 +33,16 @@ const dados = JSON.parse(readFileSync(DADOS, 'utf8'));
 const PASTA = { i9: join(SAIDA, 'I-9'), c5: join(SAIDA, 'C-5') };
 for (const p of Object.values(PASTA)) mkdirSync(p, { recursive: true });
 
-const navegador = await chromium.launch();
+const navegador = await abrirNavegador(chromium);
 const falhas = [];
 
 for (const larg of LARGURAS_PRINT) {
   const sufixo = `-${larg.nome}.png`;
-  const opcoes = { viewport: larg.viewport, deviceScaleFactor: 2, locale: 'pt-BR', timezoneId: 'America/Manaus' };
+  const opcoes = { viewport: larg.viewport, deviceScaleFactor: 2 };
   const r9 = criarRoteiro(PASTA.i9);
   const r5 = criarRoteiro(PASTA.c5);
-  const portal = await (await navegador.newContext(opcoes)).newPage();
-  const bko = await (await navegador.newContext(opcoes)).newPage();
+  const portal = await (await novoContexto(navegador, opcoes)).newPage();
+  const bko = await (await novoContexto(navegador, opcoes)).newPage();
   portal.setDefaultTimeout(90_000);
   bko.setDefaultTimeout(90_000);
   const base = `${BASE}/config/empresas/${encodeURIComponent(dados.empresa.id)}`;

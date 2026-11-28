@@ -18,7 +18,7 @@
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
-import { abasDaEmpresa, argumento, ehNaoEncontrada, entrar, urlsDasTelas } from './apoio-e2e.mjs';
+import { abasDaEmpresa, abrirNavegador, argumento, carregadoSemData, ehNaoEncontrada, entrar, exigirQuandoLigada, novoContexto, urlsDasTelas } from './apoio-e2e.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -142,6 +142,15 @@ async function abrir(pagina, vigia, item, rotulo = item.url) {
     for (const t of consoleErros) falhas.push(`console: ${t}`);
     for (const t of vigia.v.paginaErro) falhas.push(`erro na página: ${t}`);
     for (const t of vigia.v.http5xx) falhas.push(`chamada ${t}`);
+    // T-0135: na aba Integrações, o selo "Carregado" só com a data (desligada até o PR do dono; ver apoio-e2e.mjs).
+    if (new URL(pagina.url()).searchParams.get('aba') === 'integracao') {
+      const { defeito } = await carregadoSemData(pagina, rotulo);
+      try {
+        exigirQuandoLigada('carregadoSoComData', defeito === '', defeito);
+      } catch {
+        falhas.push(defeito);
+      }
+    }
   } catch (e) {
     falhas.push(`navegação: ${String(e?.message ?? e).split('\n')[0]}`);
   }
@@ -166,12 +175,12 @@ async function abrir(pagina, vigia, item, rotulo = item.url) {
 // ---------------------------------------------------------------- 3. a rodada
 
 const URLS = urlsDasTelas(dados);
-const navegador = await chromium.launch();
-const opcoes = { viewport: { width: 1440, height: 900 }, locale: 'pt-BR', timezoneId: 'America/Manaus' };
+const navegador = await abrirNavegador(chromium);
+const opcoes = { viewport: { width: 1440, height: 900 } };
 let codigo = 0;
 try {
   // Telas de entrada, sem sessão.
-  const anon = await (await navegador.newContext(opcoes)).newPage();
+  const anon = await (await novoContexto(navegador, opcoes)).newPage();
   anon.setDefaultTimeout(30_000);
   const vAnon = vigiar(anon);
   for (const item of URLS.filter((u) => u.contexto === 'sem-sessao')) await abrir(anon, vAnon, item);
@@ -180,7 +189,7 @@ try {
 
   // Login único: administrador ao BKO, superadmin ao /config; espera o formulário sumir e o sinal `chegou`.
   async function sessao(u, quem, chegou) {
-    const p = await (await navegador.newContext(opcoes)).newPage();
+    const p = await (await novoContexto(navegador, opcoes)).newPage();
     p.setDefaultTimeout(30_000);
     await entrar(p, BASE, u);
     try {

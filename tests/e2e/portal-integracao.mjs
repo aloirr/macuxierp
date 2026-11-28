@@ -12,7 +12,7 @@
 import { randomBytes } from 'node:crypto';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { argumento, criarRoteiro, entrar, exigir } from './apoio-e2e.mjs';
+import { abrirNavegador, argumento, criarRoteiro, entrar, exigir, novoContexto } from './apoio-e2e.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -65,10 +65,10 @@ async function apiStatusTenant() {
 }
 const ligadaNa = (status) => status.cadastros.find((c) => c.entidade === ENTIDADE)?.ligada;
 
-const navegador = await chromium.launch();
-const opcoes = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2, locale: 'pt-BR', timezoneId: 'America/Manaus' };
-const portal = await (await navegador.newContext(opcoes)).newPage();
-const bko = await (await navegador.newContext(opcoes)).newPage();
+const navegador = await abrirNavegador(chromium);
+const opcoes = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 };
+const portal = await (await novoContexto(navegador, opcoes)).newPage();
+const bko = await (await novoContexto(navegador, opcoes)).newPage();
 // O next dev compila cada página no primeiro acesso: prazo maior que o padrão.
 portal.setDefaultTimeout(90_000);
 bko.setDefaultTimeout(90_000);

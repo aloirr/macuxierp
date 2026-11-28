@@ -17,7 +17,7 @@
  */
 import { mkdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { argumento, criarRoteiro, entrar, exigir } from './apoio-e2e.mjs';
+import { abrirNavegador, argumento, criarRoteiro, entrar, exigir, novoContexto } from './apoio-e2e.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -38,10 +38,10 @@ const SENHA_NO_LINK = 'Senha-ficticia-no-link-9';
 
 const { resultados, passo, prints, print } = criarRoteiro(SAIDA, (s) => s.replaceAll(sa.senha, '<senha>').replaceAll(adm.senha, '<senha>'));
 
-const navegador = await chromium.launch();
-const opcoes = { viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1, locale: 'pt-BR', timezoneId: 'America/Manaus' };
+const navegador = await abrirNavegador(chromium);
+const opcoes = { viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 };
 const novaPagina = async () => {
-  const p = await (await navegador.newContext(opcoes)).newPage();
+  const p = await (await novoContexto(navegador, opcoes)).newPage();
   p.setDefaultTimeout(90_000); // o next dev compila cada página no primeiro acesso
   return p;
 };
