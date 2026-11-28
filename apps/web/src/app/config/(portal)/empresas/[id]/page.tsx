@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { randomUUID } from 'node:crypto';
 import { redirect } from 'next/navigation';
 import { codigoExibido, destinoErroEmpresa, lerApoio, textoCriadaEm } from '@/lib/config/empresa';
-import { lerEmpresa, lerIntegracaoFdv, lerMonitorFdv, lerSituacaoCnpj, listarUsuarios } from '@/lib/config/api';
+import { lerEmpresa, lerIntegracaoFdv, lerMonitorFdv, lerSituacaoCnpj, listarFiliais, listarUsuarios } from '@/lib/config/api';
 import { lerCargas } from '@/lib/config/cargas-api';
 import { lerEntrada } from '@/lib/config/entrada-api';
 import { CodigoDoErro } from '@/components/codigo-do-erro';
@@ -53,6 +53,8 @@ export default async function Empresa({ params, searchParams }: { params: Promis
   const situacaoCnpj = !naIntegracao && empresa.cnpj ? (await ler(() => lerSituacaoCnpj(token, id))).valor : null;
   // Usuários da empresa (v0.3.29): a lista já vem com `acoes` e `ultimo_admin_ativo`; falha na leitura deixa o bloco com "Recarregar"
   const usuarios = !naIntegracao ? (await ler(() => listarUsuarios(token, id))).valor?.itens ?? null : null;
+  // T-0130: as filiais da empresa para o campo Filiais do formulário de usuário; sem a leitura, o campo avisa e o resto segue
+  const filiais = !naIntegracao ? (await ler(() => listarFiliais(token, id))).valor?.itens ?? null : null;
   const base = `/config/empresas/${encodeURIComponent(id)}`;
   const deps = MANIFESTOS.map((m) => ({ id: m.id, depende: m.depende }));
   return (
@@ -85,6 +87,7 @@ export default async function Empresa({ params, searchParams }: { params: Promis
           cnpj={situacaoCnpj}
           deps={deps}
           usuarios={usuarios}
+          filiais={filiais}
           chaves={{ situacao: randomUUID() }}
         />
       )}

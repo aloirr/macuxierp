@@ -35,8 +35,8 @@ import {
   ParametroGravar,
   PFX_TAMANHO_MAXIMO,
   TRABALHO_EXPORTAR,
-  UsuarioCriar,
-  UsuarioEditar,
+  UsuarioCriarCorpo,
+  UsuarioEditarCorpo,
   type AuditoriaItemLista,
   type CertificadoResumo,
   type Empresa,
@@ -46,7 +46,7 @@ import {
   MENSAGEM_EMAIL_EM_USO_NA_EMPRESA,
 } from '../contracts';
 import { ORIGEM_CERTIFICADO_PADRAO } from '@macuxierp/platform-sdk/certificado-origem';
-import { alertaVencimento, avaliarCertificado, normalizarEmailUsuario, avaliarTrocaAmbienteTenant, diasParaVencer, gerarSenhaProvisoria, situacaoDoUsuario } from '../domain';
+import { alertaVencimento, avaliarFiliaisDoUsuario, avaliarCertificado, normalizarEmailUsuario, avaliarTrocaAmbienteTenant, diasParaVencer, gerarSenhaProvisoria, situacaoDoUsuario } from '../domain';
 import { alterarUsuarioComTrava, excluirUsuarioComTrava, type OpcoesAlterarUsuario } from './alterar-usuario';
 import { cifrarColunasA1 } from './colunas-a1';
 import { sqlstate } from './erro-pg';
@@ -160,6 +160,12 @@ export function traduzirA1DeTeste(e: unknown): unknown {
   return erros.regra('RN-CORE-08', mensagem, undefined, { motivo });
 }
 
+/** RN-CORE-40: o usuário fica com ao menos uma filial (422). A conferência de pertencimento ao tenant é do /config (lista da empresa). */
+function exigirFiliaisDoUsuario(operacao: 'criar' | 'editar', filial_ids: readonly string[] | undefined): void {
+  const r = avaliarFiliaisDoUsuario({ operacao, filial_ids });
+  if (!r.ok) throw erros.regra('RN-CORE-40', r.mensagem);
+}
+
 export function criarPluginCore(deps: DependenciasCore): PluginModulo {
   const { repo } = deps;
   const aleatorios = deps.aleatorios ?? ((n: number) => randomBytes(n));
@@ -248,8 +254,9 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
       metodo: 'POST',
       caminho: '/usuarios',
       acao: 'core.usuario.gerir',
-      corpo: UsuarioCriar,
+      corpo: UsuarioCriarCorpo,
       async executar(c, { corpo }) {
+        exigirFiliaisDoUsuario('criar', corpo.filial_ids);
         const email = normalizarEmailUsuario(corpo.email);
         // RN-CORE-05: o reenvio com o mesmo external_id devolve o usuário já criado, sem senha nova.
         if (corpo.external_id) {
@@ -283,9 +290,10 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
       metodo: 'PATCH',
       caminho: '/usuarios/:id',
       acao: 'core.usuario.gerir',
-      corpo: UsuarioEditar,
+      corpo: UsuarioEditarCorpo,
       async executar(c, { corpo, params }) {
         const { updated_at: token, ...patch } = corpo;
+        exigirFiliaisDoUsuario('editar', patch.filial_ids);
         const novo = (await mudarUsuario(c, params, patch, 'core.usuario.alterado', { token: converterToken(token) })) as LinhaUsuario;
         return { corpo: usuarioDto(novo, c.agora), cabecalhos: { ETag: novo.updated_at.toISOString() } };
       },

@@ -13,7 +13,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { BancoPg } from '../../../packages/platform-sdk/src/pg';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '../../../packages/platform-sdk/src/pg-testes';
@@ -258,20 +258,70 @@ describe.skipIf(!PG_DISPONIVEL)('T-0132 (63 A): ICMS-ST e IPI do fiscal ao Hub d
         return /\.tsx?$/.test(n) && !/\.test\.tsx?$|apoio-teste|fixtures/.test(n) ? [c] : [];
       });
     const PEDIDO = join(RAIZ, 'modules/pedido');
+    const FISCAL = join(RAIZ, 'modules/fiscal');
+    /** Especificadores de import, export ... from, import() e require() do arquivo. */
+    const especificadores = (t: string): string[] =>
+      [...t.matchAll(/(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+|\brequire\s*\(\s*)['"]([^'"]+)['"]/g)].map((m) => m[1]!);
+    /** O especificador aponta para o módulo `alvo` (pacote `@macuxierp/<alvo>` ou caminho relativo que cai em modules/<alvo>)? Devolve o subcaminho. */
+    const alvoDe = (arquivo: string, esp: string, alvo: string): string | null => {
+      const pacote = new RegExp(`^@macuxierp/${alvo}(/.*)?$`).exec(esp);
+      if (pacote) return pacote[1] ?? '';
+      if (!esp.startsWith('.')) return null;
+      const dest = relative(join(RAIZ, 'modules', alvo), resolve(dirname(arquivo), esp));
+      return dest.startsWith('..') ? null : `relativo:${dest}`;
+    };
 
-    it('T-0132: nenhum arquivo de produção do pedido importa o fiscal (nem contracts) nem chama o cálculo', () => {
+    it('T-0132 (precisão do engenheiro, v0.3.32): o pedido importa do fiscal só `@macuxierp/fiscal/contracts` (tipos e esquemas Zod) e não chama o cálculo', () => {
       const arquivos = fontes(PEDIDO);
       expect(arquivos.length).toBeGreaterThan(10); // contra a varredura vazia
       const achados = arquivos.flatMap((f) => {
         const t = readFileSync(f, 'utf8');
         const a: string[] = [];
-        if (/from\s+['"](@macuxierp\/fiscal|[./]+\/fiscal)(\/|['"])/.test(t) || /import\(\s*['"]@macuxierp\/fiscal/.test(t)) a.push(`${relative(RAIZ, f)}: importa o fiscal`);
+        for (const esp of especificadores(t)) {
+          const sub = alvoDe(f, esp, 'fiscal');
+          // aceito: o pacote de contracts (inclusive import de valor, para o parse do evento); recusado: o resto
+          // (api, domain, web, manifest, o pacote sem subcaminho e qualquer caminho relativo para modules/fiscal).
+          if (sub !== null && sub !== '/contracts') a.push(`${relative(RAIZ, f)}: importa ${esp}`);
+        }
         if (/criarCalculoFiscal|calcularDocumento|fiscal\.calculo@/.test(t)) a.push(`${relative(RAIZ, f)}: chama o cálculo fiscal`);
         return a;
       });
       expect(achados).toEqual([]);
-      const pkg = JSON.parse(readFileSync(join(PEDIDO, 'package.json'), 'utf8')) as { dependencies?: Record<string, string> };
-      expect(Object.keys(pkg.dependencies ?? {})).not.toContain('@macuxierp/fiscal');
+      // a varredura pega de fato o que é recusado (contra regex que não casa nada)
+      const aqui = join(PEDIDO, 'api/x.ts');
+      expect(['@macuxierp/fiscal/api', '@macuxierp/fiscal/domain', '@macuxierp/fiscal/web', '@macuxierp/fiscal/manifest', '@macuxierp/fiscal', '../../fiscal/contracts', '../../fiscal/api/calculo'].map((e) => alvoDe(aqui, e, 'fiscal')))
+        .toEqual(['/api', '/domain', '/web', '/manifest', '', 'relativo:contracts', 'relativo:api/calculo']);
+      expect(alvoDe(aqui, '@macuxierp/fiscal/contracts', 'fiscal')).toBe('/contracts');
+      expect(especificadores(`import { A } from '@macuxierp/fiscal/api';\nexport { B } from "../../fiscal/domain";\nconst c = await import('@macuxierp/fiscal/web');`))
+        .toEqual(['@macuxierp/fiscal/api', '../../fiscal/domain', '@macuxierp/fiscal/web']);
+    });
+
+    it('T-0132 (sem ciclo): nenhum arquivo de produção do fiscal (contracts, domain, api, web) importa o pedido, e o pacote não depende dele', () => {
+      const arquivos = fontes(FISCAL);
+      expect(arquivos.length).toBeGreaterThan(10);
+      for (const pasta of ['contracts', 'domain', 'api']) expect(arquivos.some((f) => f.startsWith(join(FISCAL, pasta))), pasta).toBe(true);
+      const achados = arquivos.flatMap((f) => especificadores(readFileSync(f, 'utf8')).filter((esp) => alvoDe(f, esp, 'pedido') !== null).map((esp) => `${relative(RAIZ, f)}: importa ${esp}`));
+      expect(achados).toEqual([]);
+      const pkg = JSON.parse(readFileSync(join(FISCAL, 'package.json'), 'utf8')) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+      expect(Object.keys({ ...pkg.dependencies, ...pkg.devDependencies })).not.toContain('@macuxierp/pedido');
+    });
+
+    it('RN-FIS-05 (63 A): o faturado@1 copia calc_* só do imposto com regra_aplicada; o outro sai omitido mesmo se a nota trouxer o cálculo', () => {
+      const pedidoId = randomUUID();
+      const prod = randomUUID();
+      const nota = NotaAutorizadaLida.parse({
+        pedido_id: pedidoId, ambiente: 'producao', nota: { id: randomUUID(), numero: 2, serie: 1, chave_acesso: CHAVE, emitida_em: EMITIDA, total_centavos: 100000 },
+        itens: [{
+          sequencia: 1, quantidade: 10_000, valor_centavos: 100000, regra_aplicada: { st: false, ipi: true },
+          calc_st: { v_bc: 140000, p_aliq: 180000, v_valor: 7200 }, calc_ipi: { v_bc: 100000, p_aliq: 50000, v_valor: 5000 },
+        }],
+      });
+      const pedido = { id: pedidoId, numero: 2, origem: 'fdv', external_id: randomUUID(), status: 'faturado', filial_id: randomUUID(), cliente_id: randomUUID(), vendedor_id: null, total_centavos: 100000, itens: [{ sequencia: 1, produto_id: prod }] } as unknown as PedidoGravado;
+      const f = PedidoFaturadoV1.parse(faturadoDaNota(nota, pedido, 'faturado', 'aprovado'));
+      const item = f.itens_faturados?.[0] as Record<string, unknown>;
+      expect(item.calc_ipi).toEqual({ v_bc: 100000, p_aliq: 50000, v_valor: 5000 });
+      expect(item).not.toHaveProperty('calc_st');
+      expect(item.regra_aplicada).toEqual({ st: false, ipi: true });
     });
     it('T-0132: o faturado@1 com item de emissor antigo (sem regra_aplicada) e de emitente sem regra sai sem travar e sem os campos', () => {
       const pedidoId = randomUUID();

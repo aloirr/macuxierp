@@ -27,6 +27,7 @@ import {
   type TrocarSenhaEntrada,
 } from '@macuxierp/platform-sdk';
 import {
+  ListaFiliaisConfig,
   ListaUsuariosConfig,
   ROTAS_USUARIOS_CONFIG,
   UsuarioConfig,
@@ -265,6 +266,10 @@ const caminhoUsuario = (modelo: string, id: string, usuario?: string): string =>
 
 export async function listarUsuarios(token: string, id: string): Promise<ListaUsuariosConfig> {
   return validado(await chamar('GET', `/empresas/${idEmpresa(id)}/usuarios`, { token }), ListaUsuariosConfig);
+}
+
+export async function listarFiliais(token: string, id: string): Promise<ListaFiliaisConfig> {
+  return validado(await chamar('GET', caminhoUsuario(ROTAS_USUARIOS_CONFIG.filiais.caminho, id), { token }), ListaFiliaisConfig);
 }
 
 export async function criarUsuario(token: string, id: string, corpo: UsuarioConfigCriar, chave: string): Promise<UsuarioConfigComSenha> {

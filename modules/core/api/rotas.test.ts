@@ -221,10 +221,21 @@ describe('RF-CORE-02: usuários', () => {
     expect(t.repo.usuarios).toHaveLength(antes);
   });
 
-  it('RN-CORE-01: um perfil por usuário e ao menos uma filial (400)', async () => {
+  it('RN-CORE-01: um perfil por usuário (400)', async () => {
     const t = montar();
     await expect(t.chamar('POST', '/usuarios', { corpo: { ...novo, perfil: 'dono' } })).rejects.toThrow();
-    await expect(t.chamar('POST', '/usuarios', { corpo: { ...novo, filial_ids: [] } })).rejects.toThrow();
+  });
+
+  it('RN-CORE-40: ao menos uma filial: criar com [] e editar com [] são 422; editar sem o campo mantém', async () => {
+    const t = montar();
+    const antes = t.repo.usuarios.length;
+    const c = await t.chamar('POST', '/usuarios', { corpo: { ...novo, filial_ids: [] } }).catch((e) => e);
+    expect([c.status, c.message]).toEqual([422, 'Escolha ao menos uma filial.']);
+    const e = await t.chamar('PATCH', '/usuarios/:id', { params: { id: ADM_ID }, corpo: { filial_ids: [] } }).catch((x) => x);
+    expect([e.status, e.message]).toEqual([422, 'Escolha ao menos uma filial.']);
+    expect(t.repo.usuarios).toHaveLength(antes);
+    const ok = await t.chamar('PATCH', '/usuarios/:id', { params: { id: ADM_ID }, corpo: { nome: 'Nome Novo' } });
+    expect((ok.corpo as { filial_ids: string[] }).filial_ids).toEqual(t.repo.usuarios.find((u) => u.id === ADM_ID)!.filial_ids);
   });
 
   it('RN-CORE-01: não inativa, exclui nem rebaixa o último administrador ativo (422)', async () => {

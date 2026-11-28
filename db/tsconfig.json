@@ -5,6 +5,6 @@
     "allowImportingTsExtensions": true,
     "erasableSyntaxOnly": true
   },
-  "include": ["src", "testes"],
+  "include": ["src", "seeds", "testes"],
   "exclude": ["node_modules", "dist"]
 }

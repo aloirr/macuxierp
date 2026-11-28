@@ -1,10 +1,10 @@
 /**
- * T-0008 (c), RN-CORE-02: TODA rota de core, cadastros, pedido (T-0016), integracao-fdv e faturamento (T-0045), montada
+ * T-0008 (c), RN-CORE-02: TODA rota de core, cadastros, pedido (T-0016), integracao-fdv, faturamento (T-0045) e fiscal (T-0127, #1004), montada
  * na API real (`criarApp`), checa sessão (401), perfil (403 PERFIL_SEM_PERMISSAO), tenant (transação aberta no tenant
  * do token) e licença do módulo (403 MODULO_INATIVO), nesta ordem. As rotas são enumeradas do próprio plugin: rota nova entra no teste sem ninguém lembrar.
  * Os plugins vêm do `montarModulos` de produção (tests/apoio/api-memoria.ts), o mesmo que o main.ts monta.
  * O core é a base do tenant (MODULOS_BASE do SDK): sempre licenciado, por isso a licença só derruba rotas de cadastros,
- * pedido, integracao-fdv e faturamento; cada módulo licenciado responde só à própria licença.
+ * pedido, integracao-fdv, faturamento e fiscal; cada módulo licenciado responde só à própria licença.
  */
 import { MODULOS_BASE, PERFIS, PERMISSOES, type Licenca, type RotaModulo } from '../../../packages/platform-sdk/src/index';
 import { describe, expect, it } from 'vitest';
@@ -16,7 +16,7 @@ import { emitirTokenAcesso } from '../../../apps/api/src/auth/jwt';
 const montar = usarApiMemoria();
 const api = (licencas?: Licenca[]) => montar({ licencas });
 /** Módulos com licença (o core é base). O padrão do apoio licencia só o cadastros; o pedido pede a própria linha. */
-const LICENCIADOS = ['cadastros', 'pedido', 'integracao-fdv', 'faturamento'] as const;
+const LICENCIADOS = ['cadastros', 'pedido', 'integracao-fdv', 'faturamento', 'fiscal'] as const;
 type Licenciado = (typeof LICENCIADOS)[number];
 const ehLicenciado = (m: string): m is Licenciado => (LICENCIADOS as readonly string[]).includes(m);
 const ativa = (modulo: Licenca['modulo']): Licenca => ({ modulo, ativo: true, valido_ate: null });
@@ -168,11 +168,10 @@ describe('montarModulos de produção (apps/api/src/modulos.ts, o do main.ts) na
     expect(declaradas.length).toBe(ROTAS.length);
   });
 
-  it('módulo montado só com o manifesto (fiscal): nenhuma rota, 404 mesmo com sessão', async () => {
-    const a = await api([...TODAS, ativa('fiscal')]);
-    const semRotas = a.modulos.filter((p) => p.rotas.length === 0).map((p) => p.manifesto.id);
-    expect(semRotas).toEqual(['fiscal']);
-    for (const m of semRotas) {
+  it('todo módulo montado tem rota (o fiscal ganhou as dele no #1004); caminho que nenhum plugin declara é 404 mesmo com sessão, sem abrir transação', async () => {
+    const a = await api(TODAS);
+    expect(a.modulos.filter((p) => p.rotas.length === 0).map((p) => p.manifesto.id)).toEqual([]);
+    for (const m of a.modulos.map((p) => p.manifesto.id)) {
       const r = await a.app.inject({ url: `/v1/${m}/qualquer`, headers: a.auth() });
       expect(r.statusCode, m).toBe(404);
     }

@@ -18,8 +18,19 @@ import { criarTransmissor } from './transmissor';
 
 const banco: Banco = { comTenant: async (_id, fn) => fn(tx), semTenant: async (fn) => fn(tx), ping: async () => true };
 
-function montar(mei = false) {
+function montar(mei = false, ipi = false) {
   const f = depsFake({ ambiente: 'homologacao' });
+  if (ipi) {
+    // IPI por regra (T-0132): calc_ipi do fiscal + CST/cEnq do grupo ipi; cada item leva 10% sobre a base de 1000 centavos (vIPI 100).
+    const calcular = f.deps.calculo.calcular;
+    f.deps.calculo.calcular = async (t, e) => {
+      const r = await calcular(t, e);
+      if (!r.ok) return r;
+      const itens = r.saida.itens.map((i) => ({ ...i, regra_aplicada: { st: false, ipi: true }, calc_ipi: { v_bc: 1000, p_aliq: 100_000, v_valor: 100 }, ipi: { cst: '50', c_enq: '999', v_bc: 1000, p_ipi: 100_000, v_ipi: 100 } }));
+      const v_ipi = itens.length * 100;
+      return { ...r, saida: { ...r.saida, itens, totais: { ...r.saida.totais, v_ipi, v_nf: r.saida.totais.v_nf + v_ipi } } };
+    };
+  }
   if (mei) {
     // Nota de MEI (CRT 4, NT 2024.001): CSOSN 102 e PIS/COFINS 99 zerados, sem crédito de ICMS.
     f.deps.cadastros.filial = async () => ({
@@ -94,6 +105,20 @@ describe('ponta a ponta: pedido → nota → simulador → nfeProc guardado → 
       expect(m.transmissoes.every((t) => t.destino === 'simulador')).toBe(true);
     });
   }
+
+  it('RN-FIS-05: IPI por regra (calc_ipi) vai ao XML: vIPI em cada item e no ICMSTot, entra no vNF (soma dos itens), e o XML assinado vale no XSD', async () => {
+    const m = montar(false, true);
+    const emissao = await m.svc.emitirNota(tx, TENANT, { pedido_id: IDS.pedido, idempotencia: 'idem-ponta-ipi' });
+    if (!emissao.ok) throw new Error(JSON.stringify(emissao.violacoes));
+    expect(emissao.nota.total_centavos).toBe(4500 + 200);
+    expect((await m.transmissor.transmitirNota(TENANT, emissao.nota.id)).resultado).toBe('autorizada');
+    const assinado = m.assinados[0]!.xml;
+    expect((await validarXsd(assinado, 'nfe')).erros).toEqual([]);
+    expect(assinado.match(/<IPITrib>/g)).toHaveLength(2);
+    expect(assinado).toContain('<pIPI>10.0000</pIPI>');
+    expect(assinado).toContain('<vIPI>2.00</vIPI>'); // total = soma dos itens (2 × 1,00)
+    expect(assinado).toContain('<vNF>47.00</vNF>');
+  });
 
   it('RF-FAT-07: boleto em 3 prazos (30/60/90): emitir → simulador autoriza → 3 títulos abertos que somam o total da nota, e a nota segue homologação', async () => {
     const m = montar();

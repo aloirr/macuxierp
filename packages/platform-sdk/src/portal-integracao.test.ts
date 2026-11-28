@@ -257,6 +257,7 @@ describe('contratos da Integração FDV no portal /config (ADR 0013, T-0056)', (
     for (const c of Object.values(CAMINHOS_INTEGRACAO_FDV_PLATAFORMA)) expect(c.startsWith('/empresas/:id/integracao-fdv')).toBe(true);
     expect(CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.cargaCompleta).toBe('/empresas/:id/integracao-fdv/entidades/:entidade/carga-completa');
     expect(CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.retomar).toBe('/empresas/:id/integracao-fdv/entidades/:entidade/retomar');
+    expect(CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.ligacoes).toBe('/empresas/:id/integracao-fdv/ligacoes');
     expect(ACOES_PLATAFORMA).toContain('plataforma.integracao_fdv.ver');
     expect(ACOES_PLATAFORMA).toContain('plataforma.integracao_fdv.configurar');
     expect(ACOES_PLATAFORMA).toContain('plataforma.integracao_fdv.operar');

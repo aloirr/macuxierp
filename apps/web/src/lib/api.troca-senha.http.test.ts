@@ -52,4 +52,21 @@ describe('403 TROCAR_SENHA (T-0052)', () => {
     expect((init.headers as Record<string, string>)['idempotency-key']).toBeUndefined();
     expect((init.headers as Record<string, string>).cookie).toBe('macuxierp_refresh=r1');
   });
+  it('403 com a mensagem da rota (T-0129): a leitura leva o texto; sem texto (ou longo demais), o padrão', async () => {
+    vi.stubGlobal('fetch', resposta(403, { codigo: 'PERFIL_SEM_PERMISSAO', mensagem: 'Só o administrador edita a bandeira.' }));
+    const { getValidado, buscarRegistro, textoSemPermissao } = await carregar();
+    const { z } = await import('zod');
+    const e1 = await getValidado('/v1/x', z.unknown(), 't', 'x', true).catch((e: unknown) => e);
+    expect(textoSemPermissao(e1, 'padrão')).toBe('Só o administrador edita a bandeira.');
+    const e2 = await buscarRegistro('/v1/x', z.unknown(), 't', 'x').catch((e: unknown) => e);
+    expect(textoSemPermissao(e2, 'padrão')).toBe('Só o administrador edita a bandeira.');
+    vi.stubGlobal('fetch', resposta(403, { codigo: 'PERFIL_SEM_PERMISSAO', mensagem: 'x'.repeat(300) }));
+    const e3 = await (await carregar()).buscarRegistro('/v1/x', z.unknown(), 't', 'x').catch((e: unknown) => e);
+    expect(textoSemPermissao(e3, 'padrão')).toBe('padrão');
+  });
+  it('403 da escrita mostra a mensagem da rota; sem mensagem, o texto fixo', async () => {
+    const { resultadoDaResposta } = await import('./descritor/escrita');
+    expect(resultadoDaResposta(403, false, { codigo: 'PERFIL_SEM_PERMISSAO', mensagem: 'Seu perfil não edita preços.' })).toMatchObject({ ok: false, mensagem: 'Seu perfil não edita preços.' });
+    expect(resultadoDaResposta(403, false, { codigo: 'PERFIL_SEM_PERMISSAO' })).toMatchObject({ mensagem: 'Seu perfil não pode fazer esta ação.' });
+  });
 });

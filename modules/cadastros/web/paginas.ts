@@ -172,11 +172,11 @@ export function csvDaPagina(p: PaginaCadastros, perfil: Perfil, linhas: readonly
  */
 export const PAGINAS_EDICAO: readonly PaginaBase[] = [
   { id: 'cliente-novo', menu: 'Clientes', titulo: 'Novo cliente', rota: ROTA_CLIENTE_NOVO, ver: 'cadastros.cliente.editar', ocultaNoMenu: true },
-  { id: 'cliente', menu: 'Clientes', titulo: 'Cliente', rota: ROTA_CLIENTE, ver: 'cadastros.ver', ocultaNoMenu: true },
+  { id: 'cliente', menu: 'Clientes', titulo: 'Cliente', rota: ROTA_CLIENTE, ver: 'cadastros.ver', editar: 'cadastros.cliente.editar', ocultaNoMenu: true },
   { id: 'produto-novo', menu: 'Produtos', titulo: 'Novo produto', rota: ROTA_PRODUTO_NOVO, ver: 'cadastros.produto.editar', ocultaNoMenu: true },
-  { id: 'produto', menu: 'Produtos', titulo: 'Produto', rota: ROTA_PRODUTO, ver: 'cadastros.ver', ocultaNoMenu: true },
+  { id: 'produto', menu: 'Produtos', titulo: 'Produto', rota: ROTA_PRODUTO, ver: 'cadastros.ver', editar: 'cadastros.produto.editar', ocultaNoMenu: true },
   { id: 'tabela-preco-nova', menu: 'Tabelas de preço', titulo: 'Nova tabela de preço', rota: ROTA_TABELA_PRECO_NOVA, ver: 'cadastros.preco.editar', ocultaNoMenu: true },
-  { id: 'tabela-preco', menu: 'Tabelas de preço', titulo: 'Tabela de preço', rota: ROTA_TABELA_PRECO, ver: 'cadastros.ver', ocultaNoMenu: true },
+  { id: 'tabela-preco', menu: 'Tabelas de preço', titulo: 'Tabela de preço', rota: ROTA_TABELA_PRECO, ver: 'cadastros.ver', editar: 'cadastros.preco.editar', ocultaNoMenu: true },
   { id: 'filial-nova', menu: 'Filiais', titulo: 'Nova filial', rota: ROTA_FILIAL_NOVA, ver: 'cadastros.filial.editar', ocultaNoMenu: true },
-  { id: 'filial', menu: 'Filiais', titulo: 'Filial', rota: ROTA_FILIAL, ver: 'cadastros.ver', ocultaNoMenu: true },
+  { id: 'filial', menu: 'Filiais', titulo: 'Filial', rota: ROTA_FILIAL, ver: 'cadastros.ver', editar: 'cadastros.filial.editar', ocultaNoMenu: true },
 ];

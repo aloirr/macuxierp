@@ -53,6 +53,8 @@ import {
   UsuarioConfigCriar,
   UsuarioConfigEditar,
   ROTAS_USUARIOS_CONFIG,
+  type FilialConfig,
+  type ListaFiliaisConfig,
   type ListaUsuariosConfig,
   type UsuarioConfig,
   type UsuarioConfigComSenha,
@@ -61,6 +63,7 @@ import {
 import {
   acoesDoUsuario,
   avaliarAlteracaoUsuario,
+  avaliarFiliaisDoUsuario,
   avaliarPrimeiroAdmin,
   avaliarRedefinirSenhaPrimeiroAdmin,
   aplicarEdicao,
@@ -122,6 +125,8 @@ export interface RepositorioPlataforma {
    * Erros já em HTTP: P0002 = 404, MXU01 = 422 (RN-CORE-01), 23505 = 409 (e-mail em uso), 23514 = 422.
    */
   listarUsuarios(tx: Transacao, id: string): Promise<ItemUsuarioBanco[]>;
+  /** `empresa_filiais_listar` (0086, T-0130): as filiais não excluídas ({id, nome, padrao}), a padrão primeiro; sem CNPJ nem endereço. P0002 = 404. */
+  listarFiliais(tx: Transacao, id: string): Promise<FilialConfig[]>;
   criarUsuario(tx: Transacao, p: { id: string; email: string; nome: string; perfil: string; senha_hash: string; filial_ids: readonly string[]; request_id: string }): Promise<ItemUsuarioBanco>;
   editarUsuario(tx: Transacao, p: { id: string; usuario: string; patch: UsuarioConfigEditar; request_id: string }): Promise<ItemUsuarioBanco>;
   redefinirSenhaUsuario(tx: Transacao, p: { id: string; usuario: string; senha_hash: string; request_id: string }): Promise<ItemUsuarioBanco>;
@@ -486,6 +491,16 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
         return semCache(lista);
       },
     }),
+    // Filiais da empresa para o campo "Filiais" do cadastro de usuário (0086, T-0130): só id, nome e se é a padrão.
+    definirRotaPlataforma({
+      metodo: ROTAS_USUARIOS_CONFIG.filiais.metodo,
+      caminho: semPrefixoPortal(ROTAS_USUARIOS_CONFIG.filiais),
+      acao: 'plataforma.usuario.ver',
+      async executar(c, { params }) {
+        const lista: ListaFiliaisConfig = { itens: await repo.listarFiliais(c.tx, idDoParam(params)) };
+        return semCache(lista);
+      },
+    }),
     definirRotaPlataforma({
       metodo: ROTAS_USUARIOS_CONFIG.criar.metodo,
       caminho: semPrefixoPortal(ROTAS_USUARIOS_CONFIG.criar),
@@ -494,6 +509,7 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
       corpo: UsuarioConfigCriar,
       async executar(c, { corpo, params }) {
         const id = idDoParam(params);
+        await exigirFiliaisDoUsuario(c.tx, id, 'criar', corpo.filial_ids);
         const { senha, senha_hash } = await senhaProvisoria();
         const u = await repo.criarUsuario(c.tx, { id, email: corpo.email, nome: corpo.nome, perfil: corpo.perfil, senha_hash, filial_ids: corpo.filial_ids, request_id: c.request_id });
         const resposta: UsuarioConfigComSenha = { usuario: linhaUsuarioConfig(u), senha_provisoria: senha };
@@ -509,6 +525,7 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
         const id = idDoParam(params);
         const alvo = await usuarioOuErro(c.tx, id, params);
         if (corpo.perfil) exigirOutroAdmin(alvo, { perfil: corpo.perfil });
+        await exigirFiliaisDoUsuario(c.tx, id, 'editar', corpo.filial_ids);
         return semCache(linhaUsuarioConfig(await repo.editarUsuario(c.tx, { id, usuario: alvo.id, patch: corpo, request_id: c.request_id })));
       },
     }),
@@ -529,6 +546,16 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
     rotaSituacaoUsuario('reativar'),
     rotaSituacaoUsuario('excluir'),
   ]);
+
+  /** RN-CORE-40: ao menos uma filial, e só filiais vivas desta empresa (a lista da 0086 já filtra tenant e excluídas). */
+  async function exigirFiliaisDoUsuario(tx: Transacao, id: string, operacao: 'criar' | 'editar', filial_ids: readonly string[] | undefined): Promise<void> {
+    const sem = avaliarFiliaisDoUsuario({ operacao, filial_ids });
+    if (!sem.ok) throw erros.regra('RN-CORE-40', sem.mensagem);
+    if (filial_ids === undefined) return;
+    const vivas = (await repo.listarFiliais(tx, id)).map((f) => f.id);
+    const r = avaliarFiliaisDoUsuario({ operacao, filial_ids, filiais_da_empresa: vivas });
+    if (!r.ok) throw erros.regra('RN-CORE-40', r.mensagem);
+  }
 
   /** O alvo pela listagem da 0078 (a mesma leitura da tela): fora da lista = 404. */
   async function usuarioOuErro(tx: Transacao, id: string, params: Record<string, string>): Promise<ItemUsuarioBanco> {

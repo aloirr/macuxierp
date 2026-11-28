@@ -23,6 +23,7 @@ import {
 import { PG_DISPONIVEL } from '../../../packages/platform-sdk/src/pg-testes';
 import { filialValida } from '../../../modules/cadastros/api/fixtures-teste';
 import { urlDaConfiguracaoDaFilial, urlDoDanfe, urlDoXml } from '../../../modules/faturamento/web/index';
+import { apiItensPreco } from '../../../modules/cadastros/web/index';
 import { PAGINAS_REGISTRADAS } from '../../../apps/web/src/lib/paginas';
 import { telaDaRota } from '../../../apps/web/src/lib/telas';
 import type { ExecutorDeAcoes, TelaDescrita } from '../../../apps/web/src/lib/descritor/tipos';
@@ -159,6 +160,8 @@ const NAO_EXTRAIVEIS: Readonly<Record<string, string>> = {
   'apps/web/src/app/(shell)/[modulo]/[...pagina]/telas-quadro.tsx :: urlDaConfiguracaoDaFilial(f.id)': 'configuração fiscal de cada filial no quadro (urlDaConfiguracaoDaFilial)',
   'apps/web/src/app/(shell)/[modulo]/[...pagina]/acoes-log-fdv.ts :: `/v1/integracao-fdv/entidades/${encodeURIComponent(e)}/log`':
     'Log do BKO por cadastro (CAMINHOS_INTEGRACAO_FDV_TENANT.log, por ENTIDADES_ENVIO_FDV)',
+  'apps/web/src/components/cadastros-outros/itens-preco.tsx :: `${fonte}?limite=200`': 'fontes da grade de itens da tabela de preço (filiais e produtos, literais na chamada; T-0123 lote C)',
+  'apps/web/src/components/cadastros-outros/itens-preco.tsx :: apiItensPreco(id)': 'itens da tabela de preço (apiItensPreco do cadastros; T-0123 lote C)',
   "modules/integracao-fdv/web/cliente.ts :: CAMINHOS_INTEGRACAO_FDV_TENANT.log.replace('/integracao-fdv', '').replace(':entidade', encodeURIComponent(entidade))":
     'Log do BKO por cadastro (CAMINHOS_INTEGRACAO_FDV_TENANT.log, por ENTIDADES_ENVIO_FDV)',
 };
@@ -200,6 +203,9 @@ const GETS_ESTRUTURADOS = (): { origem: string; caminho: string }[] => [
   { origem: 'download XML da nota (urlDoXml)', caminho: urlDoXml(ID) },
   { origem: 'download DANFE da nota (urlDoDanfe)', caminho: urlDoDanfe(ID) },
   { origem: 'configuração fiscal da filial no quadro (urlDaConfiguracaoDaFilial)', caminho: urlDaConfiguracaoDaFilial(ID) },
+  { origem: 'itens da tabela de preço (apiItensPreco, T-0123 lote C)', caminho: apiItensPreco(ID) },
+  { origem: 'fonte da grade de itens da tabela de preço (filiais)', caminho: '/v1/cadastros/filiais' },
+  { origem: 'fonte da grade de itens da tabela de preço (produtos)', caminho: '/v1/cadastros/produtos' },
   { origem: 'clientes recebidos do FDV (Integração FDV)', caminho: `/v1${CAMINHOS_INTEGRACAO_FDV_TENANT.clientesRecebidos}` },
   ...ENTIDADES_ENVIO_FDV.map((e) => ({ origem: `Log do BKO (${e})`, caminho: `/v1${CAMINHOS_INTEGRACAO_FDV_TENANT.log.replace(':entidade', e)}` })),
   ...ENTIDADES_ENVIO_FDV.map((e) => ({ origem: `CSV do Log do BKO (${e}, caminhoDoLogCsv)`, caminho: `/v1${CAMINHOS_INTEGRACAO_FDV_TENANT.logCsv.replace(':entidade', e)}` })),

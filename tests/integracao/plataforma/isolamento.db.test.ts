@@ -78,10 +78,11 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config: isolamento das credenciais de t
   });
 
   it('T-0056/T-0086 (ADR 0013 §2): toda rota de CAMINHOS_INTEGRACAO_FDV_PLATAFORMA (Monitor, Reprocessar e Log inclusos) entra sozinha na matriz, pelo plugin real', () => {
-    // Caminhos e número lidos do SDK; o método de cada chave é o contrato do portal. `Record<keyof typeof C, ...>` faz o
-    // typecheck cair quando o SDK ganhar uma chave sem método aqui, então nenhuma rota nova fica fora da matriz.
+    // Caminhos e número lidos do SDK; o método de cada chave é o contrato do portal. O mapa aceita chave que o SDK ainda não
+    // tem (`ligacoes`, T-0131, entra com o #989), para compilar antes e depois; em troca, a execução cai se uma chave do SDK
+    // ficar sem método aqui, então nenhuma rota nova fica fora da matriz.
     const C = CAMINHOS_INTEGRACAO_FDV_PLATAFORMA;
-    const METODO: Record<keyof typeof C, MetodoPortal> = {
+    const METODO: Readonly<Record<string, MetodoPortal>> = {
       ler: 'GET',
       credencial: 'PUT',
       testar: 'POST',
@@ -91,16 +92,26 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config: isolamento das credenciais de t
       monitor: 'GET',
       reprocessar: 'POST',
       log: 'GET',
+      ligacoes: 'GET', // T-0131 (RN-INF-13): a ligação ERP → Macuxi FDV no /config
     };
-    const chaves = Object.keys(C) as (keyof typeof C)[];
-    const esperadas = chaves.map((k) => `${METODO[k]} ${C[k]}`).sort();
-    expect(esperadas).toHaveLength(Object.values(C).length);
-    expect(chaves).toEqual(expect.arrayContaining(['monitor', 'reprocessar', 'log']));
+    // A rota da Ligação já está montada no plugin (#1000, literal em modules/integracao-fdv/api/plataforma.ts) e a chave do SDK
+    // vem no #989. Até lá o caminho dela vem daqui; com o #989, o do SDK tem de ser igual a este.
+    const PENDENTE_NO_SDK: Readonly<Record<string, string>> = { ligacoes: '/empresas/:id/integracao-fdv/ligacoes' };
+    const doSdk = C as Readonly<Record<string, string>>;
+    for (const [k, c] of Object.entries(PENDENTE_NO_SDK)) if (k in doSdk) expect(doSdk[k], k).toBe(c);
+    const chaves = [...new Set([...Object.keys(C), ...Object.keys(PENDENTE_NO_SDK)])];
+    const caminho = (k: string): string => doSdk[k] ?? PENDENTE_NO_SDK[k]!;
+    expect(chaves.filter((k) => METODO[k] === undefined), 'chave do SDK sem método no mapa').toEqual([]);
+    // Chave do mapa fora do SDK só a pendente; qualquer outra é erro de digitação.
+    expect(Object.keys(METODO).filter((k) => !chaves.includes(k))).toEqual([]);
+    const esperadas = chaves.map((k) => `${METODO[k]} ${caminho(k)}`).sort();
+    expect(esperadas.length).toBeGreaterThanOrEqual(Object.values(C).length);
+    expect(chaves).toEqual(expect.arrayContaining(['monitor', 'reprocessar', 'log', 'ligacoes']));
     const declaradas = pluginsPlataforma(modulos).flatMap((pl) => pl.rotas.map((r) => `${r.metodo} ${r.caminho}`));
     expect(declaradas.filter((d) => d.includes('/integracao-fdv')).sort()).toEqual(esperadas);
     // cada uma está na matriz (rotasPortal), que alimenta os casos de JWT do tenant, CSRF e troca pendente abaixo
     const padrao = (c: string) => new RegExp(`^${PREFIXO_PLATAFORMA}${c.replace(/:[A-Za-z_]+/g, '[0-9a-f-]{36}')}$`);
-    for (const k of chaves) expect(rotasPortal.some((r) => r.metodo === METODO[k] && padrao(C[k]).test(r.url)), `${METODO[k]} ${C[k]}`).toBe(true);
+    for (const k of chaves) expect(rotasPortal.some((r) => r.metodo === METODO[k] && padrao(caminho(k)).test(r.url)), `${METODO[k]} ${caminho(k)}`).toBe(true);
   });
 
   it('T-0058/T-0060 (ADR 0013, adendo de 23/11/2026): as rotas da carga de cadastros do portal (CAMINHOS_CARGAS_PLATAFORMA) entram sozinhas na matriz, pelo plugin real', () => {

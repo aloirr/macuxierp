@@ -1,6 +1,6 @@
 import { CABECALHOS_SENHA_PROVISORIA, ErroApi, type RotaPlataforma, type Transacao } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
-import { MENSAGEM_ULTIMO_ADMIN, ROTAS_USUARIOS_CONFIG, UsuarioConfig, UsuarioConfigComSenha } from '../contracts';
+import { ListaFiliaisConfig, MENSAGEM_FILIAL_DO_USUARIO, MENSAGEM_FILIAL_FORA_DA_EMPRESA, MENSAGEM_ULTIMO_ADMIN, ROTAS_USUARIOS_CONFIG, UsuarioConfig, UsuarioConfigComSenha } from '../contracts';
 import { MANIFESTOS_TESTE } from './manifestos-teste';
 import { criarPluginPlataformaCore, semPrefixoPortal, type ItemUsuarioBanco, type RepositorioPlataforma } from './plataforma';
 
@@ -8,6 +8,8 @@ const EMPRESA = '00000000-0000-4000-8000-0000000000e1';
 const ADM = '00000000-0000-4000-8000-0000000000a1';
 const FAT = '00000000-0000-4000-8000-0000000000a2';
 const INATIVO = '00000000-0000-4000-8000-0000000000a3';
+const FILIAL = '00000000-0000-4000-8000-0000000000f1';
+const FILIAL2 = '00000000-0000-4000-8000-0000000000f2';
 const FORA = '00000000-0000-4000-8000-0000000000ff';
 
 const item = (p: Partial<ItemUsuarioBanco> & Pick<ItemUsuarioBanco, 'id'>): ItemUsuarioBanco => ({
@@ -25,6 +27,10 @@ function montar(linhas: ItemUsuarioBanco[] = [
   const hashes: string[] = [];
   const repo = {
     async listarUsuarios(_tx: Transacao, id: string) { chamadas.push(`listar:${id}`); return linhas; },
+    async listarFiliais(_tx: Transacao, id: string) {
+      chamadas.push(`filiais:${id}`);
+      return [{ id: FILIAL, nome: 'Matriz', padrao: true }, { id: FILIAL2, nome: 'Loja Centro', padrao: false }];
+    },
     async criarUsuario(_tx: Transacao, p: { email: string; nome: string; perfil: string; senha_hash: string; request_id: string }) {
       chamadas.push(`criar:${p.perfil}:${p.request_id}`);
       hashes.push(p.senha_hash);
@@ -85,6 +91,17 @@ describe('v0.3.28: Usuários da empresa na Config (0078, RN-CORE-01, RN-CORE-17)
     expect(por(R.redefinirSenha)?.idempotencia).toBe('obrigatoria');
   });
 
+  it('T-0130: GET filiais exige plataforma.usuario.ver, devolve { itens } no ListaFiliaisConfig e é no-store', async () => {
+    const t = montar();
+    const rota = t.plugin.rotas.find((x) => x.metodo === 'GET' && x.caminho === semPrefixoPortal(ROTAS_USUARIOS_CONFIG.filiais));
+    expect(rota?.acao).toBe('plataforma.usuario.ver');
+    const r = await t.chamar(ROTAS_USUARIOS_CONFIG.filiais, { id: EMPRESA });
+    expect(r.cabecalhos).toMatchObject(SEM_CACHE);
+    expect(ListaFiliaisConfig.parse(r.corpo).itens.map((f) => [f.nome, f.padrao])).toEqual([['Matriz', true], ['Loja Centro', false]]);
+    expect(t.chamadas).toEqual([`filiais:${EMPRESA}`]);
+    expect(t.auditadas).toEqual([]);
+  });
+
   it('lista com o e-mail mascarado do banco e as ações do domain; o último admin fica sem Excluir (52 A); no-store', async () => {
     const t = montar();
     const r = await t.chamar(ROTAS_USUARIOS_CONFIG.listar, { id: EMPRESA });
@@ -102,7 +119,7 @@ describe('v0.3.28: Usuários da empresa na Config (0078, RN-CORE-01, RN-CORE-17)
   // no-store: a apps/api conclui a Idempotency-Key sem guardar o corpo e a repetição dá 409 (a senha nunca é repetida nem gravada).
   it('senha provisória: criar (201) e redefinir são no-store; o banco recebe só o hash; nada vai para auditar', async () => {
     const t = montar();
-    const c = await t.chamar(ROTAS_USUARIOS_CONFIG.criar, { id: EMPRESA }, { nome: 'Nova Pessoa', email: 'Nova@Exemplo.test', perfil: 'fiscal' });
+    const c = await t.chamar(ROTAS_USUARIOS_CONFIG.criar, { id: EMPRESA }, { nome: 'Nova Pessoa', email: 'Nova@Exemplo.test', perfil: 'fiscal', filial_ids: [FILIAL] });
     expect(c.status).toBe(201);
     expect(UsuarioConfigComSenha.parse(c.corpo).usuario.acoes).toContain('excluir');
     const r = await t.chamar(ROTAS_USUARIOS_CONFIG.redefinirSenha, { id: EMPRESA, usuario: FAT });
@@ -112,7 +129,7 @@ describe('v0.3.28: Usuários da empresa na Config (0078, RN-CORE-01, RN-CORE-17)
       expect(t.hashes.some((h) => h.includes(senha_provisoria))).toBe(false);
     }
     expect(t.hashes).toHaveLength(2);
-    expect(t.chamadas).toEqual(['criar:fiscal:req-1', `senha:${FAT}`]);
+    expect(t.chamadas).toEqual([`filiais:${EMPRESA}`, 'criar:fiscal:req-1', `senha:${FAT}`]);
     expect(t.auditadas).toEqual([]);
   });
 
@@ -128,6 +145,28 @@ describe('v0.3.28: Usuários da empresa na Config (0078, RN-CORE-01, RN-CORE-17)
     // Editar só o nome do último admin passa.
     await t.chamar(ROTAS_USUARIOS_CONFIG.editar, { id: EMPRESA, usuario: ADM }, { nome: 'Ana Nova' });
     expect(t.chamadas.at(-1)).toBe(`editar:${ADM}:nome`);
+  });
+
+  it('RN-CORE-40: criar sem filial é 422 "Escolha ao menos uma filial." e nada chega ao banco', async () => {
+    const t = montar();
+    for (const corpo of [{ nome: 'Nova Pessoa', email: 'n@exemplo.test', perfil: 'fiscal' }, { nome: 'Nova Pessoa', email: 'n@exemplo.test', perfil: 'fiscal', filial_ids: [] }]) {
+      const e = await t.erro(t.chamar(ROTAS_USUARIOS_CONFIG.criar, { id: EMPRESA }, corpo));
+      expect([e.status, e.message, e.codigo]).toEqual([422, MENSAGEM_FILIAL_DO_USUARIO, 'RN-CORE-40']);
+    }
+    expect(t.chamadas).toEqual([]);
+  });
+
+  it('RN-CORE-40: editar com filial_ids [] é 422; sem o campo mantém as filiais; filial de fora é 422', async () => {
+    const t = montar();
+    const vazio = await t.erro(t.chamar(ROTAS_USUARIOS_CONFIG.editar, { id: EMPRESA, usuario: FAT }, { filial_ids: [] }));
+    expect([vazio.status, vazio.message]).toEqual([422, MENSAGEM_FILIAL_DO_USUARIO]);
+    const fora = await t.erro(t.chamar(ROTAS_USUARIOS_CONFIG.editar, { id: EMPRESA, usuario: FAT }, { filial_ids: [FILIAL, FORA] }));
+    expect([fora.status, fora.message]).toEqual([422, MENSAGEM_FILIAL_FORA_DA_EMPRESA]);
+    expect(t.chamadas.some((c) => c.startsWith('editar'))).toBe(false);
+    await t.chamar(ROTAS_USUARIOS_CONFIG.editar, { id: EMPRESA, usuario: FAT }, { nome: 'Nome Novo' });
+    expect(t.chamadas.at(-1)).toBe(`editar:${FAT}:nome`);
+    await t.chamar(ROTAS_USUARIOS_CONFIG.editar, { id: EMPRESA, usuario: FAT }, { filial_ids: [FILIAL2] });
+    expect(t.chamadas.at(-1)).toBe(`editar:${FAT}:filial_ids`);
   });
 
   it('RN-CORE-17: inativar é reversível (devolve a linha inativa com Reativar); excluir devolve só {id, situacao: excluido}', async () => {

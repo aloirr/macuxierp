@@ -7,8 +7,6 @@
 import { CAMINHOS_INTEGRACAO_FDV_PLATAFORMA as C, CABECALHO_CSRF_CONFIG, COOKIE_CONFIG, PREFIXO_PLATAFORMA } from '../../packages/platform-sdk/src/index';
 import { subirApiE2e } from './apoio-api';
 
-const LIGACOES = (C as Readonly<Record<string, string | undefined>>).ligacoes ?? null;
-
 await subirApiE2e({
   slug: 'e2e-ifdv',
   nome: 'Comercial Igarapé Fictício Ltda',
@@ -19,9 +17,8 @@ await subirApiE2e({
   porta: '3201',
   registrarRotas: true,
   extra: ({ tenant }) => ({
-    // T-0131: a leitura das ligações (`CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.ligacoes`, #989) ainda não está no SDK do main; até lá, null
-    // e o passo do roteiro fica desligado (roda e só avisa "pendente").
-    ligacoes: LIGACOES ? `${PREFIXO_PLATAFORMA}${LIGACOES.replace(':id', tenant)}` : null,
+    // T-0131: a rota do /config das ligações (`CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.ligacoes`, #989), para o roteiro conferir a tela contra a API.
+    ligacoes: `${PREFIXO_PLATAFORMA}${C.ligacoes.replace(':id', tenant)}`,
     portal: { prefixo: PREFIXO_PLATAFORMA, cookie: COOKIE_CONFIG, csrf: CABECALHO_CSRF_CONFIG, ler: `${PREFIXO_PLATAFORMA}${C.ler.replace(':id', tenant)}`, cargaCompleta: `${PREFIXO_PLATAFORMA}${C.cargaCompleta}` },
   }),
 });

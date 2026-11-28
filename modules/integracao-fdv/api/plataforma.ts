@@ -40,8 +40,8 @@ import {
 } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 import { entidadeDaRota } from './operacao';
-import { EVENTOS, EVENTO_CARGA_INICIAL, MotivoPausa, MSG_SEM_LICENCA } from '../contracts';
-import { decidirCargaCompleta, decidirRetomar, entidadesParaCargaInicial, montarLogPlataforma, montarMonitor, planejarTrocaCredencial, prefixoExibido, proximaTentativaEm, validarConfiguracao } from '../domain';
+import { EVENTOS, EVENTO_CARGA_INICIAL, EntidadeHub, EstadoLote, LigacoesResposta, MotivoPausa, MSG_SEM_LICENCA } from '../contracts';
+import { montarContatoSaida, decidirCargaCompleta, decidirRetomar, entidadesParaCargaInicial, montarLogPlataforma, montarMonitor, planejarTrocaCredencial, prefixoExibido, proximaTentativaEm, validarConfiguracao } from '../domain';
 
 const Uuid = z.string().uuid();
 const Instante = z.string().datetime();
@@ -103,6 +103,36 @@ const InsumosLogPortal = z.object({
 });
 export type InsumosLogPortal = z.infer<typeof InsumosLogPortal>;
 
+/**
+ * Insumos crus da Ligação (`portal_ligacoes`, 0088; T-0131): os mesmos números do `lerLigacoes` do BKO. A situação do Contato
+ * não vem do banco: depende do relógio e sai do `situacaoConectorFdv` do SDK. Sem chave, corpo de lote nem dado pessoal.
+ */
+const InsumosLigacoesPortal = z.object({
+  contato: z.object({
+    credencial_ativa: z.boolean(),
+    conector_id: z.string().nullable(),
+    ambiente: DefinirCredencialPlataformaEntrada.shape.ambiente.nullable(),
+    chave_prefixo: z.string().max(8).nullable(),
+    habilitadas: z.number().int().min(0),
+    ultimo_contato_em: Instante.nullable(),
+  }),
+  contadores: z.object({ enviados: z.coerce.number().int().min(0), aceitos: z.coerce.number().int().min(0) }),
+  envios: z.array(
+    z.object({
+      id: Uuid,
+      entidade: EntidadeHub,
+      estado: EstadoLote,
+      registros: z.coerce.number().int().min(0),
+      aceitos: z.number().int().min(0).nullable(),
+      com_erro: z.number().int().min(0).nullable(),
+      enviado_em: Instante.nullable(),
+      concluido_em: Instante.nullable(),
+    }),
+  ),
+  envios_cortados: z.boolean(),
+});
+export type InsumosLigacoesPortal = z.infer<typeof InsumosLigacoesPortal>;
+
 const ResultadoReprocessarPortal = z.object({ falhas: z.number().int().min(0), pendentes: z.number().int().min(0), pedido_em: z.union([Instante, z.date()]) });
 
 /** Porta do banco do portal: uma função SQL por método. O dublê dos testes unitários implementa esta interface. */
@@ -136,6 +166,8 @@ export interface RepositorioPortalIntegracaoFdv {
   monitor(tx: Transacao, tenant: string): Promise<InsumosMonitorPortal>;
   /** T-0086 §4: só leitura, sem auditoria; só códigos, campos e contagens. */
   log(tx: Transacao, p: { tenant: string; entidade: EntidadeEnvioFdv }): Promise<InsumosLogPortal>;
+  /** T-0131: só leitura, sem auditoria; os números da ligação ERP → Macuxi FDV, sem a situação do Contato. */
+  ligacoes(tx: Transacao, tenant: string): Promise<InsumosLigacoesPortal>;
   /** T-0086 §3: marca para envio só falha e pendente; com lote em voo a função recusa (`MXI03`, 409). Audita. */
   reprocessar(tx: Transacao, p: { tenant: string; entidade: EntidadeEnvioFdv; request_id: string }): Promise<{ falhas: number; pendentes: number; pedido_em: Date | string }>;
 }
@@ -189,6 +221,9 @@ export const repositorioPortalSql: RepositorioPortalIntegracaoFdv = {
   },
   async log(tx, p) {
     return InsumosLogPortal.parse(await funcao(tx, 'SELECT integracao_fdv.portal_log($1::uuid, $2) AS r', [p.tenant, p.entidade]));
+  },
+  async ligacoes(tx, tenant) {
+    return InsumosLigacoesPortal.parse(await funcao(tx, 'SELECT integracao_fdv.portal_ligacoes($1::uuid) AS r', [tenant]));
   },
   async reprocessar(tx, p) {
     return ResultadoReprocessarPortal.parse(await funcao(tx, 'SELECT integracao_fdv.portal_reprocessar($1::uuid, $2, $3) AS r', [p.tenant, p.entidade, p.request_id]));
@@ -412,6 +447,31 @@ export function criarPluginPlataformaIntegracaoFdv(deps: DependenciasPlataformaI
           erros: i.erros,
           totalErros: i.total_erros,
           motivo: falhaEnvioFdv({ pausada_motivo: i.pausada_motivo, ultimo_lote_estado: i.envios[0]?.estado ?? null, erros_abertos: i.total_erros })?.motivo ?? null,
+        });
+        return { corpo };
+      },
+    }),
+    definirRotaPlataforma({
+      metodo: 'GET',
+      caminho: C.ligacoes,
+      acao: 'plataforma.integracao_fdv.ver',
+      async executar(c, { params }) {
+        const tenant = idDaRota(params);
+        await lerLicenciado(c.tx, tenant);
+        const i = await repo.ligacoes(c.tx, tenant);
+        const k = i.contato;
+        const corpo: LigacoesResposta = LigacoesResposta.parse({
+          saida: {
+            // a situação sai do SDK (situacaoConectorFdv), como no BKO (montarContatoSaida)
+            contato: montarContatoSaida({
+              credencial: k.credencial_ativa && k.conector_id && k.ambiente ? { conector_id: k.conector_id, ambiente: k.ambiente, chave_prefixo: k.chave_prefixo ?? '', habilitadas: k.habilitadas } : null,
+              ultimo_aceito_em: k.ultimo_contato_em,
+              agora: c.agora,
+            }),
+            contadores: i.contadores,
+            envios: i.envios,
+            envios_cortados: i.envios_cortados,
+          },
         });
         return { corpo };
       },
