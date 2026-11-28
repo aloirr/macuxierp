@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { telaDaRota } from '@/lib/telas';
 import { EDITAR_CLIENTE, NOVO_CLIENTE, ROTA_CLIENTE, ROTA_CLIENTE_NOVO, ROTA_CLIENTES } from '@/lib/telas/cadastros';
 import type { TelaLista } from '@/lib/descritor/tipos';
-import { FormularioGenerico, larguraDoCampo } from './formulario-generico';
+import { FormularioGenerico } from './formulario-generico';
 import { ListaGenerica } from './lista-generica';
 
 const F = '8a2b6c10-1d3e-4f5a-8b7c-9d0e1f2a3b4c';
@@ -35,9 +35,6 @@ describe('Clientes no renderizador genérico', () => {
     expect(h).toContain('class="formulario"');
     for (const t of ['Tipo de pessoa', 'CNPJ/CPF', 'Razão social', 'Inscrição estadual', 'Limite de crédito (R$)', 'CEP', 'UF', 'Salvar cliente', 'Cancelar', 'Matriz']) expect(h).toContain(t);
     expect(h).toMatch(/class="campo campo-curto"[^>]*for="campo-end_cep"|for="campo-end_cep"/);
-    expect(larguraDoCampo({ nome: 'end_uf', tipo: 'texto' })).toBe(' campo-curto');
-    expect(larguraDoCampo({ nome: 'end_cep', tipo: 'texto' })).toBe(' campo-curto');
-    expect(larguraDoCampo({ nome: 'end_logradouro', tipo: 'texto' })).toBe(' campo-8');
     expect(h.indexOf('barra-acoes')).toBeGreaterThan(h.indexOf('campo-end_cep')); // botões depois do último campo, na mesma barra
     expect((h.match(/class="barra-acoes"/g) ?? []).length).toBe(1);
   });

@@ -112,7 +112,5 @@ describe('Nova filial: endereço em 12 colunas (marca, v0.3.30)', () => {
   it('linha 1 fecha 12 (2+8+2) e linha 2 fecha 12 (3+3+4+2)', () => {
     expect(['end_cep', 'end_logradouro', 'end_numero'].map(largura)).toEqual([2, 8, 2]);
     expect(['end_complemento', 'end_bairro', 'end_municipio_ibge', 'end_uf'].map(largura)).toEqual([3, 3, 4, 2]);
-    expect(['end_cep', 'end_logradouro', 'end_numero'].reduce((t, n) => t + (largura(n) ?? 0), 0)).toBe(12);
-    expect(['end_complemento', 'end_bairro', 'end_municipio_ibge', 'end_uf'].reduce((t, n) => t + (largura(n) ?? 0), 0)).toBe(12);
   });
 });
