@@ -8,7 +8,7 @@ import { RegraEntrada, type RegraDetalhe } from '../contracts';
 import { validarRegraParaCadastro } from '../domain';
 
 export type TipoCampoRegra = 'texto' | 'selecao' | 'percentual' | 'decimal4' | 'booleano3' | 'data';
-export type ColunasRegra = 1 | 2 | 3 | 4 | 6 | 8 | 12;
+export type ColunasRegra = 1 | 2 | 3 | 4 | 5 | 6 | 8 | 12;
 export interface CampoRegra {
   nome: string;
   rotulo: string;
@@ -86,38 +86,38 @@ export const GRUPOS_REGRA: readonly GrupoRegra[] = [
   {
     id: 'alvo', titulo: 'A quem a regra se aplica',
     campos: [
-      sel('tributo', 'Tributo', 2, [{ valor: 'icms', rotulo: 'ICMS' }, { valor: 'ipi', rotulo: 'IPI' }, { valor: 'pis', rotulo: 'PIS' }, { valor: 'cofins', rotulo: 'COFINS' }, { valor: 'ibs_cbs', rotulo: 'IBS/CBS' }, { valor: 'is', rotulo: 'IS' }], { obrigatorio: true }),
-      t('ncm_prefixo', 'NCM (prefixo)', 2, { ajuda: 'De 2 a 8 dígitos. Deixe em branco para todos' }),
-      t('cfop', 'CFOP', 1),
+      sel('tributo', 'Tributo', 3, [{ valor: 'icms', rotulo: 'ICMS' }, { valor: 'ipi', rotulo: 'IPI' }, { valor: 'pis', rotulo: 'PIS' }, { valor: 'cofins', rotulo: 'COFINS' }, { valor: 'ibs_cbs', rotulo: 'IBS/CBS' }, { valor: 'is', rotulo: 'IS' }], { obrigatorio: true }),
+      t('ncm_prefixo', 'NCM (prefixo)', 3, { ajuda: 'De 2 a 8 dígitos. Deixe em branco para todos' }),
+      t('cfop', 'CFOP', 2),
       sel('uf_origem', 'UF origem', 2, UF_OPCOES),
       sel('uf_destino', 'UF destino', 2, UF_OPCOES),
-      sel('tipo_cliente', 'Cliente', 2, [TODAS, { valor: 'contribuinte', rotulo: 'Contribuinte' }, { valor: 'isento', rotulo: 'Isento' }, { valor: 'nao_contribuinte', rotulo: 'Não contribuinte' }]),
-      sel('crt', 'CRT', 1, CRT_OPCOES),
+      sel('tipo_cliente', 'Cliente', 6, [TODAS, { valor: 'contribuinte', rotulo: 'Contribuinte' }, { valor: 'isento', rotulo: 'Isento' }, { valor: 'nao_contribuinte', rotulo: 'Não contribuinte' }]),
+      sel('crt', 'CRT', 6, CRT_OPCOES),
     ],
   },
   {
     id: 'icms', titulo: 'ICMS e FCP',
     campos: [
-      sel('codigo', 'CST/CSOSN', 2, CST_ICMS, { ajuda: 'CST (2 dígitos) ou CSOSN (3)' }),
-      sel('mod_bc', 'Base de cálculo do ICMS', 4, MOD_BC),
-      p('aliquota_icms', 'ICMS (%)', 1),
-      p('reducao_bc', 'Redução (%)', 1),
-      p('p_fcp', 'FCP (%)', 1),
-      p('p_cred_sn', 'Crédito (%)', 1),
-      p('p_dif', 'Diferido (%)', 1),
-      p('p_icms_efet', 'Efetivo (%)', 1),
+      sel('codigo', 'CST/CSOSN', 5, CST_ICMS, { ajuda: 'CST (2 dígitos) ou CSOSN (3)' }),
+      sel('mod_bc', 'Base de cálculo do ICMS', 3, MOD_BC),
+      p('aliquota_icms', 'Alíquota do ICMS (%)', 2),
+      p('reducao_bc', 'Redução da base (%)', 2),
+      p('p_fcp', 'FCP (%)', 3),
+      p('p_cred_sn', 'Crédito do Simples (%)', 3),
+      p('p_dif', 'Diferimento (%)', 3),
+      p('p_icms_efet', 'ICMS efetivo (%)', 3),
     ],
   },
   {
     id: 'st', titulo: 'ICMS-ST (por MVA)',
     campos: [
       sel('mod_bc_st', 'Base de cálculo da ST', 4, MOD_BC_ST, { ajuda: 'O cálculo atual atende a margem de valor agregado' }),
-      p('mva_original', 'MVA (%)', 1),
-      p('mva_ajustada', 'MVA ajust. (%)', 1),
-      { nome: 'ajustar_mva', rotulo: 'Ajustar a MVA', tipo: 'booleano3', colunas: 2, opcoes: SIM_NAO, ajuda: 'ST interestadual exige sim ou não' },
-      p('reducao_bc_st', 'Redução ST (%)', 1),
-      p('aliquota_interna_destino', 'Alíq. destino (%)', 2),
-      p('p_fcp_st', 'FCP ST (%)', 1),
+      p('mva_original', 'MVA original (%)', 2),
+      p('mva_ajustada', 'MVA ajustada (%)', 2),
+      { nome: 'ajustar_mva', rotulo: 'Ajustar a MVA', tipo: 'booleano3', colunas: 4, opcoes: SIM_NAO, ajuda: 'ST interestadual exige sim ou não' },
+      p('reducao_bc_st', 'Redução da base da ST (%)', 4),
+      p('aliquota_interna_destino', 'Alíquota interna do destino (%)', 4),
+      p('p_fcp_st', 'FCP da ST (%)', 4),
     ],
   },
   {

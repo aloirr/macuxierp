@@ -74,6 +74,16 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
       } as never);
     }, confirmar);
 
+  /** RN-CORE-40: usuário nasce com filial; esta é uma filial viva do tenant, para o teste (o CNPJ de ensaio é fictício). */
+  async function filialViva(tenant: string, cnpj = '11222333000181', excluida = false): Promise<string> {
+    const { rows } = await b.admin.query(
+      `INSERT INTO cadastros.filial (tenant_id, cnpj, razao_social, nome_fantasia, crt, logradouro, numero, bairro, municipio_ibge, uf, cep, padrao, emissora, deleted_at)
+       VALUES ($1, $2, 'Razao Teste Ltda', 'Filial Teste', '3', 'Rua Ficticia', '1', 'Centro', '1302603', 'AM', '69000000', false, false, $3) RETURNING id`,
+      [tenant, cnpj, excluida ? new Date(0) : null],
+    );
+    return (rows[0] as { id: string }).id;
+  }
+
   beforeAll(async () => {
     b = await criarBancoEfemero();
     await b.admin.query(`DO $$ BEGIN
@@ -377,9 +387,9 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
   it('v0.3.30 (0079, RN-CORE-18): o mesmo e-mail em duas empresas = 409 email_em_uso, no criar usuário e no 1º admin', async () => {
     const a = await criarTenant(b.admin, `portal-eml-${randomUUID().slice(0, 8)}`, ['core']);
     const c2 = await criarTenant(b.admin, `portal-eml-${randomUUID().slice(0, 8)}`, ['core']);
-    const corpo = { nome: 'Dora Dupla', email: 'dora.dupla@exemplo.com.br', perfil: 'faturista' };
+    const corpo = { nome: 'Dora Dupla', email: 'dora.dupla@exemplo.com.br', perfil: 'faturista', filial_ids: [await filialViva(a)] };
     expect((await chamar('POST', '/empresas/:id/usuarios', { params: { id: a }, corpo }, true)).status).toBe(201);
-    const e1 = await chamar('POST', '/empresas/:id/usuarios', { params: { id: c2 }, corpo }).catch((x: unknown) => x);
+    const e1 = await chamar('POST', '/empresas/:id/usuarios', { params: { id: c2 }, corpo: { ...corpo, filial_ids: [await filialViva(c2)] } }).catch((x: unknown) => x);
     expect(e1).toMatchObject(corpoEmailEmUso());
     const e2 = await chamar('POST', '/empresas/:id/primeiro-admin', { params: { id: c2 }, corpo: { email: 'DORA.dupla@exemplo.com.br' } }).catch((x: unknown) => x);
     expect(e2).toMatchObject(corpoEmailEmUso());
@@ -388,7 +398,8 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
   it('v0.3.28 (0078): Usuários na Config — criar, listar mascarado, travar o último admin, inativar, reativar e excluir', async () => {
     const id = await criarTenant(b.admin, `portal-usu-${randomUUID().slice(0, 8)}`, ['core']);
     const P = (usuario?: string): Record<string, string> => (usuario ? { id, usuario } : { id });
-    const adm = await chamar('POST', '/empresas/:id/usuarios', { params: P(), corpo: { nome: 'Ana Admin', email: 'ana@exemplo.com.br', perfil: 'administrador' } }, true);
+    const fil = await filialViva(id);
+    const adm = await chamar('POST', '/empresas/:id/usuarios', { params: P(), corpo: { nome: 'Ana Admin', email: 'ana@exemplo.com.br', perfil: 'administrador', filial_ids: [fil] } }, true);
     expect(adm.status).toBe(201);
     const { usuario: a, senha_provisoria } = UsuarioConfigComSenha.parse(adm.corpo);
     expect(senha_provisoria.length).toBeGreaterThan(8);
@@ -399,8 +410,8 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
     const e2 = await comPlataforma((tx) => new RepositorioPlataformaSql().mudarSituacaoUsuario(tx, { id, usuario: a.id, acao: 'inativar', request_id: randomUUID() })).catch((x: unknown) => x);
     expect((e2 as ErroApi).status).toBe(422);
     // RN-CORE-17: e-mail em uso = 409; inativar é reversível; excluir libera o e-mail.
-    const fat = UsuarioConfigComSenha.parse((await chamar('POST', '/empresas/:id/usuarios', { params: P(), corpo: { nome: 'Bia Fat', email: 'bia@exemplo.com.br', perfil: 'faturista' } }, true)).corpo).usuario;
-    const rep = await chamar('POST', '/empresas/:id/usuarios', { params: P(), corpo: { nome: 'Outra', email: 'BIA@exemplo.com.br', perfil: 'fiscal' } }).catch((x: unknown) => x);
+    const fat = UsuarioConfigComSenha.parse((await chamar('POST', '/empresas/:id/usuarios', { params: P(), corpo: { nome: 'Bia Fat', email: 'bia@exemplo.com.br', perfil: 'faturista', filial_ids: [fil] } }, true)).corpo).usuario;
+    const rep = await chamar('POST', '/empresas/:id/usuarios', { params: P(), corpo: { nome: 'Outra', email: 'BIA@exemplo.com.br', perfil: 'fiscal', filial_ids: [fil] } }).catch((x: unknown) => x);
     expect((rep as ErroApi).status).toBe(409);
     const ina = UsuarioConfig.parse((await chamar('POST', '/empresas/:id/usuarios/:usuario/inativar', { params: P(fat.id) }, true)).corpo);
     expect([ina.situacao, ina.acoes]).toEqual(['inativo', ['editar', 'reativar', 'excluir']]);
@@ -414,7 +425,7 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
     expect((await chamar('POST', '/empresas/:id/usuarios/:usuario/excluir', { params: P(fat.id) }, true)).corpo).toEqual({ id: fat.id, situacao: 'excluido' });
     const depois = ListaUsuariosConfig.parse((await chamar('GET', '/empresas/:id/usuarios', { params: P() })).corpo);
     expect(depois.itens.map((u) => u.id)).toEqual([a.id]);
-    expect((await chamar('POST', '/empresas/:id/usuarios', { params: P(), corpo: { nome: 'Bia de Volta', email: 'bia@exemplo.com.br', perfil: 'fiscal' } })).status).toBe(201);
+    expect((await chamar('POST', '/empresas/:id/usuarios', { params: P(), corpo: { nome: 'Bia de Volta', email: 'bia@exemplo.com.br', perfil: 'fiscal', filial_ids: [fil] } })).status).toBe(201);
     // Redefinir senha: provisória só na resposta, troca obrigatória no próximo acesso.
     const r = UsuarioConfigComSenha.parse((await chamar('POST', '/empresas/:id/usuarios/:usuario/senha', { params: P(a.id) })).corpo);
     expect(r.usuario.deve_trocar_senha).toBe(true);
@@ -422,6 +433,27 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
     const outro = await criarTenant(b.admin, `portal-usu-${randomUUID().slice(0, 8)}`, ['core']);
     const nf = await chamar('POST', '/empresas/:id/usuarios/:usuario/senha', { params: { id: outro, usuario: a.id } }).catch((x: unknown) => x);
     expect((nf as ErroApi).status).toBe(404);
+  });
+
+  it('RN-CORE-40: no banco real, filial de outra empresa ou excluída é 422 no criar e no editar; ao menos uma filial viva', async () => {
+    const t1 = await criarTenant(b.admin, `portal-rn40-${randomUUID().slice(0, 8)}`, ['core']);
+    const t2 = await criarTenant(b.admin, `portal-rn40-${randomUUID().slice(0, 8)}`, ['core']);
+    const minha = await filialViva(t1, '11222333000181');
+    const alheia = await filialViva(t2, '11444777000161');
+    const morta = await filialViva(t1, '00000000000191', true);
+    const novo = (filial_ids: string[]) => ({ nome: 'Eva Escolha', email: 'eva.rn40@exemplo.com.br', perfil: 'faturista', filial_ids });
+    for (const ids of [[], [alheia], [minha, morta]]) {
+      const e = await chamar('POST', '/empresas/:id/usuarios', { params: { id: t1 }, corpo: novo(ids) }).catch((x: unknown) => x);
+      expect([(e as ErroApi).status, (e as ErroApi).codigo]).toEqual([422, 'RN-CORE-40']);
+    }
+    const criado = UsuarioConfigComSenha.parse((await chamar('POST', '/empresas/:id/usuarios', { params: { id: t1 }, corpo: novo([minha]) }, true)).corpo).usuario;
+    expect(criado.filial_ids).toEqual([minha]);
+    for (const ids of [[], [alheia]]) {
+      const e = await chamar('PATCH', '/empresas/:id/usuarios/:usuario', { params: { id: t1, usuario: criado.id }, corpo: { filial_ids: ids } }).catch((x: unknown) => x);
+      expect((e as ErroApi).status).toBe(422);
+    }
+    const mesmo = UsuarioConfig.parse((await chamar('PATCH', '/empresas/:id/usuarios/:usuario', { params: { id: t1, usuario: criado.id }, corpo: { nome: 'Eva Nova' } }, true)).corpo);
+    expect(mesmo.filial_ids).toEqual([minha]);
   });
 
   it('T-0130 (0086): GET filiais devolve {id, nome, padrao} da empresa, a padrão primeiro, sem excluídas nem CNPJ; empresa inexistente = 404; sem sessão = MXS01', async () => {
