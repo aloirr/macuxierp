@@ -9,16 +9,19 @@ vi.mock('./esqueci', () => ({ pedirEsqueciAction: vi.fn() }));
 
 import { VisaoLogin } from './formulario';
 import { resultadoErro } from '@/lib/resultado-acao';
+import { MENSAGEM_LOGIN_INVALIDO } from '@macuxierp/platform-sdk';
 
-const vazio = { empresa: '', email: '', senha: '' };
+const vazio = { email: '', senha: '' };
 
 describe('tela única de login (T-0076)', () => {
-  it('três campos na ordem, olho só na senha, Entrar, sem "Sou de uma empresa" e sem o código reservado', () => {
+  it('dois campos (E-mail e Senha) na ordem, olho só na senha, Entrar, sem campo de empresa (ADR 0021)', () => {
     const h = renderToStaticMarkup(<VisaoLogin valores={vazio} />);
-    const pos = ['Código da empresa', 'E-mail', 'Senha', 'Entrar'].map((t) => h.indexOf(t));
+    const pos = ['E-mail', 'Senha', 'Entrar'].map((t) => h.indexOf(t));
     expect(pos.every((p) => p >= 0)).toBe(true);
     expect([...pos].sort((a, b) => a - b)).toEqual(pos);
-    expect(h).toContain('name="empresa"');
+    expect(h).not.toMatch(/empresa/i);
+    expect(h).not.toContain('Código');
+    expect(h).not.toContain('name="empresa"');
     expect(h).toContain('type="email"');
     expect(h).toContain('autoComplete="username"');
     expect(h).toContain('type="password"');
@@ -46,36 +49,31 @@ describe('tela única de login (T-0076)', () => {
   it('estados: carregando, erro de login (role alert, neutro), erro de campo por aria', () => {
     expect(renderToStaticMarkup(<VisaoLogin valores={vazio} pendente />)).toMatch(/disabled=""[^>]*>Entrando…/);
     expect(renderToStaticMarkup(<VisaoLogin valores={vazio} pendente />)).toContain('aria-busy="true"');
-    const e = renderToStaticMarkup(<VisaoLogin valores={vazio} resultado={resultadoErro('Empresa, e-mail ou senha incorretos.')} />);
+    const e = renderToStaticMarkup(<VisaoLogin valores={vazio} resultado={resultadoErro(MENSAGEM_LOGIN_INVALIDO)} />);
     expect(e).toContain('role="alert"');
-    expect(e).toContain('Empresa, e-mail ou senha incorretos.');
-    const c = renderToStaticMarkup(<VisaoLogin valores={vazio} erros={{ empresa: 'Informe o código da empresa.', senha: 'Informe a senha.' }} />);
-    expect(c).toContain('class="erro-campo" id="login-erro-empresa"');
-    expect(c).toContain('aria-describedby="login-erro-empresa"');
+    expect(e).toContain(MENSAGEM_LOGIN_INVALIDO);
+    const c = renderToStaticMarkup(<VisaoLogin valores={vazio} erros={{ email: 'Informe o e-mail.', senha: 'Informe a senha.' }} />);
+    expect(c).toContain('class="erro-campo" id="login-erro-email"');
+    expect(c).toContain('aria-describedby="login-erro-email"');
     expect(c).toContain('aria-invalid="true"');
     expect(c).toContain('Informe a senha.');
   });
   it('36 A: o erro do Entrar fica logo abaixo do botão, no ResultadoAcao, e não no topo do formulário', () => {
-    const h = renderToStaticMarkup(<VisaoLogin valores={vazio} resultado={resultadoErro('Empresa, e-mail ou senha incorretos.')} />);
+    const h = renderToStaticMarkup(<VisaoLogin valores={vazio} resultado={resultadoErro(MENSAGEM_LOGIN_INVALIDO)} />);
     const botao = h.indexOf('>Entrar</button>');
     expect(botao).toBeGreaterThan(0);
-    expect(h.indexOf('Empresa, e-mail ou senha incorretos.')).toBeGreaterThan(botao);
+    expect(h.indexOf(MENSAGEM_LOGIN_INVALIDO)).toBeGreaterThan(botao);
     expect(h).not.toContain('class="erro"');
-    expect(h).toMatch(/<div role="alert"[^>]*><div style=[^>]*><span>Empresa, e-mail ou senha incorretos\.<\/span>/);
+    expect(h).toMatch(/<div role="alert"[^>]*><div style=[^>]*><span>E-mail ou senha inválidos\.<\/span>/);
   });
-  it('a senha nunca vem preenchida do servidor; o código lembrado preenche', () => {
-    const h = renderToStaticMarkup(<VisaoLogin valores={{ empresa: 'AM2808', email: '', senha: '' }} />);
-    expect(h).toContain('value="AM2808"');
+  it('a senha nunca vem preenchida do servidor; o e-mail vindo do link preenche', () => {
+    const h = renderToStaticMarkup(<VisaoLogin valores={{ email: 'ana@exemplo.com.br', senha: '' }} />);
+    expect(h).toContain('value="ana@exemplo.com.br"');
+    expect(h).not.toMatch(/type="password"[^>]*value="[^"]/);
   });
-  it('só o código vai ao navegador: nenhum storage, cookie ou URL com e-mail/senha no formulário', () => {
+  it('nenhum storage, cookie ou URL no formulário', () => {
     const src = readFileSync(new URL('./formulario.tsx', import.meta.url), 'utf8');
     expect(src).not.toMatch(/localStorage|sessionStorage|document\.cookie|searchParams|router\.(push|replace)/);
-    expect(src).toContain('gravarCodigoDoLogin(r.entrou.destino, valores.empresa)');
-    expect(src).not.toMatch(/gravarCodigoDoLogin\(r\.entrou\.destino, valores\.(email|senha)/);
-    const lib = readFileSync(new URL('../../lib/codigo-salvo.ts', import.meta.url), 'utf8');
-    expect(lib.match(/localStorage/g)?.length).toBeGreaterThan(0);
-    expect(lib).not.toMatch(/sessionStorage|document\.cookie/);
-    expect((lib.match(/setItem\(/g) ?? []).length).toBe(1);
   });
   it('a página mostra o link só com a situação do servidor', async () => {
     vi.resetModules();
