@@ -199,7 +199,7 @@ function BlocoAdmin({ empresa, chaves, aoErro, principal }: Comum & { chaves: Ch
         </>
       ) : (
         <form
-          className="formulario formulario-estreito"
+          className="formulario"
           noValidate
           onSubmit={(e) => {
             e.preventDefault();

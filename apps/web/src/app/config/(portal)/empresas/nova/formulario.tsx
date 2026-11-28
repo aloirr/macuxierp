@@ -33,7 +33,7 @@ export function FormularioEmpresa({ chaveInicial }: { chaveInicial: string }) {
   };
 
   return (
-    <form method="post" onSubmit={enviar} className="formulario formulario-estreito" noValidate>
+    <form method="post" onSubmit={enviar} className="formulario" noValidate>
       <RegiaoErros temErro={Object.keys(campos).length > 0 || erro !== ''} />
       {erro && <p className="erro">{erro}</p>}
       <label className="campo">

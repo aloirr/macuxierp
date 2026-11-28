@@ -52,8 +52,8 @@ export default async function PaginaDoModulo({ params, searchParams }: { params:
       {/* No detalhe, o h1 é o título do registro (ex.: "Nota 12/1"), desenhado pelo DetalheGenerico: um h1 só por página. */}
       {tela?.tipo !== 'detalhe' && <h1>{titulo}</h1>}
       {secoes.length > 1 && (
-        <nav className="secoes" aria-label="Seções">
-          {secoes.map((p) => <Link key={p.rota} className="mx-botao-secundario" href={p.rota} aria-current={p.rota === declarada?.rota || (declarada?.ocultaNoMenu && p.rota === secoes[0]?.rota) ? 'page' : undefined}>{p.titulo}</Link>)}
+        <nav className="abas-texto" aria-label="Seções">
+          {secoes.map((p) => <Link key={p.rota} href={p.rota} aria-current={p.rota === declarada?.rota || (declarada?.ocultaNoMenu && p.rota === secoes[0]?.rota) ? 'page' : undefined}>{p.titulo}</Link>)}
         </nav>
       )}
       {declarada?.aviso && <p className="faixa-aviso" role="status">{declarada.aviso}</p>}
