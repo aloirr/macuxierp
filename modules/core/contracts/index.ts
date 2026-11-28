@@ -166,7 +166,8 @@ export const AuditoriaItem = z.object({
 });
 export type AuditoriaItem = z.infer<typeof AuditoriaItem>;
 /** O item da auditoria na lista e no CSV não leva `antes`/`depois` (podem trazer dado do cadastro): só quem, o quê e quando. */
-export const AuditoriaItemLista = AuditoriaItem.omit({ antes: true, depois: true });
+/** `usuario_nome`: nome de quem fez (join com `plataforma.usuario`, o mesmo da tela de Usuários); nulo = sistema ou portal. */
+export const AuditoriaItemLista = AuditoriaItem.omit({ antes: true, depois: true }).extend({ usuario_nome: z.string().nullable() });
 export type AuditoriaItemLista = z.infer<typeof AuditoriaItemLista>;
 export const ListaAuditoria = paginaDe(AuditoriaItemLista);
 

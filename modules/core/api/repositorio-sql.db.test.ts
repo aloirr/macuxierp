@@ -187,6 +187,8 @@ describe.skipIf(!PG_DISPONIVEL)('concorrência do adaptador SQL do core (Postgre
     expect(todas).toHaveLength(2);
     expect(todas.some((a) => a.usuario_id === V1)).toBe(false);
     expect((await repo.auditoria(meu, { limite: 50, usuario_id: U2 })).map((a) => a.acao)).toEqual(['core.usuario.alterado']);
+    expect((await repo.auditoria(meu, { limite: 50 })).every((a) => typeof a.usuario_nome === 'string')).toBe(true); // RD-2419: nome pelo join
+    expect((await repo.auditoria(meu, { limite: 50, usuario: '%' }))).toEqual([]); // o curinga do ILIKE é escapado
     expect(await repo.auditoria(meu, { limite: 50, usuario_id: V1 })).toEqual([]); // usuário de outro tenant: nada, nem por filtro
     expect((await repo.auditoria(meu, { limite: 50, de: new Date('2026-11-15T00:00:00Z') })).map((a) => a.usuario_id)).toEqual([U2]);
     // o cursor pagina por id dentro do tenant
