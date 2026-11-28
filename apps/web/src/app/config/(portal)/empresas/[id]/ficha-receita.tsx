@@ -8,7 +8,7 @@ import { RevelarMascarado } from '@/components/revelar-mascarado';
 import { ChavesIdempotencia } from '@/lib/config/chaves';
 import { resultadoErro, resultadoSucesso } from '@/lib/resultado-acao';
 import { ERRO_CAMPOS } from '@/lib/textos';
-import { TEXTO_FICHA_VAZIA, estadoDaFicha, origemDaConsulta, textoCnae, textosCnaeSecundarios } from '@/lib/config/ficha';
+import { TEXTO_FICHA_VAZIA, estadoDaFicha, origemDaConsulta, textoCnae, textosCnaeSecundarios, cnaesSecundariosNoCampo } from '@/lib/config/ficha';
 import {
   GRUPOS_FICHA, OPCOES_REGIME, camposMudados, formComPrevia, formDaFicha, textoPrevia, textoSalvo, validarFicha,
   type CampoFicha, type DefCampo, type FormFicha,
@@ -180,7 +180,7 @@ export function FichaReceita({ empresaId, ficha, razaoEmpresa, lugar = null, fus
     if (!descrita) return undefined;
     if (c === 'cnae_principal' && descrita.cnae_principal && descrita.cnae_principal_descricao && form.cnae_principal.trim() === descrita.cnae_principal)
       return <span className="dica-campo">{textoCnae(descrita.cnae_principal, descrita.cnae_principal_descricao)}</span>;
-    const secundarios = c === 'cnae_secundarios' && form.cnae_secundarios.trim() === (descrita.cnae_secundarios ?? []).join('\n') ? textosCnaeSecundarios(descrita) : [];
+    const secundarios = c === 'cnae_secundarios' && form.cnae_secundarios.trim() === cnaesSecundariosNoCampo(descrita.cnae_secundarios) ? textosCnaeSecundarios(descrita) : [];
     if (secundarios.length === 0) return undefined;
     return (
       <ul className="dica-campo lista-cnae" aria-label="CNAE secundários com a descrição">

@@ -31,6 +31,6 @@ export default async function Empresas({ searchParams }: { searchParams: Promise
     );
   }
 
-  const vazio = busca ? 'Nenhuma empresa com esse código. Limpe a busca.' : 'Nenhuma empresa ainda. Crie a primeira.';
+  const vazio = busca ? 'Nenhuma empresa com esse nome ou código. Limpe a busca.' : 'Nenhuma empresa ainda. Crie a primeira.';
   return <ListaEmpresas key={busca} empresas={pagina.itens} vazio={vazio} proximo={pagina.proximo_cursor} busca={busca} />;
 }
