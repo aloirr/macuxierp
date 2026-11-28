@@ -238,6 +238,8 @@ Gerente ativo: session_019xHEXorMcUM7hAvrbsGwJd. PO: session_019xHEXqMSs1piLUgLS
 - **Com o Alexandre, sem mexer no quadro:** T-0090 (MFA) e T-0054 (Planos), com o PO pelo Gerente Sênior.
 - **Regra de ST/IPI:** sem carga nem seed em fiscal.regra_tributaria (0013, 0021); na v0.3.31 o cálculo sai "sem regra" em produção e os campos são omitidos (63 A). Sem regra não se inventa alíquota; a carga vira tarefa própria do banco-dados.
 - **PR B do known_hosts (opção c, PO 04h15):** fixar a impressão digital SHA256:wRktlR17… (keyscan -t ed25519, HostKeyAlgorithms ssh-ed25519, StrictHostKeyChecking yes, 4 casos de teste); governança, Agente: alexandre.
+- **Antes de ligar o 1º tenant na bandeira do ST/IPI (engenheiro, revisão do #946):** um evento antigo reprocessado muda de hash e escapa da chave (tenant, pedido, status, hash) de util-pedidos.ts:27, então um faturado_parcial pode chegar de novo ao Hub. Normalizar o hash ou aceitar o reenvio idempotente no Hub, no mesmo PR que liga o tenant.
+- **🟡 do engenheiro para a v0.3.32:** pedido/contracts/index.ts:407-414 repete à mão os esquemas do fiscal (reexportar dos contracts do fiscal); pedido/api/leitores.ts:8 sem limite de p_aliq.
 - **PRs:** #935 (fiscal, contrato) e #936 (cadastros, textos). Migrações reservadas: **0080** (empresas_listar por nome + tem_fdv) e **0081** (trava do último administrador); próxima livre **0082**.
 
 ## 28/11 madrugada — v0.3.30 fechada (Manaus)
