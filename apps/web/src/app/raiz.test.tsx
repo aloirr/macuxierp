@@ -8,6 +8,8 @@ vi.mock('next/navigation', () => ({ redirect: vi.fn((c: string) => { throw new E
 vi.mock('./login/tela', () => ({ TelaLogin: () => <main>Acesse sua conta<input name="empresa" /></main> }));
 vi.mock('./(shell)/casca', () => ({ Casca: ({ children }: { children: unknown }) => <div data-casca>{children as never}</div> }));
 
+vi.mock('./(shell)/inicio', () => ({ Inicio: () => <h1>Início</h1> }));
+
 import Raiz, { generateMetadata } from './page';
 
 beforeEach(() => { cookies.valores = {}; });
@@ -24,7 +26,7 @@ describe('"/" é o login sem sessão e o BKO com sessão (v0.3.27, decisão 42 =
     cookies.valores = { [nome]: 'x' };
     const h = renderToStaticMarkup(await Raiz());
     expect(h).toContain('data-casca');
-    expect(h).toContain('Boas-vindas ao Macuxi ERP');
+    expect(h).toContain('Início');
     expect(h).not.toContain('name="empresa"');
     expect(await generateMetadata()).toEqual({});
   });
