@@ -25,6 +25,11 @@ export interface PaginaBase {
   /** Ação que libera ver a página e o item de menu. Sem `ver`, vale a licença e o perfil do módulo. */
   readonly ver?: Acao;
   /**
+   * Ação que libera editar o registro da página (T-0129). Sem ela no perfil, o formulário abre só leitura: sem campo
+   * editável e sem o botão de salvar. Sem `editar`, a página não restringe a edição.
+   */
+  readonly editar?: Acao;
+  /**
    * A página existe pela rota, mas não vira item de menu (ex.: detalhe aberto a partir de uma lista). Quem filtra o
    * menu é o shell; `paginaVisivel` não olha este campo, porque ele trata de quem pode ver, não de onde aparece.
    */
@@ -37,4 +42,12 @@ export interface PaginaBase {
  */
 export function paginaVisivel(pagina: PaginaBase, perfil: Perfil): boolean {
   return !pagina.ver || pode(perfil, pagina.ver);
+}
+
+/**
+ * O perfil edita o registro da página: sem `editar`, sim; com `editar`, só se `pode(perfil, editar)`. Também esconde,
+ * não protege: a rota de escrita devolve 403 com a mensagem do módulo (`RotaModulo.semPermissao`, RN-CORE-02).
+ */
+export function paginaEditavel(pagina: PaginaBase, perfil: Perfil): boolean {
+  return !pagina.editar || pode(perfil, pagina.editar);
 }

@@ -70,6 +70,8 @@ export interface PedidoAutorizacao<R> {
   agora: Date;
   banco: Banco;
   licencas: FonteLicencas;
+  /** Mensagem do 403 `PERFIL_SEM_PERMISSAO`, escrita pelo módulo dono da ação (`RotaModulo.semPermissao`, T-0129). */
+  semPermissao?: string;
   executar: (tx: Transacao, sessao: Sessao) => Promise<R>;
 }
 
@@ -77,7 +79,7 @@ export interface PedidoAutorizacao<R> {
 export async function executarAutorizado<R>(p: PedidoAutorizacao<R>): Promise<R> {
   const { sessao, acao } = p;
   if (!sessao) throw erros.naoAutenticado();
-  if (acao !== 'sessao' && !pode(sessao.perfil, acao)) throw erros.perfilSemPermissao();
+  if (acao !== 'sessao' && !pode(sessao.perfil, acao)) throw erros.perfilSemPermissao(p.semPermissao);
   return p.banco.comTenant(sessao.tenant_id, async (tx) => {
     if (acao !== 'sessao') {
       const modulo = moduloDaAcao(acao);
