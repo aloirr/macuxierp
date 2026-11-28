@@ -1,3 +1,4 @@
+import { MENSAGEM_EMAIL_EM_USO, MENSAGEM_ULTIMO_ADMIN } from '@macuxierp/core/contracts';
 import { ehRespostaDefinitiva } from '../descritor/idempotencia';
 import { TEXTOS_BLOQUEIO } from '../login-regras';
 import { FALHA, SESSAO_EXPIRADA } from '../textos';
@@ -37,7 +38,7 @@ export class ErroPlataforma extends Error {
   }
 }
 
-export type ContextoErro = 'entrar' | 'criar_empresa' | 'modulos' | 'criar_admin' | 'redefinir' | 'situacao' | 'senha' | 'carregar' | 'email' | 'integracao_fdv' | 'carga' | 'receita' | 'ficha' | 'entrada' | 'entrada_revogar';
+export type ContextoErro = 'entrar' | 'criar_empresa' | 'modulos' | 'criar_admin' | 'redefinir' | 'situacao' | 'senha' | 'carregar' | 'email' | 'integracao_fdv' | 'carga' | 'receita' | 'ficha' | 'entrada' | 'entrada_revogar' | 'usuario';
 
 /**
  * Ficha pela Receita (T-0101): as falhas da fonte (200 `estado: 'erro'`), o 409 e o 422 trazem a `mensagem` do core, que a
@@ -54,6 +55,8 @@ export const SEM_PERMISSAO = 'Você não tem permissão para esta ação.';
 export const ADMIN_JA_EXISTE = 'Esta empresa já tem administrador. Redefina a senha dele.';
 export const SENHA_ATUAL_INCORRETA = 'Senha provisória atual incorreta. Confira e tente de novo.';
 export const SENHA_JA_EXIBIDA = 'A senha já foi exibida. Redefina para gerar outra.';
+export const USUARIO_NAO_ENCONTRADO = 'Usuário não encontrado nesta empresa. Atualize a lista.';
+export const USUARIO_DADO_RECUSADO = 'Confira os dados e tente de novo.';
 
 export interface MensagemErro {
   texto: string;
@@ -92,6 +95,14 @@ export function mensagemDoErro(e: unknown, ctx: ContextoErro): MensagemErro {
     }
     // Ficha editável (RN-CORE-16): a mensagem curta do core no conflito e na falta da porta (ex.: sem CNPJ, consulta de notas fora).
     if (ctx === 'ficha' && (e.status === 409 || e.status === 503) && e.mensagem) return { ...base, texto: e.mensagem, chaveNova: ehRespostaDefinitiva(e.status) };
+    // Usuários (v0.3.29): RN-CORE-01 (422) e o e-mail em uso (409) têm texto fixo do contrato; RN-CORE-17 (422) leva a mensagem curta da API;
+    // outro 409 é a repetição da Idempotency-Key (a senha provisória nunca se repete: a próxima tentativa usa chave nova).
+    if (ctx === 'usuario') {
+      if (e.status === 404) return { ...base, texto: USUARIO_NAO_ENCONTRADO };
+      if (e.status === 422) return { ...base, texto: e.codigo === 'RN-CORE-01' ? MENSAGEM_ULTIMO_ADMIN : e.mensagem || USUARIO_DADO_RECUSADO, campos: e.campos, chaveNova: true };
+      if (e.status === 409) return { ...base, texto: e.mensagem === MENSAGEM_EMAIL_EM_USO ? MENSAGEM_EMAIL_EM_USO : SENHA_JA_EXIBIDA, chaveNova: true };
+      if (e.status === 400) return { ...base, texto: USUARIO_DADO_RECUSADO, campos: e.campos, chaveNova: true };
+    }
     if (e.status === 409) {
       if (ctx === 'criar_empresa') return { ...base, texto: '', campos: { codigo: 'Já existe uma empresa com esse código. Escolha outro.' }, chaveNova: ehRespostaDefinitiva(e.status) };
       if (ctx === 'criar_admin') return { ...base, texto: ADMIN_JA_EXISTE, chaveNova: ehRespostaDefinitiva(e.status) };

@@ -46,13 +46,13 @@ describe('Ficha da Receita editável na aba Empresa (RN-CORE-16, v0.3.24)', () =
     expect(h).toContain('<label for="ficha-razao_social" class="rotulo-campo">Razão social</label>');
     expect(h).toContain('id="ficha-razao_social"');
   });
-  it('36 A: um retorno por botão, logo abaixo dele: o do "Atualizar pela Receita" antes dos campos; o do "Salvar", no rodapé do cartão', () => {
+  it('36 A: um retorno por ação: o da prévia da Receita antes dos campos; o do "Salvar", depois da barra de botões (sem o rodapé da página, a barra fica no rodapé do cartão)', () => {
     const h = render();
     const retornos = [...h.matchAll(/data-resultado-acao/g)].map((m) => m.index);
     expect(retornos).toHaveLength(2);
     const atualizar = h.indexOf('Atualizar pela Receita</button>');
     const salvar = h.indexOf('>Salvar</button>');
-    expect(retornos[0]).toBeGreaterThan(atualizar);
+    expect(atualizar).toBeGreaterThan(h.lastIndexOf('</fieldset>'));
     expect(retornos[0]).toBeLessThan(h.indexOf('<fieldset'));
     expect(salvar).toBeGreaterThan(h.lastIndexOf('</fieldset>'));
     expect(retornos[1]).toBeGreaterThan(salvar);

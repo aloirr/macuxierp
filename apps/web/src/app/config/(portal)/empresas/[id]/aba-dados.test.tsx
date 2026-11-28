@@ -72,7 +72,7 @@ describe('aba Dados (T-0058, T-0086)', () => {
     expect(h).toContain('Não foi possível carregar os dados');
     expect(h).toContain('>Recarregar</a>');
     expect(h).not.toContain('Tentar de novo');
-    expect(h).toContain('?aba=dados');
+    expect(h).toContain('?aba=integracao');
   });
 });
 

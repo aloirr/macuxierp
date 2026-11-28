@@ -406,3 +406,19 @@ button.link { background: none; border: 0; padding: 0; color: inherit; font: inh
 @media (max-width: 480px) { .topo-plataforma { flex-wrap: nowrap; gap: 12px; } .topo-plataforma .nome-usuario { display: none; } .topo-plataforma form { margin-left: auto; } }
 /* Sem JS o botão Menu não funciona: o menu fica sempre à mostra. */
 @media (scripting: none) { .casca > .lateral { display: block; } .botao-menu { display: none; } }
+
+/* Config v4 (v0.3.29): Usuários na largura toda e o rodapé fixo da página (regra 12). */
+.grade-empresa > .bloco-usuarios { grid-column: 1 / -1; }
+.cabecalho-bloco { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin: 0 0 12px; }
+.cabecalho-bloco h2 { margin: 0; border: 0; padding: 0; }
+.casca-plataforma .bloco > .cabecalho-bloco { padding-bottom: 8px; border-bottom: 1px solid var(--mx-cor-borda-tabela); }
+.cabecalho-bloco .contagem { font-weight: var(--mx-peso-normal); color: var(--mx-cor-texto-secundario); }
+.busca-usuarios { height: var(--mx-medida-altura-campo); width: min(280px, 100%); padding: 0 12px; border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; font: inherit; font-size: var(--mx-tamanho-texto); background: var(--mx-cor-branco); color: var(--mx-cor-grafite); box-sizing: border-box; }
+.etiqueta-ultimo-admin { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: var(--mx-cor-nevoa); color: var(--mx-cor-texto-secundario); font-size: var(--mx-tamanho-micro); white-space: nowrap; }
+.rodape-pagina { position: sticky; bottom: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin: 16px 0 0; padding: 12px 0; background: var(--mx-cor-perola); border-top: 1px solid var(--mx-cor-borda-tabela); }
+.rodape-alvo { display: contents; }
+.rodape-estado { margin: 0 auto 0 0; order: 0; }
+.rodape-pagina .rodape-suspender { order: 1; margin-right: 16px; }
+.rodape-pagina .rodape-alvo > button { order: 2; }
+.rodape-retorno { order: -1; flex-basis: 100%; }
+@media (max-width: 640px) { .rodape-pagina { position: static; } .rodape-pagina .rodape-suspender { margin-right: 0; } }

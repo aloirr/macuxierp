@@ -2,7 +2,8 @@
 import type { CampoContato, FichaReceitaPlanaMascarada } from '@macuxierp/core/contracts';
 import { RegiaoErros, ResultadoAcao, useResultado } from '@macuxierp/ui';
 import { useRouter } from 'next/navigation';
-import { Fragment, useRef, useState, useTransition, type ReactNode } from 'react';
+import { Fragment, useId, useRef, useState, useTransition, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { RevelarMascarado } from '@/components/revelar-mascarado';
 import { ChavesIdempotencia } from '@/lib/config/chaves';
 import { resultadoErro, resultadoSucesso } from '@/lib/resultado-acao';
@@ -26,6 +27,8 @@ interface Props {
   editavel: boolean;
   /** O CNPJ (com a troca ou o motivo do bloqueio), no topo do cartão Identificação. */
   cnpj?: ReactNode;
+  /** Rodapé da página (regra 12): quando existe, o estado e os botões Atualizar pela Receita, Descartar e Salvar vão para ele; sem ele ficam no rodapé do cartão. */
+  rodapeAlvo?: HTMLElement | null;
 }
 
 type Erros = Partial<Record<CampoFicha, string>>;
@@ -77,8 +80,9 @@ function Campo({ def, valor, erro, daReceita, desabilitado, aoMudar, extra }: { 
  * formulário; "Salvar", no rodapé do cartão, grava com auditoria (só nomes de campo). Só o superadmin chega aqui (todo o
  * /config é dele). A API revalida tudo.
  */
-export function FichaReceita({ empresaId, ficha, razaoEmpresa, lugar = null, fuso, editavel, cnpj }: Props) {
+export function FichaReceita({ empresaId, ficha, razaoEmpresa, lugar = null, fuso, editavel, cnpj, rodapeAlvo = null }: Props) {
   const router = useRouter();
+  const idForm = useId();
   const [salvo, setSalvo] = useState<FormFicha>(() => formDaFicha(ficha, razaoEmpresa));
   const [form, setForm] = useState<FormFicha>(salvo);
   const [origem, setOrigem] = useState<Origem>({ tipo: 'manual' });
@@ -191,18 +195,33 @@ export function FichaReceita({ empresaId, ficha, razaoEmpresa, lugar = null, fus
     return descricaoCnae(c);
   };
 
+  const barra = (
+    <>
+      <span className="rodape-estado apoio" role="status">
+        {mudados.length === 0 ? 'Nenhuma alteração pendente' : mudados.length === 1 ? '1 campo alterado' : `${mudados.length} campos alterados`}
+      </span>
+      <button className="mx-botao-secundario" type="button" disabled={bloqueado} onClick={atualizar}>
+        {acao === 'previa' ? 'Consultando a Receita…' : 'Atualizar pela Receita'}
+      </button>
+      {mudados.length > 0 && (
+        <button className="mx-botao-secundario" type="button" disabled={bloqueado} onClick={descartar}>Descartar</button>
+      )}
+      <button className={mudados.length > 0 ? 'mx-botao' : 'mx-botao-secundario'} type="submit" form={idForm} disabled={bloqueado || mudados.length === 0}>
+        {acao === 'salvar' ? 'Salvando…' : 'Salvar'}
+      </button>
+    </>
+  );
+
   return (
     <section className="bloco bloco-largo ficha-editavel" aria-labelledby="h-ficha">
       <RegiaoErros temErro={Object.keys(erros).length > 0} />
       <div className="cabecalho-ficha">
         <h2 id="h-ficha">Ficha da Receita</h2>
         <p className="apoio">{consulta ?? (estado === 'com_dados' ? '' : TEXTO_FICHA_VAZIA[estado])}</p>
-        <button className="mx-botao-secundario" type="button" disabled={bloqueado} onClick={atualizar}>
-          {acao === 'previa' ? 'Consultando a Receita…' : 'Atualizar pela Receita'}
-        </button>
       </div>
       <ResultadoAcao resultado={rPrevia} chave={kPrevia} />
       <form
+        id={idForm}
         noValidate
         aria-labelledby="h-ficha"
         onSubmit={(e) => {
@@ -224,14 +243,7 @@ export function FichaReceita({ empresaId, ficha, razaoEmpresa, lugar = null, fus
             </fieldset>
           ))}
         </div>
-        <div className="barra-acoes rodape-cartao">
-          {mudados.length > 0 && (
-            <button className="mx-botao-secundario" type="button" disabled={bloqueado} onClick={descartar}>Descartar</button>
-          )}
-          <button className={mudados.length > 0 ? 'mx-botao' : 'mx-botao-secundario'} type="submit" disabled={bloqueado || mudados.length === 0}>
-            {acao === 'salvar' ? 'Salvando…' : 'Salvar'}
-          </button>
-        </div>
+        {rodapeAlvo ? createPortal(barra, rodapeAlvo) : <div className="barra-acoes rodape-cartao">{barra}</div>}
         <ResultadoAcao resultado={rSalvar} chave={kSalvar} />
       </form>
     </section>

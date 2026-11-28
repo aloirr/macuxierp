@@ -10,7 +10,8 @@
     "build": "next build",
     "dev": "next dev",
     "start": "next start",
-    "e2e:versao": "node e2e/versao-nova.mjs"
+    "e2e:versao": "node e2e/versao-nova.mjs",
+    "e2e:usuarios": "node e2e/config-usuarios.mjs"
   },
   "dependencies": {
     "@macuxierp/cadastros": "workspace:*",
