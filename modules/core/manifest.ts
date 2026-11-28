@@ -3,7 +3,7 @@ import { defineModule, PERFIS_V1 } from '@macuxierp/platform-sdk';
 export const manifest = defineModule({
   id: 'core',
   versao: '0.1.0',
-  descricao: 'Plataforma do tenant: empresa, usuários, perfis, licenças, auditoria, arquivos, exportação LGPD.',
+  descricao: 'Plataforma: empresa, usuários, perfis, licenças, auditoria, arquivos, exportação LGPD.',
   depende: [],
   // RN-CORE-09: sem o analista de implantação.
   perfis: PERFIS_V1,
