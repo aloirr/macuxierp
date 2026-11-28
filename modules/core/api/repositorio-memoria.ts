@@ -23,6 +23,8 @@ export class RepositorioCoreMemoria implements RepositorioCore {
   ambientesLinhas: (LinhaAmbiente & { alterado_por?: string })[] = [];
   auditoriaLinhas: LinhaAuditoria[] = [];
   exportacoes: LinhaExportacao[] = [];
+  /** RN-CORE-18: e-mails vivos de usuários de outras empresas (simula a visão global do banco). */
+  emailsEmOutrasContas = new Set<string>();
   arquivos = new Map<string, string>();
   parametrosLinhas = new Map<string, unknown>();
 
@@ -50,6 +52,9 @@ export class RepositorioCoreMemoria implements RepositorioCore {
   }
   async usuarioPorEmail(_tx: Transacao, email: string): Promise<LinhaUsuario | null> {
     return this.vivos().find((u) => u.email === email) ?? null;
+  }
+  async existeEmailVivoEmOutraConta(_tx: Transacao, email: string, exceto?: string): Promise<boolean> {
+    return this.emailsEmOutrasContas.has(email) || this.vivos().some((u) => u.email === email && u.id !== exceto);
   }
   async usuarioPorExternalId(_tx: Transacao, externalId: string): Promise<LinhaUsuario | null> {
     return this.vivos().find((u) => u.external_id === externalId) ?? null;

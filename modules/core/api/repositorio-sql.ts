@@ -5,6 +5,7 @@
  * SELECT de resumo lista as colunas uma a uma.
  */
 import type { Transacao } from '@macuxierp/platform-sdk';
+import { ehEmailEmUso, erroEmailEmUso } from './erro-pg';
 import { ORIGEM_CERTIFICADO_PADRAO } from '@macuxierp/platform-sdk/certificado-origem';
 import type {
   LinhaAmbiente,
@@ -69,18 +70,32 @@ export class RepositorioCoreSql implements RepositorioCore {
     return u ?? null;
   }
 
+  /** RN-CORE-18. Enquanto a visão global da 0079 (banco-dados) não chega, enxerga só o tenant da transação (RLS). */
+  async existeEmailVivoEmOutraConta(tx: Transacao, email: string, exceto?: string): Promise<boolean> {
+    const [u] = await tx.consultar<{ id: string }>(
+      'SELECT id FROM plataforma.usuario WHERE lower(email::text) = $1 AND deleted_at IS NULL AND ($2::uuid IS NULL OR id <> $2::uuid) LIMIT 1',
+      [email, exceto ?? null],
+    );
+    return Boolean(u);
+  }
+
   async usuarioPorExternalId(tx: Transacao, externalId: string): Promise<LinhaUsuario | null> {
     const [u] = await tx.consultar<LinhaUsuario>(`SELECT ${COLUNAS_USUARIO} FROM plataforma.usuario WHERE external_id = $1 AND deleted_at IS NULL`, [externalId]);
     return u ?? null;
   }
 
   async criarUsuario(tx: Transacao, u: NovoUsuario): Promise<LinhaUsuario> {
-    const [linha] = await tx.consultar<LinhaUsuario>(
+    const [linha] = await tx
+      .consultar<LinhaUsuario>(
       // T-0052: a senha inicial é provisória, então o primeiro acesso exige a troca.
       `INSERT INTO plataforma.usuario (id, tenant_id, email, nome, senha_hash, perfil, filial_ids, ativo, external_id, deve_trocar_senha)
        VALUES ($1, plataforma.tenant_atual(), $2, $3, $4, $5, $6::uuid[], $7, $8, true) RETURNING ${COLUNAS_USUARIO}`,
       [u.id, u.email, u.nome, u.senha_hash, u.perfil, u.filial_ids, u.ativo, u.external_id],
-    );
+    )
+      .catch((e: unknown) => {
+        // RN-CORE-18 (0079): o índice global pega o e-mail de outra empresa, que a RLS esconde da busca da rota.
+        throw ehEmailEmUso(e) ? erroEmailEmUso() : e;
+      });
     if (!linha) throw new Error('plataforma.usuario: insert sem retorno');
     return linha;
   }

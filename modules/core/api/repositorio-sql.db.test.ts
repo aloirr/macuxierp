@@ -219,6 +219,17 @@ describe.skipIf(!PG_DISPONIVEL)('concorrência do adaptador SQL do core (Postgre
     expect((await linha(id)).deleted_at).not.toBeNull();
   });
 
+  it('RN-CORE-18 (0079): o mesmo e-mail em outra empresa no INSERT do BKO = 409 email_em_uso (não 500)', async () => {
+    const novo = { email: 'dupla@piloto.test', nome: 'Pessoa Dupla', senha_hash: '$argon2id$y', perfil: 'faturista', filial_ids: [], ativo: true, external_id: null };
+    const t1 = await abrir();
+    await repo.criarUsuario(t1, { id: randomUUID(), ...novo } as never);
+    await t1.confirmar();
+    const t2 = await abrir(T2);
+    const e = await repo.criarUsuario(t2, { id: randomUUID(), ...novo } as never).catch((x: unknown) => x);
+    expect(e).toMatchObject({ status: 409, codigo: 'CONFLITO', detalhes: { codigo: 'email_em_uso' }, campos: { email: 'Este e-mail já está em uso em outra empresa. Use outro e-mail.' } });
+    await t2.descartar();
+  });
+
   it('T-0052: criar usuário e redefinir senha exigem a troca da senha provisória', async () => {
     const id = randomUUID();
     const flag = async () => (await b.admin.query('SELECT deve_trocar_senha FROM plataforma.usuario WHERE id = $1', [id])).rows[0] as { deve_trocar_senha: boolean };

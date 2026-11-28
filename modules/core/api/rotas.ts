@@ -45,10 +45,10 @@ import {
   MENSAGEM_EMAIL_EM_USO,
 } from '../contracts';
 import { ORIGEM_CERTIFICADO_PADRAO } from '@macuxierp/platform-sdk/certificado-origem';
-import { alertaVencimento, avaliarCertificado, avaliarTrocaAmbienteTenant, diasParaVencer, gerarSenhaProvisoria, situacaoDoUsuario } from '../domain';
+import { alertaVencimento, avaliarCertificado, decidirEmailUnico, normalizarEmailUsuario, avaliarTrocaAmbienteTenant, diasParaVencer, gerarSenhaProvisoria, situacaoDoUsuario } from '../domain';
 import { alterarUsuarioComTrava, excluirUsuarioComTrava, type OpcoesAlterarUsuario } from './alterar-usuario';
 import { cifrarColunasA1 } from './colunas-a1';
-import { sqlstate } from './erro-pg';
+import { erroEmailEmUso, sqlstate } from './erro-pg';
 import {
   PfxInvalido,
   type DependenciasCore,
@@ -246,13 +246,16 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
       acao: 'core.usuario.gerir',
       corpo: UsuarioCriar,
       async executar(c, { corpo }) {
-        const email = corpo.email;
+        const email = normalizarEmailUsuario(corpo.email);
         // RN-CORE-05: o reenvio com o mesmo external_id devolve o usuário já criado, sem senha nova.
         if (corpo.external_id) {
           const repetido = await repo.usuarioPorExternalId(c.tx, corpo.external_id);
           if (repetido) return { status: 200, corpo: usuarioDto(repetido, c.agora) };
         }
         if (await repo.usuarioPorEmail(c.tx, email)) throw erros.conflito(MENSAGEM_EMAIL_EM_USO);
+        // RN-CORE-18: único no sistema todo (usuários de outras empresas; o superadmin fica fora); a regra é do domain, a consulta é a porta.
+        const unico = decidirEmailUnico({ existe_vivo_em_outra_conta: await repo.existeEmailVivoEmOutraConta(c.tx, email) });
+        if (!unico.ok) throw erroEmailEmUso();
         const senha = gerarSenhaProvisoria(aleatorios(256));
         const criado = await repo.criarUsuario(
           c.tx,
