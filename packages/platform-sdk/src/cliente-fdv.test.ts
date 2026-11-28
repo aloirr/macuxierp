@@ -132,6 +132,7 @@ describe('seção "Clientes recebidos do FDV" (LGPD)', () => {
 
   it('caminho do BKO e reexport pelo índice', () => {
     expect(CAMINHOS_INTEGRACAO_FDV_TENANT.clientesRecebidos).toBe('/integracao-fdv/clientes-recebidos');
+    expect(CAMINHOS_INTEGRACAO_FDV_TENANT.ligacoes).toBe('/integracao-fdv/ligacoes');
     expect(sdk.montarRetornoClienteFdv).toBe(montarRetornoClienteFdv);
   });
 });
