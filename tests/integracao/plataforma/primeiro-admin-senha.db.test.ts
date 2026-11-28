@@ -36,7 +36,7 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config: senha provisória do 1º admini
   const senhas: string[] = [];
 
   const entrarTenant = (senha: string) =>
-    app.inject({ method: 'POST', url: '/v1/auth/login', remoteAddress: novoIp(), payload: { empresa: SLUG, email: EMAIL_ADM, senha } });
+    app.inject({ method: 'POST', url: '/v1/auth/login', remoteAddress: novoIp(), payload: { email: EMAIL_ADM, senha } });
   const refreshDe = (r: { cookies: { name: string; value: string }[] }) => r.cookies.find((c) => c.name === COOKIE_REFRESH)!.value;
   const adm = async () =>
     (

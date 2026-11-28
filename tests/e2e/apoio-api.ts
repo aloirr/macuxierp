@@ -11,7 +11,6 @@ import {
   CABECALHO_CSRF_CONFIG,
   CAMINHOS_CARGAS_PLATAFORMA,
   CAMPO_ARQUIVO_CARGA_PORTAL,
-  CODIGO_SUPERADMIN_LOGIN,
   COOKIE_CONFIG,
   PREFIXO_PLATAFORMA,
 } from '../../packages/platform-sdk/src/index';
@@ -19,8 +18,10 @@ import { formulario } from '../../apps/api/src/apoio-multipart';
 import { PASTA_FIXTURE_CARGA } from '../apoio/fixture-carga';
 import type { AppPortal } from '../apoio/portal-pg';
 import { criarBancoEfemero, criarTenant, type BancoEfemero } from '../../packages/platform-sdk/src/pg-testes';
+import { RepositorioCoreSql } from '../../modules/core/api/index';
 import {
   appPgDeTeste,
+  EnvioEmailMemoria,
   inserirAdministradorDeTeste,
   inserirFilialDeTeste,
   SENHA_DE_TESTE,
@@ -45,8 +46,10 @@ export interface OpcoesApiE2e {
   versao: string;
   /** Porta padrão, se a linha de comando não trouxer `--porta`. */
   porta: string;
-  /** Campos a mais no JSON de pronto. */
-  extra?: (c: { b: BancoEfemero; tenant: string; url: string }) => Record<string, unknown>;
+  /** Campos a mais no JSON de pronto (pode gravar mais dados no banco antes de o JSON sair). */
+  extra?: (c: { b: BancoEfemero; tenant: string; url: string }) => Record<string, unknown> | Promise<Record<string, unknown>>;
+  /** Liga o "Esqueci a senha" (`GET /v1/auth/esqueci/situacao` = disponível), com o e-mail em memória (nada sai da sessão). */
+  esqueci?: boolean;
 }
 
 export async function subirApiE2e(o: OpcoesApiE2e) {
@@ -75,15 +78,16 @@ export async function subirApiE2e(o: OpcoesApiE2e) {
     versao: o.versao,
     modulos: 'producao',
     chaveIntegracao: randomBytes(32),
+    ...(o.esqueci ? { esqueci: { envio: new EnvioEmailMemoria(), repoCore: new RepositorioCoreSql() } } : {}),
   });
   await app.listen({ port: porta, host: '127.0.0.1' });
   const url = `http://127.0.0.1:${porta}`;
   const dados = {
     url,
     empresa: { id: tenant, slug: o.slug, nome: o.nome },
-    superadmin: { empresa: CODIGO_SUPERADMIN_LOGIN, email: o.sa.email, senha: SENHA_SA },
+    superadmin: { email: o.sa.email, senha: SENHA_SA },
     administrador: { empresa: o.slug, email: o.adm, senha: SENHA_DE_TESTE },
-    ...(o.extra ? o.extra({ b, tenant, url }) : {}),
+    ...(o.extra ? await o.extra({ b, tenant, url }) : {}),
   };
   if (pronto) writeFileSync(pronto, JSON.stringify(dados));
   console.error(`[${o.versao}] ouvindo em ${url} (banco ${b.nome})`);

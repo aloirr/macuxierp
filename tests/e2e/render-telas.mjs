@@ -99,11 +99,11 @@ function vigiar(pagina) {
 
 /**
  * Login na raiz (v0.3.27): "/" sem sessão É a tela de login, e /login e /config/entrar viram 308 para "/". O caminho final não
- * basta para dizer "caiu no login": vale o formulário na tela (campos `empresa` e `senha` no mesmo form, como o
- * `FormularioLogin`). Serve ao main (/login) e ao branch novo ("/").
+ * basta para dizer "caiu no login": vale o formulário na tela (campos `email` e `senha` no mesmo form, como o
+ * `FormularioLogin`; sem o campo `empresa` desde a ADR 0021).
  */
 const formularioDeLogin = (pagina) =>
-  pagina.locator('form:has(input[name="empresa"]):has(input[name="senha"])');
+  pagina.locator('form:has(input[name="email"]):has(input[name="senha"])');
 const naTelaDeLogin = async (p) => (await formularioDeLogin(p).count()) > 0;
 
 const resultados = [];
