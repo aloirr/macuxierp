@@ -139,8 +139,8 @@ export function avisosEnderecoTela(v: Valores): Erros {
 
 /** Formato do CEP, do código IBGE e da UF; só preenche `e` onde o campo ainda não tem erro. */
 export function validarEnderecoTela(v: Valores, e: Erros): void {
-  if (!e.end_cep && !Cep.safeParse(soDigitos(v.end_cep)).success) e.end_cep = 'O CEP tem 8 números';
-  if (!e.end_municipio_ibge && !Ibge.safeParse((v.end_municipio_ibge ?? '').trim()).success) e.end_municipio_ibge = 'O código IBGE tem 7 números';
+  if (!e.end_cep && !Cep.safeParse(soDigitos(v.end_cep)).success) e.end_cep = 'Informe o CEP completo, com 8 dígitos';
+  if (!e.end_municipio_ibge && !Ibge.safeParse((v.end_municipio_ibge ?? '').trim()).success) e.end_municipio_ibge = 'Escolha o município pela busca ou informe o código completo do IBGE';
   if (!e.end_uf && !Uf.safeParse((v.end_uf ?? '').trim().toUpperCase()).success) e.end_uf = 'Informe a UF com 2 letras';
 }
 
