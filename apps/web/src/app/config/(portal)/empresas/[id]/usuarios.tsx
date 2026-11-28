@@ -259,7 +259,7 @@ export function FormularioUsuario({ empresaId, filiais, formulario, primeiro, ch
                 <li key={f.id}>
                   <label>
                     <input type="checkbox" className="mx-checkbox" checked={marcadas.includes(f.id)} onChange={(e) => setMarcadas(alternarFilial(filiais, marcadas, f.id, e.target.checked))} />
-                    <span>{f.nome}{f.padrao ? ' (padrão)' : ''}</span>
+                    <span>{f.nome}{f.padrao ? ' (principal)' : ''}</span>
                   </label>
                 </li>
               ))}

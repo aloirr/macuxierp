@@ -93,6 +93,8 @@ describe('Campo Filiais do formulário de usuário (T-0130)', () => {
   it('usuário novo: campo Filiais com a padrão já marcada e a outra livre; campos curtos na grade de 12 colunas', () => {
     const h = form(filiais);
     expect(h).toContain('<legend>Filiais</legend>');
+    expect(h).toContain('Matriz (principal)');
+    expect(h).not.toContain('(padrão)');
     expect(marcada(h, 'Matriz')).toBe(true);
     expect(marcada(h, 'Filial Norte')).toBe(false);
     expect(h).toContain('campo-col-4');

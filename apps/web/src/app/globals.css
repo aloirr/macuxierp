@@ -171,7 +171,8 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 /* T-0130: campo Filiais do usuário (fieldset da grade do .formulario): rótulo como os demais campos, opções lado a lado antes de descer. */
 fieldset.campo-filiais { border: 0; padding: 0; margin: 0; min-width: 0; }
 .campo-filiais legend { padding: 0; font-weight: var(--mx-peso-rotulo-campo); font-size: var(--mx-tamanho-micro); margin-bottom: 4px; }
-.lista-filiais { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; min-height: var(--mx-medida-altura-campo); align-items: center; }
+.lista-filiais { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; }
+#form-usuario { margin-bottom: 0; } /* o diálogo já separa o rodapé pelo espaçamento padrão */
 .campo-filiais .lista-filiais label { display: inline-flex; gap: 8px; align-items: center; font-size: var(--mx-tamanho-texto); }
 .campo-filiais .lista-filiais label span { display: inline; margin: 0; font-weight: normal; font-size: var(--mx-tamanho-texto); }
 .formulario .lista-filiais input.mx-checkbox { flex: none; width: 16px; height: 16px; padding: 0; border-radius: 3px; }
