@@ -11,6 +11,9 @@ import { normalizarCoordenada } from '../domain/coordenada';
 
 export type TipoCampoEdicao = 'texto' | 'selecao' | 'dinheiro' | 'cadastro' | 'booleano' | 'data';
 
+/** Colunas da grade de 12 do formulário (regra 11); o shell repassa ao campo do descritor. */
+export type ColunasEdicao = 1 | 2 | 3 | 4 | 6 | 8 | 12;
+
 export interface CampoEdicao {
   nome: string;
   rotulo: string;
@@ -20,6 +23,8 @@ export interface CampoEdicao {
   fonte?: string;
   opcoes?: readonly { valor: string; rotulo: string }[];
   ajuda?: string;
+  /** Largura na grade de 12 colunas; ausente = a heurística do shell. */
+  colunas?: ColunasEdicao;
   /** Só aparece (e só vai no corpo) para quem tem a ação; a API devolve 403 sem ela. */
   exige?: Acao;
   /** Só na criação (o endereço principal do cliente; depois, a tela de endereços cuida deles). */
@@ -103,19 +108,19 @@ export const colunaSituacao = <L extends { inativo: unknown }>(): ColunaDeLista<
 
 /** Endereço do formulário (cliente na criação e filial): campos `end_*`. */
 export const CAMPOS_ENDERECO: readonly CampoEdicao[] = [
-  { nome: 'end_cep', rotulo: 'CEP', tipo: 'texto', obrigatorio: true },
-  { nome: 'end_logradouro', rotulo: 'Logradouro', tipo: 'texto', obrigatorio: true },
-  { nome: 'end_numero', rotulo: 'Número', tipo: 'texto', obrigatorio: true },
-  { nome: 'end_complemento', rotulo: 'Complemento', tipo: 'texto' },
-  { nome: 'end_bairro', rotulo: 'Bairro', tipo: 'texto', obrigatorio: true },
-  { nome: 'end_municipio_ibge', rotulo: 'Município (código IBGE)', tipo: 'texto', obrigatorio: true },
-  { nome: 'end_uf', rotulo: 'UF', tipo: 'texto', obrigatorio: true },
+  { nome: 'end_cep', rotulo: 'CEP', tipo: 'texto', obrigatorio: true, colunas: 2 },
+  { nome: 'end_logradouro', rotulo: 'Logradouro', tipo: 'texto', obrigatorio: true, colunas: 6 },
+  { nome: 'end_numero', rotulo: 'Número', tipo: 'texto', obrigatorio: true, colunas: 2 },
+  { nome: 'end_complemento', rotulo: 'Complemento', tipo: 'texto', colunas: 2 },
+  { nome: 'end_bairro', rotulo: 'Bairro', tipo: 'texto', obrigatorio: true, colunas: 3 },
+  { nome: 'end_municipio_ibge', rotulo: 'Município (código IBGE)', tipo: 'texto', obrigatorio: true, colunas: 4 },
+  { nome: 'end_uf', rotulo: 'UF', tipo: 'texto', obrigatorio: true, colunas: 1 },
 ];
 
 /** T-0096: localização do endereço do cliente (a filial não tem coluna, 0061). */
 export const CAMPOS_LOCALIZACAO: readonly CampoEdicao[] = [
-  { nome: 'end_latitude', rotulo: 'Latitude', tipo: 'texto', ajuda: 'De -90 a 90 (ex.: -3.1190).' },
-  { nome: 'end_longitude', rotulo: 'Longitude', tipo: 'texto', ajuda: 'De -180 a 180 (ex.: -60.0217).' },
+  { nome: 'end_latitude', rotulo: 'Latitude', tipo: 'texto', colunas: 2, ajuda: 'De -90 a 90 (ex.: -3.1190).' },
+  { nome: 'end_longitude', rotulo: 'Longitude', tipo: 'texto', colunas: 2, ajuda: 'De -180 a 180 (ex.: -60.0217).' },
 ];
 
 /** T-0096: número digitado (aceita vírgula); vazio ou ilegível = `null`. */
