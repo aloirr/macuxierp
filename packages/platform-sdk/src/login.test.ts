@@ -8,7 +8,7 @@ import {
   LoginEntrada,
   LoginResposta,
 } from './login';
-import { CODIGO_SUPERADMIN_LOGIN, EntrarPlataformaEntrada, EuPlataforma, SLUG_RESERVADO_SUPERADMIN } from './portal-config';
+import { EntrarPlataformaEntrada, EuPlataforma, SLUG_RESERVADO_SUPERADMIN } from './portal-config';
 import { SENHA_MAXIMA } from './senha';
 
 const ID = '00000000-0000-4000-8000-000000000001';
@@ -54,7 +54,6 @@ describe('RN-CORE-12: login único (POST /v1/auth/login)', () => {
     const login = await import('./login');
     expect(login).not.toHaveProperty('destinoDoCodigo');
     expect(SLUG_RESERVADO_SUPERADMIN).toBe('macuxi');
-    expect(CODIGO_SUPERADMIN_LOGIN.toLowerCase()).toBe(SLUG_RESERVADO_SUPERADMIN);
     expect(LoginEntrada.parse({ empresa: 'MACUXI', email: 'a@b.co', senha: 'x'.repeat(8) })).not.toHaveProperty('empresa', 'config');
   });
 

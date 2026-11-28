@@ -53,12 +53,6 @@ export const PADRAO_SLUG_EMPRESA = /^[a-z0-9][a-z0-9-]{1,39}$/;
  */
 export const SLUG_RESERVADO_SUPERADMIN = 'macuxi';
 /**
- * @deprecated Transição da v0.3.30 (ADR 0021 §5): o login não tem mais o campo empresa. Fica só porque os e2e de
- * `tests/` (tests/e2e/api-ficha-receita.ts, tests/e2e/apoio-api.ts) ainda importam; sai quando tests/e2e deixar de
- * importar. Use `SLUG_RESERVADO_SUPERADMIN`.
- */
-export const CODIGO_SUPERADMIN_LOGIN = 'MACUXI';
-/**
  * Slugs que a criação de empresa recusa. Espelho no banco: 0033 e 0037 (`referencia`, `config`, `plataforma`) e o CHECK
  * do código reservado (`macuxi`, T-0076: 23514 com DETAIL `DETALHE_CODIGO_RESERVADO`); mudou aqui, muda lá (migração nova).
  */
