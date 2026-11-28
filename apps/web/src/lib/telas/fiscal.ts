@@ -51,7 +51,7 @@ const FILTROS_CATALOGO: readonly FiltroTela[] = [{ chave: 'tributo', rotulo: 'Tr
 /** Colunas da tela (a lista cabe na largura sem rolar; fonte, versão, fim e tipo de cliente ficam na regra aberta e no CSV, que usa o descritor inteiro). */
 const NA_TELA: Readonly<Record<string, readonly string[]>> = {
   'regras-fiscais': ['tributo', 'ncm_prefixo', 'cfop', 'uf_origem', 'uf_destino', 'crt', 'codigo', 'aliquota_icms', 'mva_original', 'situacao'],
-  'catalogo-fiscal': ['titulo', 'tributo', 'ncm_prefixo', 'uf_destino', 'crt', 'codigo', 'vigencia_inicio', 'aplicavel'],
+  'catalogo-fiscal': ['titulo', 'tributo', 'ncm_prefixo', 'uf_destino', 'codigo', 'aplicavel'],
 };
 function lista(pagina: Pagina, filtrosTela: readonly FiltroTela[], extra: Partial<TelaLista> = {}): TelaLista {
   const ids = NA_TELA[(pagina as unknown as { id: string }).id];
