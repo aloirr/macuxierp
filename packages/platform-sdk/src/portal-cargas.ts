@@ -90,10 +90,10 @@ export type SituacaoCarga = z.infer<typeof SituacaoCarga>;
 
 /**
  * Situação de um cadastro: `com_erro` se a última carga recusou linhas; senão `carregado` só quando há data de carga
- * (`ultima_carga`); senão `manual` se há registro ativo sem carga; senão `nao_carregado`. Pura: o plugin monta a linha
- * com ela.
+ * (`ultima_carga`; ausente vale como null); senão `manual` se há registro ativo sem carga; senão `nao_carregado`. Pura:
+ * o plugin monta a linha com ela.
  */
-export function situacaoCarga(e: { ativos: number; erros: number; ultima_carga: { em: string } | null }): SituacaoCarga {
+export function situacaoCarga(e: { ativos: number; erros: number; ultima_carga?: { em: string } | null }): SituacaoCarga {
   if (e.erros > 0) return 'com_erro';
   if (e.ultima_carga) return 'carregado';
   return e.ativos > 0 ? 'manual' : 'nao_carregado';

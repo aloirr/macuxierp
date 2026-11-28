@@ -117,6 +117,8 @@ describe('SituacaoCargasPlataforma', () => {
     expect(situacaoCarga({ ativos: 0, erros: 0, ultima_carga: carga })).toBe('carregado');
     expect(situacaoCarga({ ativos: 5, erros: 0, ultima_carga: null })).toBe('manual');
     expect(situacaoCarga({ ativos: 0, erros: 0, ultima_carga: null })).toBe('nao_carregado');
+    expect(situacaoCarga({ ativos: 5, erros: 0 })).toBe('manual');
+    expect(situacaoCarga({ ativos: 0, erros: 0 })).toBe('nao_carregado');
   });
 
   it('LinhaSituacaoCarga: o valor do enum, nunca texto; carregado exige ultima_carga; manual e não carregado sem ela', () => {
