@@ -1,5 +1,5 @@
 'use server';
-import { ROTA_TELA_LOGIN } from '@macuxierp/platform-sdk';
+import { ROTA_LOGIN } from '@/lib/rota-login';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { PATH_CONFIG } from '@/lib/config/constantes';
@@ -19,7 +19,7 @@ export async function entrarConfigAction(_: EstadoEntrarConfig): Promise<EstadoE
     jar.set(COOKIE_CONFIG_WEB, r.token, opcoesConfig(r.expira_em));
     redirect(PATH_CONFIG);
   }
-  if (r.tipo === 'sessao') redirect(ROTA_TELA_LOGIN);
+  if (r.tipo === 'sessao') redirect(ROTA_LOGIN);
   if (r.tipo === 'trocar_senha') redirect(ROTA_SENHA);
   return { erro: r.tipo === 'sem_acesso' ? r.texto : FALHA };
 }

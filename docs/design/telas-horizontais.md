@@ -49,15 +49,17 @@ No BKO com menu lateral (208 px até 1100, 260 px acima), a área útil em 1280 
 
 ## 2. Regra de hierarquia
 
+Atualizado na v0.3.28 (decisões 40, 44 A e 45 do Alexandre, 27/11; `docs/design/config-menos-e-mais/`).
+
 O rótulo e o cabeçalho ficam **visivelmente diferentes do valor**; o valor fica em texto normal; o título de bloco tem destaque claro. Só tokens do `packages/ui`.
 
 | Papel | Tamanho | Peso | Cor | Forma |
 |---|---|---|---|---|
-| Título da tela (h1) | `--mx-tamanho-h1` (24) | `--mx-peso-titulo` (700) | `--mx-cor-azul-noite` | normal |
-| **Título de bloco** (h2 do cartão) — reaproveitado | `--mx-tamanho-titulo-cartao` (20) | `--mx-peso-titulo` (700) | `--mx-cor-rotulo-destaque` | 12 px abaixo; linha `1px solid var(--mx-cor-borda-tabela)` embaixo, 8 px de respiro |
-| **Rótulo de dado** (`dt`, rótulo de campo só leitura) — novo | `--mx-tamanho-rotulo-dado` (13) | `--mx-peso-rotulo-dado` (600) | `--mx-cor-rotulo-destaque` | caixa-alta, `letter-spacing: .04em` |
-| **Valor** (`dd`) — reaproveitado | `--mx-tamanho-base` (15) | `--mx-peso-normal` (400) | `--mx-cor-grafite` | normal; números com `--mx-fonte-numeros` |
-| Cabeçalho de tabela (`th`) — ajustado | `--mx-tamanho-pequeno` (13) | `--mx-peso-cabecalho-tabela` (600) | `--mx-cor-rotulo-destaque` | normal (sem caixa-alta, para não pesar a coluna) sobre `nevoa` |
+| Título da tela (h1) | `--mx-tamanho-h1` (20) | `--mx-peso-titulo` (700) | `--mx-cor-azul-noite` | normal |
+| **Título de bloco**, fora da caixa | `--mx-tamanho-titulo-cartao` (13) | `--mx-peso-titulo` (700) | `--mx-cor-rotulo-destaque` | caixa-alta, `letter-spacing: .05em`, 6 px até a caixa |
+| **Rótulo de dado** (`dt`, rótulo de campo) | `--mx-tamanho-rotulo-dado` (12) | `--mx-peso-rotulo-dado` (600) | `--mx-cor-rotulo-destaque` | normal |
+| **Valor**, campo e célula | `--mx-tamanho-texto` (13) | `--mx-peso-normal` (400) | `--mx-cor-grafite` | normal; números com `--mx-fonte-numeros` |
+| Cabeçalho de tabela (`th`) | `--mx-tamanho-rotulo-dado` (12) | `--mx-peso-cabecalho-tabela` (700) | `--mx-cor-rotulo-destaque` | caixa-alta sobre `nevoa`, 34 px, linha azul-noite de 2 px; linhas de 36 px com zebra `linhaAlternada` |
 | Rótulo de campo editável (`label`) | o tamanho atual do componente | `--mx-peso-rotulo-campo` (600) | `--mx-cor-rotulo-destaque` | normal |
 
 - O `TabelaDensa` e o `FormularioItens` já saem com o `th` em azul-noite (`tabela.cabecalho` em `estilos.ts`).

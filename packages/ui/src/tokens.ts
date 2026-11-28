@@ -40,6 +40,8 @@ export const cores = {
   /** Texto de aviso (sobre `avisoFundo`). */
   avisoTexto: '#7A4F00',
   avisoFundo: '#FFF1D6',
+  /** Zebra das tabelas: fundo das linhas pares (decisão 44 A do Alexandre, 27/11; docs/design/config-menos-e-mais). */
+  linhaAlternada: '#FBFAF8',
 } as const;
 
 export type Cor = keyof typeof cores;
@@ -73,18 +75,20 @@ export const escala = {
   titulo: 24,
 } as const;
 
-/** Papel -> degrau da escala. Título de cartão e de diálogo em 20; só o h1 em 24. */
+/** Papel -> degrau da escala. Valores e formas em docs/design/telas-horizontais.md §2 (decisões 40 e 45). */
 export const papeis = {
-  tituloCartao: 'grande',
+  tituloCartao: 'pequeno',
   tituloDialogo: 'grande',
-  h1: 'titulo',
+  h1: 'grande',
+  /** Texto de campo, valor e célula de tabela. */
+  texto: 'pequeno',
   /** Só o rótulo de grupo do menu lateral (caixa alta). Título usa tituloCartao/tituloDialogo ou h1. */
   rotuloMenu: 'micro',
   /** @deprecated Use rotuloMenu. Alias por uma versão (sai depois que o shell trocar `--mx-tamanho-titulo-grupo` em globals.css). */
   tituloGrupo: 'micro',
   selo: 'micro',
-  /** Rótulo de dado (dt, rótulo de campo só leitura): caixa-alta pequena, com `pesos.rotuloDado` e `rotuloDestaque`. O valor reaproveita base/normal/grafite e o título de bloco, `tituloCartao`. */
-  rotuloDado: 'pequeno',
+  /** Rótulo de dado (dt, rótulo de campo só leitura): caixa-alta pequena, com `pesos.rotuloDado` e `rotuloDestaque`. Também o rótulo de campo e o th. O valor usa `texto`. */
+  rotuloDado: 'micro',
 } as const satisfies Record<string, keyof typeof escala>;
 
 /** §5.2: 400, 500, 600 e 700 por papel. Nada em 800/900. */
@@ -92,7 +96,8 @@ export const pesos = {
   normal: 400,
   /** Item de menu, chip e botão secundário. */
   medio: 500,
-  cabecalhoTabela: 600,
+  /** th: 700, caixa-alta, azul-noite, com linha de 2 px (decisão 40). */
+  cabecalhoTabela: 700,
   rotuloCampo: 600,
   botaoPrincipal: 600,
   numeroCard: 600,
@@ -108,6 +113,20 @@ export const grade = {
   cartaoMinimo: 280,
 } as const;
 
+/** Medidas únicas, em px (regra 11 do CLAUDE.md, "menos é mais"): iguais em todas as telas. */
+export const medidas = {
+  /** Campo, select, todo botão e o th. */
+  alturaCampo: 34,
+  alturaLinhaTabela: 36,
+  /** Cartão e diálogo. O espaço de 12 px é `espaco.md` (estilos.ts). */
+  cantoCartao: 8,
+} as const;
+
+/** Espaçamento de letra único da caixa-alta (MC-0211, auditoria de 27/11): th, rótulo em caixa-alta e título de bloco. */
+export const letras = {
+  caixaAlta: '.04em',
+} as const;
+
 const kebab = (s: string) => s.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
 
 /** Variável CSS -> valor (literal ou `var()` de alias). */
@@ -120,6 +139,8 @@ export function variaveisCss(): Record<string, string> {
   for (const [k, x] of Object.entries(papeis)) v[`--mx-tamanho-${kebab(k)}`] = `var(--mx-tamanho-${x})`;
   for (const [k, x] of Object.entries(pesos)) v[`--mx-peso-${kebab(k)}`] = String(x);
   for (const [k, x] of Object.entries(grade)) v[`--mx-grade-${kebab(k)}`] = `${x}px`;
+  for (const [k, x] of Object.entries(medidas)) v[`--mx-medida-${kebab(k)}`] = `${x}px`;
+  for (const [k, x] of Object.entries(letras)) v[`--mx-letras-${kebab(k)}`] = x;
   return v;
 }
 

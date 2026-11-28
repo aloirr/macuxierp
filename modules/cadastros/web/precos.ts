@@ -7,7 +7,7 @@ import type { Perfil } from '@macuxierp/platform-sdk';
 import { definirPaginaLista } from '@macuxierp/platform-sdk/listas';
 import { TabelaPreco, TabelaPrecoAtualizacao, TabelaPrecoDados } from '../contracts';
 import { validarVigenciaTabela } from '../domain';
-import { camposVisiveis, corpoDoPatch, faltandoObrigatorios, simNao, situacao, vazioParaNulo, type CampoEdicao, type Corpo, type Erros, type Modo, type Valores } from './edicao';
+import { camposVisiveis, corpoDoPatch, faltandoObrigatorios, simNao, colunaSituacao, vazioParaNulo, type CampoEdicao, type Corpo, type Erros, type Modo, type Valores } from './edicao';
 
 export const ROTA_TABELAS_PRECO = '/cadastros/tabelas-preco';
 export const ROTA_TABELA_PRECO_NOVA = '/cadastros/tabelas-preco/novo';
@@ -25,7 +25,7 @@ export const paginaTabelasPreco = definirPaginaLista({
     { id: 'vigencia_inicio', titulo: 'Início', valor: (t) => t.vigencia_inicio },
     { id: 'vigencia_fim', titulo: 'Fim', valor: (t) => t.vigencia_fim ?? '' },
     { id: 'padrao', titulo: 'Padrão', valor: (t) => simNao(t.padrao) },
-    { id: 'inativo', titulo: 'Situação', valor: (t) => situacao(t.inativo) },
+    colunaSituacao(),
   ],
   csv: { arquivo: 'tabelas-preco.csv' },
   vazio: { semFiltro: 'Nenhuma tabela de preço cadastrada.', comFiltro: 'Nenhuma tabela de preço com estes filtros.' },
@@ -33,8 +33,8 @@ export const paginaTabelasPreco = definirPaginaLista({
 
 export const CAMPOS_TABELA_PRECO: readonly CampoEdicao[] = [
   { nome: 'nome', rotulo: 'Nome', tipo: 'texto', obrigatorio: true },
-  { nome: 'vigencia_inicio', rotulo: 'Início da vigência', tipo: 'texto', obrigatorio: true, ajuda: 'AAAA-MM-DD.' },
-  { nome: 'vigencia_fim', rotulo: 'Fim da vigência', tipo: 'texto', ajuda: 'AAAA-MM-DD; vazio = sem fim.' },
+  { nome: 'vigencia_inicio', rotulo: 'Início da vigência', tipo: 'data', obrigatorio: true, ajuda: 'AAAA-MM-DD.' },
+  { nome: 'vigencia_fim', rotulo: 'Fim da vigência', tipo: 'data', ajuda: 'AAAA-MM-DD; vazio = sem fim.' },
   { nome: 'padrao', rotulo: 'Tabela padrão', tipo: 'booleano', ajuda: 'A padrão vale para o cliente sem tabela.' },
 ];
 

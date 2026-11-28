@@ -3,7 +3,9 @@
  * T-0101, R-2 do plano da v0.3.13 (e2e da tela): /config › empresa › aba Empresa › "Atualizar pela Receita", com a fonte
  * dublada (`tests/e2e/api-ficha-receita.ts`). Em 1280 e 390 (dsf 2), para cada falha da fonte (tempo esgotado, 404, 503,
  * 200 fora do formato): a tela mostra a mensagem do catálogo no lugar (role=alert), nunca "Algo deu errado", o CNPJ nem o
- * corpo da fonte, e a ficha na tela não muda depois de recarregar. O caso ok mostra "Ficha atualizada pela Receita.".
+ * corpo da fonte, e a ficha na tela não muda depois de recarregar. O caso ok (fluxo da v0.3.24, #853): a consulta é uma prévia
+ * ("A Receita trouxe dados diferentes. Confira e clique em Salvar."); o Salvar grava ("Ficha salva. Mudou: …"); consultar de
+ * novo diz "A Receita trouxe os mesmos dados da ficha salva.".
  * Gravação no banco e log: `tests/integracao/plataforma/empresa-ficha.db.test.ts` (R-2 e R-5).
  * Uso: `bash tests/e2e/rodar-ficha-receita.sh [pasta dos prints]`. Sai 0 se todos os passos passaram.
  */
@@ -65,11 +67,18 @@ for (const { nome: larg, viewport } of LARGURAS_PRINT) {
       exigir((await ficha().innerText()) === antes, `${caso}: a ficha mudou depois da falha`);
     });
   }
-  // 1280 grava a ficha; 390 consulta de novo a mesma empresa e a tela diz que já estava em dia (nada muda)
-  const esperadaOk = larg === '1280' ? 'Ficha atualizada pela Receita.' : 'Consulta feita: a ficha já estava em dia.';
-  await r.passo(`[${larg}] ok: a tela confirma "${esperadaOk}"`, async () => {
+  // 1280: a prévia traz dados diferentes e o Salvar grava; 390 consulta de novo a mesma empresa e a prévia diz que nada mudou
+  const esperadaOk = larg === '1280' ? 'A Receita trouxe dados diferentes. Confira e clique em Salvar.' : 'A Receita trouxe os mesmos dados da ficha salva.';
+  await r.passo(`[${larg}] ok: a prévia diz "${esperadaOk}"${larg === '1280' ? ' e o Salvar grava ("Ficha salva.")' : ''}`, async () => {
     const { aviso } = await atualizar('ok');
+    exigir((await aviso.getAttribute('role')) === 'status', 'ok: a prévia saiu como alerta');
     exigir((await aviso.innerText()).includes(esperadaOk), `ok: ${await aviso.innerText()}`);
+    if (larg === '1280') {
+      await p.getByRole('button', { name: 'Salvar', exact: true }).click();
+      const salvo = p.locator('[role="status"]').filter({ hasText: /Ficha salva\. Mudou:/ }).first();
+      await salvo.waitFor();
+      await salvo.scrollIntoViewIfNeeded();
+    }
     await r.print(p, `ok-${larg}.png`);
   });
 }

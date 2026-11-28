@@ -5,8 +5,8 @@
 # No compose da VM o serviço `macuxierp-web` escuta na 3100 e fala com a API pela rede interna.
 #
 # Endereço da API: o servidor lê MACUXIERP_API_URL em TEMPO DE EXECUÇÃO (apps/web/src/lib/api.ts); defina no environment
-# do compose, não no build. O build não recebe nenhum ARG: se o producao-publicar.yml ainda passar NEXT_PUBLIC_API_URL e
-# MACUXI_BKO_ORIGEM como build-arg, é só aviso do BuildKit (a remoção vai no PR de governança). Nenhum segredo entra na imagem.
+# do compose, não no build. O único ARG do build é MACUXI_BUILD_ID (vira NEXT_PUBLIC_BUILD_ID; sem valor, 'dev'). Se o producao-publicar.yml ainda
+# passar NEXT_PUBLIC_API_URL e MACUXI_BKO_ORIGEM como build-arg, é só aviso do BuildKit. Nenhum segredo entra na imagem.
 #
 # Saída `standalone` (output: 'standalone' no next.config.ts): a imagem final leva só o server.js e os node_modules
 # rastreados pelo Next.
@@ -36,7 +36,15 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile --filter "web..."
 COPY . .
 ENV NODE_ENV=production
-RUN pnpm --filter web exec next build
+ARG MACUXI_BUILD_ID
+# Chave das Server Actions: vem de um secret do BuildKit (id next_actions_key), só dentro deste RUN; nunca ARG/ENV,
+# nunca em camada ou log. O Next a grava em .next/server/server-reference-manifest.json; em runtime não precisa
+# (encryption-utils.js usa o env OU o manifesto) e o runtime NÃO deve receber outra chave (encryption-utils-server.js
+# acusa divergência). Sem o secret (build local, CI do PR) o build segue sem a variável.
+RUN --mount=type=secret,id=next_actions_key,required=false \
+    NEXT_PUBLIC_BUILD_ID="${MACUXI_BUILD_ID:-dev}" \
+    NEXT_SERVER_ACTIONS_ENCRYPTION_KEY="$(cat /run/secrets/next_actions_key 2>/dev/null)" \
+    pnpm --filter web exec next build
 
 FROM node:24-bookworm-slim AS final
 LABEL org.opencontainers.image.source="https://github.com/aloirr/macuxierp"

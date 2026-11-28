@@ -151,7 +151,7 @@ describe('FormularioItens', () => {
     expect(textoParaQuantidade('-1')).toBeNull();
   });
   it('index exporta só componentes', () => {
-    const permitidos = ['aliasCores', 'cores', 'escala', 'fontes', 'grade', 'papeis', 'pesos', 'useResultado'];
+    const permitidos = ['aliasCores', 'cores', 'escala', 'fontes', 'grade', 'letras', 'medidas', 'papeis', 'pesos', 'useResultado'];
     expect(Object.keys(indice).filter((k) => /^[a-z]/.test(k) && !permitidos.includes(k))).toEqual([]);
   });
   it('renderiza linhas, seletor injetado, total formatado pelo chamador e ações', () => {

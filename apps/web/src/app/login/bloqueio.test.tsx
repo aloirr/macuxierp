@@ -37,7 +37,7 @@ describe('T-0111: conta bloqueada na tela de entrada', () => {
 
 
   it('mostra o cartão de aviso, o botão "Recuperar a senha" e o "Entrar" desabilitado', () => {
-    const h = renderToStaticMarkup(<VisaoLogin destino="/" valores={valores} bloqueada aoRecuperar={() => undefined} />);
+    const h = renderToStaticMarkup(<VisaoLogin valores={valores} bloqueada aoRecuperar={() => undefined} />);
     expect(h).toContain(R.titulo);
     expect(h).toContain(R.mensagem);
     expect(h).toContain('faixa-aviso');
@@ -47,14 +47,14 @@ describe('T-0111: conta bloqueada na tela de entrada', () => {
   });
 
   it('sem bloqueio: nada de cartão e "Entrar" habilitado', () => {
-    const h = renderToStaticMarkup(<VisaoLogin destino="/" valores={valores} />);
+    const h = renderToStaticMarkup(<VisaoLogin valores={valores} />);
     expect(h).not.toContain(R.titulo);
     expect(h).not.toContain(R.acao.rotulo);
     expect(h).toMatch(/<button class="mx-botao" type="submit">Entrar<\/button>/);
   });
 
   it('sem "Esqueci" disponível, o cartão aparece sem o botão', () => {
-    const h = renderToStaticMarkup(<VisaoLogin destino="/" valores={valores} bloqueada />);
+    const h = renderToStaticMarkup(<VisaoLogin valores={valores} bloqueada />);
     expect(h).toContain(R.titulo);
     expect(h).not.toContain(R.acao.rotulo);
   });

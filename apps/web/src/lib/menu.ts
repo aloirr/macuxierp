@@ -1,5 +1,5 @@
 import type { EuResposta, ManifestoModulo, ModuloId, Perfil } from '@macuxierp/platform-sdk';
-import { casarRota, paginasDoMenu, paginaVisivel, type PaginaRegistrada, PAGINAS_REGISTRADAS } from './paginas';
+import { casarRota, paginasDoMenu, paginaVisivel, type PaginaRegistrada, PAGINAS_REGISTRADAS, ROTAS_SEM_TELA } from './paginas';
 
 export interface ItemMenu {
   rotulo: string;
@@ -61,7 +61,8 @@ export function resolverPagina(menu: readonly GrupoMenu[], rota: string, perfil:
   const modulo = rota.split('/')[1];
   const grupo = menu.find((g) => g.modulo === modulo);
   if (!grupo) return undefined;
-  const casada = casarRota(rota, paginas);
+  // Página sem tela (ROTAS_SEM_TELA) não abre nem pela URL: seguiria para "Disponível em breve".
+  const casada = ROTAS_SEM_TELA.has(rota) ? undefined : casarRota(rota, paginas);
   if (casada) {
     const { pagina, params } = casada;
     return paginaVisivel(pagina, perfil) && grupo.itens.some((i) => i.rotulo === pagina.menu) ? { rotulo: pagina.menu, pagina, params } : undefined;

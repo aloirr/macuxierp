@@ -623,7 +623,7 @@ describe('CSV (RF-PED-05)', () => {
     const g = await t.chamar('GET', '/pedidos/exportar', { sessao: gerente });
     expect(g.status).toBe(200);
     expect(g.cabecalhos).toMatchObject({ 'content-type': 'text/csv; charset=utf-8', 'content-disposition': 'attachment; filename="pedidos.csv"' });
-    expect(g.corpo.startsWith('﻿Número;Origem;Status;Emitido em (UTC);Cliente;Documento do cliente;')).toBe(true);
+    expect(g.corpo.startsWith('﻿Número;Origem;Status;Emitido em;Cliente;Documento do cliente;')).toBe(true);
     expect(g.corpo).toContain(CPF_DO_CLIENTE);
     expect(g.corpo).toContain('10,00');
     expect(g.corpo.trim().split('\r\n')).toHaveLength(3);
@@ -631,6 +631,18 @@ describe('CSV (RF-PED-05)', () => {
     expect(v.corpo).not.toContain(CPF_DO_CLIENTE);
     expect(v.corpo).not.toContain('Documento');
     expect(v.corpo.trim().split('\r\n')).toHaveLength(2);
+  });
+});
+
+describe('CSV no fuso do tenant (regra 4)', () => {
+  it('a coluna Emitido em muda com o fuso do tenant', async () => {
+    const t = montar();
+    await lancar(t, pedidoManual({ vendedor_id: IDS.vendedor }));
+    const manaus = await t.chamar('GET', '/pedidos/exportar', { sessao: gerente, fuso: 'America/Manaus' });
+    const sp = await t.chamar('GET', '/pedidos/exportar', { sessao: gerente, fuso: 'America/Sao_Paulo' });
+    const data = (c: string) => c.trim().split('\r\n')[1]!.split(';')[3];
+    expect(data(sp.corpo)).not.toBe(data(manaus.corpo));
+    expect(data(manaus.corpo)).toMatch(/^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/);
   });
 });
 
