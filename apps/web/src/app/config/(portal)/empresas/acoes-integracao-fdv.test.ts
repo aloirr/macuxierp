@@ -68,7 +68,7 @@ describe('ações da aba Integração (T-0056)', () => {
     expect((await configurarFdvAcao(ID, { entidades_habilitadas: ['produto', 'produto'], limite_registros_lote: 500 }, 'k')).ok).toBe(false);
     expect(chamadas).toHaveLength(0);
   });
-  it('carga completa (aba Dados): POST com a Idempotency-Key; cadastro desconhecido não sai; lote em voo vira mensagem', async () => {
+  it('reenviar tudo (Ações ▾ do bloco ERP → FDV): POST com a Idempotency-Key; cadastro desconhecido não sai; lote em voo vira mensagem', async () => {
     resposta = () => json({ aceito: true }, 202);
     expect((await cargaCompletaFdvAcao(ID, 'produto', 'k-carga')).ok).toBe(true);
     expect(chamadas[0]?.url).toContain(`/v1/plataforma/empresas/${ID}/integracao-fdv/entidades/produto/carga-completa`);

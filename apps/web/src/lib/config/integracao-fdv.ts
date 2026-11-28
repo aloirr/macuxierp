@@ -4,7 +4,7 @@
  */
 import { ROTULO_AMBIENTE } from '@macuxierp/integracao-fdv/web';
 import type { AcaoMenu, MenuAcoesProps } from '@macuxierp/ui';
-import { ConfigurarIntegracaoPlataformaEntrada, ENTIDADES_ENVIO_FDV, LIMITE_REGISTROS_LOTE_FDV, MOTIVOS_PAUSA_FDV, type EntidadeEnvioFdv, type IntegracaoFdvPlataforma } from '@macuxierp/platform-sdk';
+import { CADASTROS_CARGA_PORTAL, ConfigurarIntegracaoPlataformaEntrada, ENTIDADES_ENVIO_FDV, LIMITE_REGISTROS_LOTE_FDV, MOTIVOS_PAUSA_FDV, type EntidadeEnvioFdv, type IntegracaoFdvPlataforma } from '@macuxierp/platform-sdk';
 import { acaoNoPortal } from '../integracao-fdv-textos';
 import { ROTULOS_FDV } from './operacao-fdv';
 import { linhaBaseFdv, type LinhaBaseFdv } from '../integracao-fdv';
@@ -45,9 +45,11 @@ export function habilitadasApos(atual: readonly string[], entidade: EntidadeEnvi
 export const AMBIENTES_FDV = Object.entries(ROTULO_AMBIENTE) as [string, string][];
 
 export const avisoLigar = (ligar: boolean) => (ligar ? 'O conector passa a enviar este cadastro.' : 'O conector para de enviar este cadastro.');
+/** Aviso do diálogo "Reenviar tudo ao FDV" (T-0137): o reenvio é total, sem contagem de registros (a API e o SDK não mudam). */
 export const avisoCarga = 'Envia tudo de uma vez: pode demorar e inativar cadastros no FDV.';
+export const ROTULO_REENVIAR_TUDO = 'Reenviar tudo ao FDV';
 
-/** Cadastro da aba Dados -> entidades do conector que a carga completa reenvia (condição de pagamento junta forma e prazo; cliente absorve o endereço). */
+/** Cadastro (chave da aba Dados) -> entidades do conector que o "Reenviar tudo ao FDV" reenvia (condição de pagamento junta forma e prazo; cliente absorve o endereço). */
 const ENTIDADES_DA_CARGA: Record<string, readonly EntidadeEnvioFdv[]> = {
   condicao_pagamento: ['forma_pagamento', 'prazo_pagamento'],
   cliente: ['cliente', 'cliente_endereco'],
@@ -58,10 +60,24 @@ export const entidadesDaCarga = (cadastro: string): EntidadeEnvioFdv[] => {
   return (ENTIDADES_ENVIO_FDV as readonly string[]).includes(cadastro) ? [cadastro as EntidadeEnvioFdv] : [];
 };
 
+/** Cadastro a que uma entidade da linha pertence (cliente_endereco -> cliente; forma e prazo -> condição de pagamento). */
+export const cadastroDaEntidade = (entidade: EntidadeEnvioFdv): string =>
+  Object.entries(ENTIDADES_DA_CARGA).find(([, es]) => es.includes(entidade))?.[0] ?? entidade;
+/** Nome do cadastro no diálogo, sem "(opcional)": "Produtos", "Clientes", "Condições de pagamento". */
+export const nomeDoCadastroDaCarga = (cadastro: string): string => CADASTROS_CARGA_PORTAL.find((c) => c.cadastro === cadastro)?.nome ?? cadastro;
+
+/** Artigo de cada cadastro no título do reenvio, explícito (concordância: "todas as Filiais", "todos os Produtos", "todo o Estoque"). */
+const ARTIGO_REENVIO: Readonly<Record<string, string>> = {
+  filial: 'todas as', vendedor: 'todos os', condicao_pagamento: 'todas as', produto: 'todos os', produto_unidade: 'todas as',
+  preco: 'todas as', estoque: 'todo o', cliente: 'todos os',
+};
+/** "Reenviar todos os Produtos ao FDV?": o nome do cadastro, sem contagem. */
+export const tituloReenviarTudo = (cadastro: string): string => `Reenviar ${ARTIGO_REENVIO[cadastro] ?? 'todos os'} ${nomeDoCadastroDaCarga(cadastro)} ao FDV?`;
+
 export interface EstadoCargaCompleta {
-  /** Mostra o botão: há integração lida, o cadastro tem entidade e todas estão ligadas (o domain recusa o resto). */
+  /** Mostra o item de menu: há integração lida, o cadastro tem entidade e todas estão ligadas (o domain recusa o resto). */
   visivel: boolean;
-  /** Há lote em voo em alguma entidade: o botão fica desligado com "Enviando…". */
+  /** Há lote em voo em alguma entidade: o item fica desligado com "Enviando…". */
   loteEmVoo: boolean;
   entidades: EntidadeEnvioFdv[];
 }
@@ -72,7 +88,7 @@ export function estadoCargaCompleta(cadastro: string, d: IntegracaoFdvPlataforma
   const visivel = cs.every((c) => c?.ligada === true);
   return { visivel, loteEmVoo: visivel && cs.some((c) => c?.lote_em_voo === true), entidades };
 }
-/** Texto do botão de uma operação de envio (Reprocessar, Carga completa): "Enviando…" enquanto há lote em voo. */
+/** Texto do botão de uma operação de envio (Reprocessar, Reenviar tudo): "Enviando…" enquanto há lote em voo. */
 export const rotuloComLote = (loteEmVoo: boolean, rotulo: string): string => (loteEmVoo ? 'Enviando…' : rotulo);
 
 /** Item do botão "Ações" (T-0099) antes de ganhar o clique: a tela liga cada `chave` à sua ação. */
@@ -94,11 +110,14 @@ export function menuDaLinha(a: AcoesDaLinha, fazer: Readonly<Record<string, () =
  * Ações da linha de um cadastro na aba Integração (regra da marca, docs/marca/botao-acoes.md): a principal muda pela situação
  * (pausada → Tentar de novo; com falha → Reprocessar; senão Log); as outras vão ao menu; Zerar (perigo) por último.
  */
-export function acoesDaLinhaFdv(l: LinhaCadastroFdv, o: { bloqueado: boolean; semCredencial: boolean; licenciado: boolean }): AcoesDaLinha {
+export function acoesDaLinhaFdv(l: LinhaCadastroFdv, o: { bloqueado: boolean; semCredencial: boolean; licenciado: boolean; reenvio?: EstadoCargaCompleta }): AcoesDaLinha {
+  // "Reenviar tudo ao FDV" (T-0137, era a Carga completa da aba Dados): só com todas as entidades do cadastro ligadas; lote em voo em QUALQUER uma desliga o item.
+  const reenvio = o.reenvio;
   const todas: ItemAcaoLinha[] = [
     { chave: 'ligar', rotulo: l.ligada ? 'Desligar' : 'Ligar', desabilitado: o.bloqueado || o.semCredencial },
     { chave: 'retomar', rotulo: ROTULOS_FDV.tentarDeNovo, oculto: !l.pausada, desabilitado: o.bloqueado },
     { chave: 'reprocessar', rotulo: rotuloComLote(l.loteEmVoo, 'Reprocessar'), desabilitado: o.bloqueado || o.semCredencial || l.loteEmVoo },
+    { chave: 'reenviar-tudo', rotulo: rotuloComLote(reenvio?.loteEmVoo ?? false, ROTULO_REENVIAR_TUDO), oculto: !reenvio?.visivel, desabilitado: o.bloqueado || o.semCredencial || (reenvio?.loteEmVoo ?? false) },
     { chave: 'log', rotulo: 'Log', desabilitado: !o.licenciado },
     { chave: 'zerar', rotulo: 'Zerar', perigo: true, desabilitado: o.bloqueado },
   ];
@@ -106,13 +125,10 @@ export function acoesDaLinhaFdv(l: LinhaCadastroFdv, o: { bloqueado: boolean; se
   return { principal: todas.find((x) => x.chave === chave)!, menu: todas.filter((x) => x.chave !== chave) };
 }
 
-/** Ações da linha da aba Dados: Importar à vista; Modelo e Carga completa (só nos cadastros ligados) no menu. */
-export function acoesDaCarga(c: EstadoCargaCompleta, pendente: boolean): AcoesDaLinha {
+/** Ações da linha da aba Dados (sistema do cliente -> ERP): Importar à vista; o Modelo no menu. O reenvio ao FDV é da outra tabela (T-0137). */
+export function acoesDaCarga(): AcoesDaLinha {
   return {
     principal: { chave: 'importar', rotulo: 'Importar' },
-    menu: [
-      { chave: 'modelo', rotulo: 'Modelo' },
-      { chave: 'carga-completa', rotulo: rotuloComLote(c.loteEmVoo, 'Carga completa'), oculto: !c.visivel, desabilitado: pendente || c.loteEmVoo },
-    ],
+    menu: [{ chave: 'modelo', rotulo: 'Modelo' }],
   };
 }

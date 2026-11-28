@@ -6,7 +6,7 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }), red
 vi.mock('next/headers', () => ({ cookies: vi.fn() }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
-import { menuDaLinha, acoesDaLinhaFdv, habilitadasApos, linhasCadastros, type LinhaCadastroFdv } from '@/lib/config/integracao-fdv';
+import { ROTULO_REENVIAR_TUDO, acoesDaLinhaFdv, avisoCarga, cadastroDaEntidade, entidadesDaCarga, rotuloComLote, estadoCargaCompleta, habilitadasApos, linhasCadastros, menuDaLinha, tituloReenviarTudo, type LinhaCadastroFdv } from '@/lib/config/integracao-fdv';
 import { SecaoEnvioFdv } from './envio-fdv';
 
 const ID = '11111111-1111-4111-8111-111111111111';
@@ -118,6 +118,83 @@ describe('v0.3.24: aba Dados, seção "ERP → Macuxi FDV" (a tabela saiu da aba
     const d = dados();
     d.cadastros[0]!.ultimo_envio_em = '2026-11-22T14:05:00.000Z';
     expect(linhasCadastros(d, 'America/Manaus')[0]?.ultimoEnvio).toMatch(/10:05/);
+  });
+});
+
+describe('T-0137: "Reenviar tudo ao FDV" no menu Ações do bloco "ERP → Macuxi FDV"', () => {
+  const lig = ['produto', 'cliente', 'cliente_endereco', 'forma_pagamento'];
+  const integ = (voo: string[] = [], ligadas: string[] = lig, extra: Record<string, unknown> = {}) => IntegracaoFdvPlataforma.parse({
+    ...dados(), entidades_habilitadas: ENTIDADES_ENVIO_FDV.filter((e) => ligadas.includes(e)),
+    cadastros: ENTIDADES_ENVIO_FDV.map((entidade) => ({ entidade, ligada: ligadas.includes(entidade), ultimo_envio_em: null, falha: null, lote_em_voo: voo.includes(entidade) })),
+    ...extra,
+  });
+  const base = { bloqueado: false, semCredencial: false, licenciado: true };
+  const item = (d: IntegracaoFdvPlataforma, entidade: (typeof ENTIDADES_ENVIO_FDV)[number], o = base) => {
+    const l = linhasCadastros(d, 'America/Manaus').find((x) => x.entidade === entidade)!;
+    const a = acoesDaLinhaFdv(l, { ...o, reenvio: estadoCargaCompleta(cadastroDaEntidade(entidade), d) });
+    return [a.principal, ...a.menu].find((x) => x.chave === 'reenviar-tudo')!;
+  };
+  it('o item tem o rótulo "Reenviar tudo ao FDV", vem antes do Log e do Zerar e só aparece com o cadastro todo ligado', () => {
+    expect(ROTULO_REENVIAR_TUDO).toBe('Reenviar tudo ao FDV');
+    const d = integ();
+    expect(item(d, 'produto')).toMatchObject({ rotulo: 'Reenviar tudo ao FDV', oculto: false, desabilitado: false });
+    expect(item(d, 'filial').oculto).toBe(true); // desligada
+    expect(item(d, 'forma_pagamento').oculto).toBe(true); // falta o prazo: o domain recusaria
+    const l = linhasCadastros(d, 'America/Manaus').find((x) => x.entidade === 'produto')!;
+    const chaves = (a: ReturnType<typeof acoesDaLinhaFdv>) => [a.principal, ...a.menu].map((x) => x.chave);
+    expect(chaves(acoesDaLinhaFdv(l, { ...base, reenvio: estadoCargaCompleta('produto', d) }))).toEqual(['log', 'ligar', 'retomar', 'reprocessar', 'reenviar-tudo', 'zerar']);
+  });
+  it('sem a integração lida, sem licença, sem chave ou em bloqueio: oculto ou desligado', () => {
+    expect(acoesDaLinhaFdv(linhasCadastros(dados(), 'America/Manaus').find((x) => x.entidade === 'produto')!, base).menu.find((x) => x.chave === 'reenviar-tudo')?.oculto).toBe(true); // sem o estado, nada de reenvio
+    expect(item({ ...integ(), modulo_licenciado: false }, 'produto').oculto).toBe(true);
+    expect(item(integ(), 'produto', { ...base, bloqueado: true }).desabilitado).toBe(true);
+    expect(item(integ(), 'produto', { ...base, semCredencial: true }).desabilitado).toBe(true);
+  });
+  it('lote em voo em QUALQUER entidade do cadastro desliga o item, com "Enviando…"; em outro cadastro, não', () => {
+    expect(item(integ(['produto']), 'produto')).toMatchObject({ rotulo: 'Enviando…', desabilitado: true });
+    expect(item(integ(['cliente_endereco']), 'cliente')).toMatchObject({ rotulo: 'Enviando…', desabilitado: true }); // a linha do cliente, o lote na do endereço
+    expect(item(integ(['cliente']), 'cliente_endereco')).toMatchObject({ rotulo: 'Enviando…', desabilitado: true });
+    expect(item(integ(['produto']), 'cliente')).toMatchObject({ rotulo: 'Reenviar tudo ao FDV', desabilitado: false });
+  });
+  it('cadastro com duas entidades: cliente e condição de pagamento (forma + prazo) mandam as duas', () => {
+    expect(cadastroDaEntidade('cliente_endereco')).toBe('cliente');
+    expect(cadastroDaEntidade('prazo_pagamento')).toBe('condicao_pagamento');
+    expect(cadastroDaEntidade('produto_unidade')).toBe('produto_unidade');
+    expect(entidadesDaCarga('preco')).toEqual(['preco']);
+    expect(entidadesDaCarga('inexistente')).toEqual([]);
+    expect(estadoCargaCompleta('filial', integ())).toMatchObject({ visivel: false, loteEmVoo: false });
+    expect(rotuloComLote(false, 'Reprocessar')).toBe('Reprocessar');
+    const d = integ([], [...lig, 'prazo_pagamento']);
+    expect(estadoCargaCompleta('cliente', d).entidades).toEqual(['cliente', 'cliente_endereco']);
+    expect(estadoCargaCompleta('condicao_pagamento', d)).toMatchObject({ visivel: true, entidades: ['forma_pagamento', 'prazo_pagamento'] });
+    expect(item(d, 'prazo_pagamento').oculto).toBe(false);
+    expect(item(integ([], ['cliente']), 'cliente').oculto).toBe(true); // falta o endereço
+  });
+  it('a confirmação é só "Reenviar <artigo> <cadastro> ao FDV?", com o artigo certo para cada entidade e sem contagem', () => {
+    const esperado: Record<string, string> = {
+      filial: 'Reenviar todas as Filiais ao FDV?',
+      vendedor: 'Reenviar todos os Vendedores ao FDV?',
+      forma_pagamento: 'Reenviar todas as Condições de pagamento ao FDV?',
+      prazo_pagamento: 'Reenviar todas as Condições de pagamento ao FDV?',
+      produto: 'Reenviar todos os Produtos ao FDV?',
+      produto_unidade: 'Reenviar todas as Unidades ao FDV?',
+      preco: 'Reenviar todas as Tabelas de preço ao FDV?',
+      estoque: 'Reenviar todo o Estoque ao FDV?',
+      cliente: 'Reenviar todos os Clientes ao FDV?',
+      cliente_endereco: 'Reenviar todos os Clientes ao FDV?',
+    };
+    expect(Object.keys(esperado)).toEqual([...ENTIDADES_ENVIO_FDV]);
+    for (const e of ENTIDADES_ENVIO_FDV) {
+      const t = tituloReenviarTudo(cadastroDaEntidade(e));
+      expect(t).toBe(esperado[e]);
+      expect(t).not.toMatch(/\d|opcional/);
+    }
+    expect(avisoCarga).toBe('Envia tudo de uma vez: pode demorar e inativar cadastros no FDV.');
+  });
+  it('fechado até o clique: sem diálogo e sem o item solto na linha', () => {
+    const h = render(integ());
+    expect(h).not.toContain('role="dialog"');
+    expect(h).not.toMatch(/>Reenviar tudo ao FDV<\/button>/);
   });
 });
 

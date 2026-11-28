@@ -15,8 +15,7 @@ const csv = (nome = 'produto.csv', tamanho = 20) => new File(['x'.repeat(tamanho
 const json = (c: unknown, status = 200) => new Response(JSON.stringify(c), { status, headers: { 'content-type': 'application/json' } });
 describe('linhas da aba Cargas (T-0058)', () => {
   const linhas = linhasCargas(situacoes({ filial: { situacao: 'carregado', quantidade: 1 }, produto: { situacao: 'com_erro', erros: 2 } }), 'America/Manaus');
-  it('registros e erros da linha são os mesmos do chip e da "Última carga" (RD-2422)', () => {
-    expect(linhas[0]!.registros).toBe(1);
+  it('os erros da linha são os mesmos do chip (RD-2422)', () => {
     expect(linhas[0]!.erros).toBeNull();
     const p = linhas.find((l) => l.cadastro === 'produto')!;
     expect(p.erros).toBe(2);

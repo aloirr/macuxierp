@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import { CADASTROS_CARGA_PORTAL, ENTIDADES_ENVIO_FDV, IntegracaoFdvPlataforma, ValidarCargaPlataformaResposta, type EfeitoSubstituir as SdkEfeito } from '@macuxierp/platform-sdk';
-import { acoesDaCarga, avisoCarga, entidadesDaCarga, estadoCargaCompleta, rotuloComLote } from '@/lib/config/integracao-fdv';
+import { CADASTROS_CARGA_PORTAL, ValidarCargaPlataformaResposta, type EfeitoSubstituir as SdkEfeito } from '@macuxierp/platform-sdk';
+import { acoesDaCarga } from '@/lib/config/integracao-fdv';
 import { AVISO_LIMITE_FDV } from '@/lib/config/cargas';
 import { EMP, conferencia as conferenciaBruta, situacoes } from '@/lib/config/cargas-fixtures';
 
@@ -26,7 +26,8 @@ describe('aba Dados (T-0058, T-0086)', () => {
   it('uma tabela só: uma linha por cadastro com situação, última carga (data, hora, registros) e Importar à vista (o Modelo vai ao menu "Ações")', () => {
     const h = aba();
     expect(h.match(/<tr[^>]*data-/g) ?? h.match(/<tbody>[\s\S]*<\/tbody>/)).toBeTruthy();
-    for (const t of ['Cadastro', 'Situação', 'Última carga', 'Registros', 'Com erro', 'Ações']) expect(h).toContain(`>${t}<`);
+    for (const t of ['Cadastro', 'Situação', 'Última carga', 'Com erro', 'Ações']) expect(h).toContain(`>${t}<`);
+    expect(h).not.toContain('>Registros<'); // T-0137 (RD-2422): o total fica só na "Última carga"
     expect(h).not.toContain('>Origem<'); // a Origem saiu das colunas, sem esconder por CSS
     expect(h).not.toContain('>Modelo<'); // o Modelo vai para o menu "Ações" (T-0099)
     expect(h).toContain('>Filiais<');
@@ -58,7 +59,7 @@ describe('aba Dados (T-0058, T-0086)', () => {
     expect(h).toContain('Unidades (opcional)');
     expect(h).not.toContain('(opcional).');
   });
-  it('v0.3.24: tabela da ligação "Sistema do cliente → ERP" com a legenda "Cadastros recebidos"; Registros e Com erro do último lote; sem integração, sem a seção de envio', () => {
+  it('v0.3.24: tabela da ligação "Sistema do cliente → ERP" com a legenda "Cadastros recebidos"; Com erro do último lote; sem integração, sem a seção de envio', () => {
     const h = aba();
     expect(h).not.toContain('<h2'); // o título da ligação é do cartão (ligacao.tsx), não da tabela
     expect(h).toMatch(new RegExp(`<caption[^>]*>${LEGENDA_RECEBIDOS}</caption>`));
@@ -67,7 +68,8 @@ describe('aba Dados (T-0058, T-0086)', () => {
     const lote = { lote_id: EMP, entidade: 'produto', modo: 'delta', status: 'concluido_com_erros', recebidos: 40, com_erro: 2, recebido_em: '2026-11-27T14:00:00.000Z', concluido_em: null };
     const com = renderToStaticMarkup(<AbaDados empresaId={EMP} dados={dados} fuso="America/Manaus" entrada={{ credenciais: [], ultimo_sinal: null, lotes: [lote] } as never} />);
     const produtos = com.slice(com.indexOf('>Produtos<'), com.indexOf('</tr>', com.indexOf('>Produtos<')));
-    expect(produtos).toMatch(/>40<[\s\S]*>2</);
+    expect(produtos).toMatch(/>2</);
+    expect(produtos).not.toContain('>40<'); // sem a coluna Registros
     expect(produtos).not.toContain('Automática');
   });
   it('sem dados da API: erro com o link "Recarregar" para a aba Dados (RD-2317)', () => {
@@ -79,50 +81,15 @@ describe('aba Dados (T-0058, T-0086)', () => {
   });
 });
 
-describe('coluna Carga completa na aba Dados (decisão do PO em 24/11)', () => {
-  const ligadas = ['produto', 'cliente', 'cliente_endereco', 'forma_pagamento'];
-  const integ = (voo: string[] = [], lig: string[] = ligadas) => IntegracaoFdvPlataforma.parse({
-    empresa_id: EMP, modulo_licenciado: true, credencial_id: EMP, conector_id: 'erp-1', ambiente: 'teste', chave_prefixo: 'abcd1234', criada_em: '2026-11-23T12:00:00.000Z',
-    entidades_habilitadas: ENTIDADES_ENVIO_FDV.filter((e) => lig.includes(e)), limite_registros_lote: 500, ultimo_sinal: null,
-    cadastros: ENTIDADES_ENVIO_FDV.map((entidade) => ({ entidade, ligada: lig.includes(entidade), ultimo_envio_em: null, falha: null, lote_em_voo: voo.includes(entidade) })),
-  });
-  const com = (i: IntegracaoFdvPlataforma | null) => renderToStaticMarkup(<AbaDados empresaId={EMP} dados={dados} fuso="America/Manaus" integracao={i} />);
-  const acoesDe = (i: IntegracaoFdvPlataforma | null, c: string, pendente = false) => acoesDaCarga(estadoCargaCompleta(c, i), pendente);
-  const cargaCompleta = (a: ReturnType<typeof acoesDaCarga>) => a.menu.find((x) => x.chave === 'carga-completa')!;
-  it('a Carga completa vai ao menu "Ações" só nos cadastros ligados; Importar é a principal; o aviso e a confirmação só abrem no clique', () => {
-    const i = integ();
-    expect(cargaCompleta(acoesDe(i, 'produto')).oculto).toBe(false);
-    expect(cargaCompleta(acoesDe(i, 'cliente')).oculto).toBe(false);
-    expect(cargaCompleta(acoesDe(i, 'filial')).oculto).toBe(true);
-    expect(cargaCompleta(acoesDe(i, 'condicao_pagamento')).oculto).toBe(true); // falta prazo_pagamento
-    expect(acoesDe(i, 'produto').principal.rotulo).toBe('Importar');
-    expect(acoesDe(i, 'produto').menu.map((x) => x.chave)).toEqual(['modelo', 'carga-completa']);
-    const h = com(i);
-    expect(h).not.toContain('aria-label="Carga completa');
+describe('T-0137: o bloco do cliente tem só Modelo e Importar (o reenvio ao FDV saiu daqui)', () => {
+  it('as ações do cadastro são Importar (principal) e Modelo; nada de Carga completa, nem aviso, nem confirmação', () => {
+    const a = acoesDaCarga();
+    expect(a.principal).toMatchObject({ chave: 'importar', rotulo: 'Importar' });
+    expect(a.menu.map((x) => x.chave)).toEqual(['modelo']);
+    const h = aba();
+    expect(h).not.toMatch(/Carga completa|Reenviar tudo|Enviando…/);
     expect(h).not.toContain('role="dialog"');
     expect(h).not.toContain('pode demorar');
-  });
-  it('lote em voo: item desligado com "Enviando…"; em cadastro de duas entidades, qualquer uma desliga', () => {
-    expect(cargaCompleta(acoesDe(integ(['produto']), 'produto'))).toMatchObject({ rotulo: 'Enviando…', desabilitado: true });
-    expect(cargaCompleta(acoesDe(integ(['produto']), 'cliente'))).toMatchObject({ rotulo: 'Carga completa', desabilitado: false });
-    expect(cargaCompleta(acoesDe(integ(['cliente_endereco']), 'cliente'))).toMatchObject({ rotulo: 'Enviando…', desabilitado: true });
-    expect(cargaCompleta(acoesDe(integ(), 'produto', true)).desabilitado).toBe(true); // pedido em andamento
-  });
-  it('sem a integração lida (ou sem licença) a Carga completa some e a tabela segue inteira', () => {
-    expect(cargaCompleta(acoesDe(null, 'produto')).oculto).toBe(true);
-    expect(cargaCompleta(acoesDe({ ...integ(), modulo_licenciado: false }, 'produto')).oculto).toBe(true);
-  });
-  it('estado puro: entidades por cadastro e rótulo', () => {
-    expect(entidadesDaCarga('condicao_pagamento')).toEqual(['forma_pagamento', 'prazo_pagamento']);
-    expect(entidadesDaCarga('cliente')).toEqual(['cliente', 'cliente_endereco']);
-    expect(entidadesDaCarga('preco')).toEqual(['preco']);
-    expect(entidadesDaCarga('inexistente')).toEqual([]);
-    expect(estadoCargaCompleta('produto', integ(['produto']))).toMatchObject({ visivel: true, loteEmVoo: true });
-    expect(estadoCargaCompleta('filial', integ())).toMatchObject({ visivel: false, loteEmVoo: false });
-    expect(rotuloComLote(true, 'Carga completa')).toBe('Enviando…');
-    expect(rotuloComLote(false, 'Carga completa')).toBe('Carga completa');
-    expect(rotuloComLote(false, 'Reprocessar')).toBe('Reprocessar');
-    expect(avisoCarga).toBe('Envia tudo de uma vez: pode demorar e inativar cadastros no FDV.');
   });
 });
 
@@ -198,14 +165,14 @@ describe('T-0135: sem carga, sem a linha "Última carga: —"', () => {
 });
 
 describe('v0.3.23: aba Dados no celular (390) esconde as colunas certas', () => {
-  it('#840: a regra por posição esconde Última carga, Registros e Com erro (a última carga sobe para sob o nome), na ordem real das colunas', async () => {
+  it('#840: a regra por posição esconde Última carga e Com erro (a última carga sobe para sob o nome), na ordem real das colunas', async () => {
     const { readFileSync } = await import('node:fs');
     const { join } = await import('node:path');
     const css = readFileSync(join(__dirname, '../../../../globals.css'), 'utf8');
     const regra = /\.tabela-dados th:nth-child\(\d\)[^{]*\{ display: none; \}/.exec(css)?.[0] ?? '';
     const ocultas = [...new Set([...regra.matchAll(/nth-child\((\d)\)/g)].map((m) => Number(m[1])))];
     const cabecalho = [...aba().matchAll(/<th[^>]*>([\s\S]*?)<\/th>/g)].map((m) => m[1]!.replace(/<[^>]+>/g, '').trim());
-    expect(ocultas.map((n) => cabecalho[n - 1])).toEqual(['Última carga', 'Registros', 'Com erro']);
+    expect(ocultas.map((n) => cabecalho[n - 1])).toEqual(['Última carga', 'Com erro']);
     expect(cabecalho.slice(0, 3)).toEqual(['Cadastro', 'Situação', 'Última carga']);
     expect(aba()).toContain('<span class="carga-sob-nome">Última carga: ');
     expect(css).toMatch(/\.envio-sob-nome, \.carga-sob-nome \{ display: none; \}/);

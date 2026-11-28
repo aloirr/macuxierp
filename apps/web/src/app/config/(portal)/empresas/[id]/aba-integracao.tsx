@@ -40,7 +40,7 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
   return (
     <div className="integracoes">
       <div className="ligacoes">
-        <LigacaoEntrada empresaId={empresaId} dados={entrada} fuso={fuso} corpo={<AbaDados empresaId={empresaId} dados={cargas} fuso={fuso} integracao={dados} entrada={entrada} />} />
+        <LigacaoEntrada empresaId={empresaId} dados={entrada} fuso={fuso} corpo={<AbaDados empresaId={empresaId} dados={cargas} fuso={fuso} entrada={entrada} />} />
         <LigacaoSaida empresaId={empresaId} dados={dados} monitor={monitor} fuso={fuso} corpo={(barra) => <SecaoEnvioFdv empresaId={empresaId} dados={dados} fuso={fuso} barra={barra} />} />
       </div>
       <EnviosRecentes

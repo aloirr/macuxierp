@@ -44,7 +44,7 @@ export async function configurarFdvAcao(id: string, entrada: { entidades_habilit
   return r;
 }
 
-/** Carga completa (aba Dados, decisão do PO em 24/11): reenvia tudo do cadastro; o domain recusa cadastro desligado ou com lote em voo. */
+/** "Reenviar tudo ao FDV" (Ações ▾ do bloco ERP → Macuxi FDV, T-0137): reenvia tudo da entidade; o domain recusa cadastro desligado ou com lote em voo. */
 export async function cargaCompletaFdvAcao(id: string, entidade: string, chave: string): Promise<Resultado<null>> {
   if (!EntidadeEnvioFdv.safeParse(entidade).success) return falha('Cadastro desconhecido.');
   const r = await executarConfig('integracao_fdv', (t) => cargaCompletaFdv(t, id, entidade, chave));
