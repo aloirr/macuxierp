@@ -9,7 +9,7 @@ import { InicioVisao } from './inicio-visao';
 
 function inicio(perfil: Perfil, semModulo?: string): string {
   const modulos = EU_FALSO.modulos.filter((m) => m.id !== semModulo);
-  return renderToStaticMarkup(<InicioVisao nome="Ana Exemplo" atalhos={atalhosDoInicio(montarMenu(modulos, MANIFESTOS, perfil))} />);
+  return renderToStaticMarkup(<InicioVisao atalhos={atalhosDoInicio(montarMenu(modulos, MANIFESTOS, perfil))} />);
 }
 const cartoes = (h: string) => h.match(/class="atalho"/g)?.length ?? 0;
 
@@ -19,7 +19,8 @@ describe('Início do BKO (decisões 58 e 59)', () => {
     expect(cartoes(h)).toBe(3);
     expect(h).toContain('atalhos-3');
     expect(h).toContain('<h1>Início</h1>');
-    expect(h).toContain('Olá, Ana. Por onde quer começar?');
+    expect(h).not.toContain('Olá'); // RD-2380 A: sem saudação; ficam o h1 e os atalhos
+    expect(h).not.toContain('Por onde quer começar');
     expect(h).not.toContain('Atalhos');
     for (const r of ['Pedidos', 'Notas fiscais', 'Clientes']) expect(h).toContain(`<b>${r}</b>`);
     for (const d of ['Lançar e acompanhar', 'Emitir e consultar', 'Incluir e consultar']) expect(h).toContain(`<span>${d}</span>`);
@@ -39,10 +40,10 @@ describe('Início do BKO (decisões 58 e 59)', () => {
     const rotulos = atalhosDoInicio(menu).map((a) => a.rotulo);
     expect(rotulos).not.toContain('Clientes');
     expect(rotulos).toContain('Pedidos');
-    expect(cartoes(renderToStaticMarkup(<InicioVisao nome="Ana Exemplo" atalhos={atalhosDoInicio(menu)} />))).toBe(rotulos.length);
+    expect(cartoes(renderToStaticMarkup(<InicioVisao atalhos={atalhosDoInicio(menu)} />))).toBe(rotulos.length);
   });
   it('nenhum atalho: só título e a frase do vazio, sem saudação, sem Atalhos nem botão', () => {
-    const h = renderToStaticMarkup(<InicioVisao nome="Ana Exemplo" atalhos={[]} />);
+    const h = renderToStaticMarkup(<InicioVisao atalhos={[]} />);
     expect(cartoes(h)).toBe(0);
     expect(h).toContain('<h1>Início</h1>');
     expect(h).not.toContain('Olá');
