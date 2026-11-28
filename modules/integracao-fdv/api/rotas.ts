@@ -87,7 +87,7 @@ export function criarRotas(): RotaModulo[] {
         const i = await lerInsumosLog(c.tx, tenant(c), entidade, MAXIMO_LINHAS_CSV);
         const csv = paraCsv(COLUNAS_CSV_LOG, i.erros.map(itemDoLogTenant));
         if (i.total_erros <= i.erros.length) return respostaCsv(nomeDoCsvDoLog(entidade), csv);
-        const aviso = `Aviso: arquivo cortado em ${i.erros.length} de ${i.total_erros} erros abertos. Corrija estes e baixe de novo.`;
+        const aviso = `Arquivo cortado em ${i.erros.length} de ${i.total_erros} erros abertos. Corrija estes e baixe de novo.`;
         return csvCortado(nomeDoCsvDoLog(entidade), csv, aviso, i.total_erros - i.erros.length);
       },
     }),

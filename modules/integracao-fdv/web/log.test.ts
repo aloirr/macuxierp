@@ -116,7 +116,7 @@ describe('Recebidos do FDV no Log (RN-INF-09; T-0110)', () => {
     expect(linhasDeRecebidosLog([rec({ retorno: null })])[0]).toMatchObject({ motivo: '—', retorno: '—' });
     expect(ROTULO_BAIXAR_RECEBIDOS).toBe('Baixar recebidos (.csv)');
     expect(textoRecebidosForaDaLista(50, 120)).toBe('Mostrando os 50 mais recentes de 120.');
-    expect(textoRecebidosCortados(10_000)).toBe('Aviso: o arquivo traz só os 10000 recebidos mais recentes.');
+    expect(textoRecebidosCortados(10_000)).toBe('O arquivo traz só os 10000 recebidos mais recentes.');
   });
   it('decisão 21 A: o botão baixa o arquivo completo pela rota de exportação, com a situação quando houver', () => {
     expect(caminhoDoRecebidosCsv()).toBe('/v1/integracao-fdv/clientes-recebidos/exportar');
