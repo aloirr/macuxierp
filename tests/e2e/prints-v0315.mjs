@@ -90,14 +90,15 @@ for (const larg of LARGURAS_PRINT) {
     });
   }
 
-  // T-0135 (quadro de 28/11, "Para o testes"): na aba Integrações o selo "Carregado" só sai com a data da última carga.
-  // A massa tem os dois casos: filial e vendedor carregados por planilha (com data) e cadastros com registro ativo vindo
-  // de fora da planilha (filial da empresa sem ficha). Desligada até o PR do dono (`exigirQuandoLigada`, apoio-e2e.mjs).
+  // T-0135 (quadro de 28/11, "Para o testes"; decisão B, #952): na aba Integrações o selo "Carregado" só sai com a data da
+  // última carga, e o "Cadastro manual" (registro ativo sem carga) sai sem data. A massa tem os dois casos: filial e vendedor
+  // carregados por planilha (com data) e cadastros com registro ativo vindo de fora da planilha (filial da empresa sem ficha).
   for (const [caso, id] of [['com ficha', dados.empresas.comFicha], ['sem ficha', dados.empresas.semFicha]]) {
-    await r.passo(`[${larg.nome}] Integrações (${caso}): o selo "Carregado" só com a data da última carga`, async () => {
+    await r.passo(`[${larg.nome}] Integrações (${caso}): "Carregado" só com a data da última carga e "Cadastro manual" sem ela`, async () => {
       await p.goto(`${empresa(id)}?aba=integracao`);
       await p.locator('tbody tr').first().waitFor();
-      const { lidas, defeito } = await carregadoSemData(p, caso);
+      const { lidas, manuais, defeito } = await carregadoSemData(p, caso);
+      console.log(`[e2e] Integrações (${caso}, ${larg.nome}): ${lidas} "Carregado", ${manuais} "Cadastro manual"`);
       // Contra a asserção vazia: a empresa com ficha tem filial e vendedor carregados por planilha.
       if (id === dados.empresas.comFicha) exigir(lidas >= 2, `${caso}: só ${lidas} linha(s) "Carregado" na aba Integrações`);
       exigirQuandoLigada('carregadoSoComData', defeito === '', defeito);

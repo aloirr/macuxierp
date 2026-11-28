@@ -30,10 +30,12 @@ export async function novoContexto(navegador, opcoes = {}) {
  * Asserções novas da T-0135, prontas e desligadas até o PR do dono entrar no main (nenhum teste é pulado: desligada, a
  * asserção roda e só avisa "pendente"; ligada, reprova). Para ligar: troque `false` por `true` aqui, no PR do testes
  * depois do merge do dono; para ensaiar o PR do dono antes, `MX_LIGAR=carregadoSoComData,singularRegistroCarregado`.
- *  - carregadoSoComData: na aba Integrações do /config, o selo "Carregado" só com a data da última carga (sem "—").
+ *  - carregadoSoComData: na aba Integrações do /config, o selo "Carregado" só com a data da última carga (sem "—") e o
+ *    "Cadastro manual" sem data de carga.
  *  - singularRegistroCarregado: o anúncio da TabelaDensa com 1 linha diz "1 registro carregado." (designer-ux).
  */
-const LIGADAS = { carregadoSoComData: false, singularRegistroCarregado: false };
+// carregadoSoComData ligada: a decisão B entrou no main pelo #952 (a55ca9a). singularRegistroCarregado espera o designer-ux.
+const LIGADAS = { carregadoSoComData: true, singularRegistroCarregado: false };
 const LIGADAS_POR_ENV = new Set((process.env.MX_LIGAR ?? '').split(',').map((s) => s.trim()).filter(Boolean));
 export const assercaoLigada = (nome) => {
   if (!(nome in LIGADAS)) throw new Error(`asserção desconhecida: ${nome}`);
@@ -41,18 +43,29 @@ export const assercaoLigada = (nome) => {
 };
 
 /**
- * T-0135 (`carregadoSoComData`): na aba Integrações aberta em `pagina`, toda linha com o selo "Carregado" (a célula da
- * Situação só com o `Chip`, que não tem classe) mostra a data da última carga (dd/mm/aaaa), nunca "—". Lê só o visível
- * (`innerText`): no 390 a coluna some e a data sobe para sob o nome (#840). Devolve quantas linhas "Carregado" leu e a
- * mensagem do defeito ('' se conforme); quem chama decide com `exigirQuandoLigada`.
+ * T-0135 (`carregadoSoComData`, decisão B, #952): na aba Integrações aberta em `pagina`, toda linha com o selo "Carregado" (a
+ * célula da Situação só com o `Chip`, que não tem classe) mostra a data da última carga (dd/mm/aaaa), nunca "—"; e toda linha
+ * "Cadastro manual" (registro ativo sem carga) não tem data de carga. Lê só o visível (`innerText`): no 390 a coluna some e a
+ * data sobe para sob o nome (#840). Devolve quantas linhas de cada selo leu e a mensagem do defeito ('' se conforme); quem
+ * chama decide com `exigirQuandoLigada`.
  */
 export async function carregadoSemData(pagina, onde) {
-  const linhas = await pagina.locator('tbody tr').evaluateAll((trs) =>
-    trs.filter((tr) => [...tr.querySelectorAll('td')].some((td) => td.textContent?.trim() === 'Carregado')).map((tr) => tr.innerText.replace(/\s+/g, ' ').trim()),
-  );
-  const semData = linhas.filter((t) => !/\b\d{2}\/\d{2}\/\d{4}\b/.test(t));
-  const defeito = semData.length === 0 ? '' : `${onde}: ${semData.length} de ${linhas.length} linha(s) "Carregado" sem data: ${semData.map((t) => t.slice(0, 60)).join(' | ')}`;
-  return { lidas: linhas.length, defeito };
+  const linhasDo = (selo) =>
+    pagina.locator('tbody tr').evaluateAll(
+      (trs, s) => trs.filter((tr) => [...tr.querySelectorAll('td')].some((td) => td.textContent?.trim() === s)).map((tr) => tr.innerText.replace(/\s+/g, ' ').trim()),
+      selo,
+    );
+  const comData = (t) => /\b\d{2}\/\d{2}\/\d{4}\b/.test(t);
+  const linhas = await linhasDo('Carregado');
+  const manuais = await linhasDo('Cadastro manual');
+  const semData = linhas.filter((t) => !comData(t));
+  const manualComData = manuais.filter(comData);
+  const curto = (l) => l.map((t) => t.slice(0, 60)).join(' | ');
+  const defeitos = [
+    semData.length > 0 ? `${onde}: ${semData.length} de ${linhas.length} linha(s) "Carregado" sem data: ${curto(semData)}` : '',
+    manualComData.length > 0 ? `${onde}: ${manualComData.length} linha(s) "Cadastro manual" com data de carga: ${curto(manualComData)}` : '',
+  ].filter(Boolean);
+  return { lidas: linhas.length, manuais: manuais.length, defeito: defeitos.join('; ') };
 }
 
 /** Confere `cond`: ligada, falha como `exigir`; desligada, só avisa no stderr e devolve se passou. */

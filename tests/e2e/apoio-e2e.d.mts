@@ -26,4 +26,4 @@ export function abrirNavegador<N>(chromium: { launch(o?: object): Promise<N> }):
 export function novoContexto<C>(navegador: { newContext(o?: object): Promise<C> }, opcoes?: object): Promise<C>;
 export function assercaoLigada(nome: 'carregadoSoComData' | 'singularRegistroCarregado'): boolean;
 export function exigirQuandoLigada(nome: 'carregadoSoComData' | 'singularRegistroCarregado', cond: unknown, msg: string): boolean;
-export function carregadoSemData(pagina: unknown, onde: string): Promise<{ lidas: number; defeito: string }>;
+export function carregadoSemData(pagina: unknown, onde: string): Promise<{ lidas: number; manuais: number; defeito: string }>;
