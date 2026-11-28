@@ -8,6 +8,8 @@ import { paginasDoMenu } from '@/lib/paginas';
 import { COOKIE_ACESSO, contexto } from '@/lib/sessao';
 import { telaDaRota } from '@/lib/telas';
 import { TelaGenerica } from '@/components/descritor/tela-generica';
+import { Selo } from '@/components/descritor/ui-cliente';
+import { paginaEditavel } from '@macuxierp/platform-sdk';
 import { TelaIntegracaoFdv } from './tela-integracao-fdv';
 import { PAGINAS_INTEGRACAO_FDV } from '@macuxierp/integracao-fdv/web';
 import { ROTA_BANDEIRA } from '@/lib/telas/bandeira';
@@ -56,7 +58,7 @@ export default async function PaginaDoModulo({ params, searchParams }: { params:
   return (
     <>
       {/* No detalhe, o h1 é o título do registro (ex.: "Nota 12/1"), desenhado pelo DetalheGenerico: um h1 só por página. */}
-      {tela?.tipo !== 'detalhe' && <h1>{titulo}</h1>}
+      {tela?.tipo !== 'detalhe' && <h1>{titulo}{tela?.tipo === 'formulario' && declarada && !paginaEditavel(declarada, perfil) && <> <Selo selo={{ texto: 'Somente leitura', tom: 'neutro' }} /></>}</h1>}
       {secoes.length > 1 && !principalRepete && (
         <nav className="abas-texto" aria-label="Seções">
           {secoes.map((p) => <Link key={p.rota} href={p.rota} aria-current={p.rota === declarada?.rota || (declarada?.ocultaNoMenu && p.rota === secoes[0]?.rota) ? 'page' : undefined}>{p.titulo}</Link>)}
@@ -65,7 +67,7 @@ export default async function PaginaDoModulo({ params, searchParams }: { params:
       {declarada?.aviso && <p className="faixa-aviso" role="status">{declarada.aviso}</p>}
       {monitor && declarada?.rota === monitor.rota && <TelaIntegracaoFdv acesso={acesso} fuso={eu.empresa.fuso} perfil={perfil} />}
       {tela && declarada && (
-        <TelaGenerica outrasSecoes={outrasSecoes} titulo={titulo} tela={tela} rotaDaPagina={declarada.rota} rota={rota} params={resolvida.params ?? {}} busca={busca} perfil={perfil} acesso={acesso} fuso={eu.empresa.fuso} />
+        <TelaGenerica somenteLeitura={tela.tipo === 'formulario' && !paginaEditavel(declarada, perfil)} outrasSecoes={outrasSecoes} titulo={titulo} tela={tela} rotaDaPagina={declarada.rota} rota={rota} params={resolvida.params ?? {}} busca={busca} perfil={perfil} acesso={acesso} fuso={eu.empresa.fuso} />
       )}
       {/* Quadros com componente próprio (T-0087, T-0088): só leitura, exceto a bandeira (Ligar/Desligar do administrador, pelo executor do quadro). */}
       {declarada?.rota === ROTA_PERFIS && <TelaPerfis acesso={acesso} />}
