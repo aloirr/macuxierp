@@ -4,7 +4,7 @@ import { MANIFESTOS } from '../manifestos';
 import { montarMenu, resolverPagina } from '../menu';
 import type { EuResposta } from '@macuxierp/platform-sdk';
 import {
-  EDITAR_FILIAL, EDITAR_PRODUTO, LISTA_FILIAIS, LISTA_PRODUTOS, NOVA_FILIAL, NOVO_PRODUTO, ROTA_FILIAIS, ROTA_FILIAL, ROTA_FILIAL_NOVA, ROTA_PRODUTO, ROTA_PRODUTO_NOVO, ROTA_PRODUTOS,
+  EDITAR_FILIAL, EDITAR_PRODUTO, EDITAR_TABELA_PRECO, LISTA_FILIAIS, LISTA_PRODUTOS, LISTA_TABELAS_PRECO, NOVA_FILIAL, NOVA_TABELA_PRECO, ROTA_TABELA_PRECO, ROTA_TABELA_PRECO_NOVA, ROTA_TABELAS_PRECO, NOVO_PRODUTO, ROTA_FILIAIS, ROTA_FILIAL, ROTA_FILIAL_NOVA, ROTA_PRODUTO, ROTA_PRODUTO_NOVO, ROTA_PRODUTOS,
 } from './cadastros';
 
 const FUSO = 'America/Manaus';
@@ -108,5 +108,36 @@ describe('adaptador do cadastros: Filiais (v0.3.28)', () => {
     expect(resolverPagina(montarMenu(mod, MANIFESTOS, 'gerente'), ROTA_FILIAIS, 'gerente')?.pagina?.rota).toBe(ROTA_FILIAIS);
     expect(resolverPagina(montarMenu(mod, MANIFESTOS, 'gerente'), `/cadastros/filiais/${ID}`, 'gerente')?.pagina?.rota).toBe(ROTA_FILIAL);
     expect(resolverPagina(montarMenu([], MANIFESTOS, 'gerente'), ROTA_FILIAIS, 'gerente')).toBeUndefined();
+  });
+});
+
+describe('adaptador do cadastros: Tabelas de preço, só o cabeçalho (v0.3.28)', () => {
+  const tabela = { id: ID, nome: 'Varejo 2026', vigencia_inicio: '2026-01-01', vigencia_fim: null, padrao: true, external_id: null, inativo: false };
+  const mod = [{ id: 'cadastros' as EuResposta['modulos'][number]['id'], menus: ['Tabelas de preço'] }];
+
+  it('registra lista, novo e edição; o PATCH só vale em /tabelas-preco/<uuid> (os itens em lote não entram)', () => {
+    expect(telaDaRota(ROTA_TABELAS_PRECO)).toBe(LISTA_TABELAS_PRECO);
+    expect(telaFormulario(ROTA_TABELA_PRECO_NOVA)).toBe(NOVA_TABELA_PRECO);
+    expect(telaFormulario(ROTA_TABELA_PRECO)).toBe(EDITAR_TABELA_PRECO);
+    expect(escritaDeclarada('PATCH', `/v1/cadastros/tabelas-preco/${ID}`)).toBe(true);
+    expect(escritaDeclarada('PUT', `/v1/cadastros/tabelas-preco/${ID}/itens`)).toBe(false);
+  });
+
+  it('lista, formulário (RN-CAD-06) e edição', () => {
+    expect(LISTA_TABELAS_PRECO.colunas('gerente', FUSO).map((c) => c.id)).toEqual(['nome', 'vigencia_inicio', 'vigencia_fim', 'padrao', 'inativo']);
+    expect(LISTA_TABELAS_PRECO.rotaDaLinha?.(tabela)).toBe(`/cadastros/tabelas-preco/${ID}`);
+    expect(NOVA_TABELA_PRECO.validar({ nome: 'X', vigencia_inicio: '2026-02-01', vigencia_fim: '2026-01-01', padrao: 'false' }, [], 'gerente').vigencia_fim).toBeTruthy();
+    const v = { nome: 'Atacado', vigencia_inicio: '2026-01-01', vigencia_fim: '', padrao: 'false' };
+    expect(NOVA_TABELA_PRECO.validar(v, [], 'gerente')).toEqual({});
+    expect(NOVA_TABELA_PRECO.montar(v, [], 'gerente')).toMatchObject({ nome: 'Atacado', vigencia_fim: null, padrao: false });
+    const { valores, original } = EDITAR_TABELA_PRECO.edicao!.abrir(tabela);
+    expect(EDITAR_TABELA_PRECO.edicao!.montarPatch(valores, original, 'gerente')).toBeNull();
+    expect(EDITAR_TABELA_PRECO.edicao!.montarPatch({ ...valores, nome: 'Varejo' }, original, 'gerente')).toEqual({ nome: 'Varejo' });
+  });
+
+  it('regra 6: a página só abre com a licença do cadastros', () => {
+    expect(resolverPagina(montarMenu(mod, MANIFESTOS, 'gerente'), ROTA_TABELAS_PRECO, 'gerente')?.pagina?.rota).toBe(ROTA_TABELAS_PRECO);
+    expect(resolverPagina(montarMenu(mod, MANIFESTOS, 'gerente'), `/cadastros/tabelas-preco/${ID}`, 'gerente')?.pagina?.rota).toBe(ROTA_TABELA_PRECO);
+    expect(resolverPagina(montarMenu([], MANIFESTOS, 'gerente'), ROTA_TABELAS_PRECO, 'gerente')).toBeUndefined();
   });
 });
