@@ -78,10 +78,11 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config: isolamento das credenciais de t
   });
 
   it('T-0056/T-0086 (ADR 0013 §2): toda rota de CAMINHOS_INTEGRACAO_FDV_PLATAFORMA (Monitor, Reprocessar e Log inclusos) entra sozinha na matriz, pelo plugin real', () => {
-    // Caminhos e número lidos do SDK; o método de cada chave é o contrato do portal. `Record<keyof typeof C, ...>` faz o
-    // typecheck cair quando o SDK ganhar uma chave sem método aqui, então nenhuma rota nova fica fora da matriz.
+    // Caminhos e número lidos do SDK; o método de cada chave é o contrato do portal. O mapa aceita chave que o SDK ainda não
+    // tem (`ligacoes`, T-0131, entra com o #989), para compilar antes e depois; em troca, a execução cai se uma chave do SDK
+    // ficar sem método aqui, então nenhuma rota nova fica fora da matriz.
     const C = CAMINHOS_INTEGRACAO_FDV_PLATAFORMA;
-    const METODO: Record<keyof typeof C, MetodoPortal> = {
+    const METODO: Readonly<Record<string, MetodoPortal>> = {
       ler: 'GET',
       credencial: 'PUT',
       testar: 'POST',
@@ -94,9 +95,12 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config: isolamento das credenciais de t
       ligacoes: 'GET', // T-0131 (RN-INF-13): a ligação ERP → Macuxi FDV no /config
     };
     const chaves = Object.keys(C) as (keyof typeof C)[];
+    expect(chaves.filter((k) => METODO[k] === undefined), 'chave do SDK sem método no mapa').toEqual([]);
+    // Chave do mapa fora do SDK só a que ainda não entrou (o #989 acrescenta `ligacoes`); qualquer outra é erro de digitação.
+    expect(Object.keys(METODO).filter((k) => !(k in C) && k !== 'ligacoes')).toEqual([]);
     const esperadas = chaves.map((k) => `${METODO[k]} ${C[k]}`).sort();
     expect(esperadas).toHaveLength(Object.values(C).length);
-    expect(chaves).toEqual(expect.arrayContaining(['monitor', 'reprocessar', 'log', 'ligacoes']));
+    expect(chaves).toEqual(expect.arrayContaining(['monitor', 'reprocessar', 'log']));
     const declaradas = pluginsPlataforma(modulos).flatMap((pl) => pl.rotas.map((r) => `${r.metodo} ${r.caminho}`));
     expect(declaradas.filter((d) => d.includes('/integracao-fdv')).sort()).toEqual(esperadas);
     // cada uma está na matriz (rotasPortal), que alimenta os casos de JWT do tenant, CSRF e troca pendente abaixo
