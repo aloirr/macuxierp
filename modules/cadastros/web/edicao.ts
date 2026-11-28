@@ -9,7 +9,7 @@ import type { ColunaLista } from '@macuxierp/platform-sdk/listas';
 import { Cep, Ibge, Uf } from '../contracts';
 import { normalizarCoordenada } from '../domain/coordenada';
 
-export type TipoCampoEdicao = 'texto' | 'selecao' | 'dinheiro' | 'cadastro' | 'booleano';
+export type TipoCampoEdicao = 'texto' | 'selecao' | 'dinheiro' | 'cadastro' | 'booleano' | 'data';
 
 export interface CampoEdicao {
   nome: string;
