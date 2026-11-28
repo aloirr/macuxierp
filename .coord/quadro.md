@@ -118,8 +118,8 @@
 | T-0124 | Exportar meus dados (LGPD) com a chave S3 própria do ERP (decisão 90 B) | v0.3.32 | modulo-core | aberta | ~3h11; sem os secrets S3 a publicação segue e o item fica oculto; o XML autorizado continua no banco |
 | T-0125 | Página Empresa no BKO (o item abre o Ambiente fiscal até lá) | v0.3.32 | modulo-core | aberta | |
 | T-0126 | Editar pedido no BKO | v0.3.32 | modulo-pedido | aberta | nenhuma tela linka o Editar até lá |
-| T-0127 | Regras fiscais no BKO e catálogo regra_base | v0.3.32 | modulo-fiscal | aberta | banco ~3h17, fiscal ~7h; desenho aprovado |
-| T-0128 | DIFAL e acabamento do cálculo (RN-FIS-05) | v0.3.32 | modulo-fiscal | aberta | hoje bloqueado fail-closed (icms.ts:109), sem reservar número |
+| T-0127 | Regras fiscais no BKO e catálogo regra_base | v0.3.32 | modulo-fiscal | aberta | banco ~3h17, fiscal ~7h; desenho aprovado; **engenheiro (28/11 04h32, revisão do #942):** ajustar_mva sem default (Zod e SQL); interestadual com ajustar_mva nulo = CODIGO_NAO_SUPORTADO; nenhuma carga de regra de ST interestadual antes disso |
+| T-0128 | DIFAL e acabamento do cálculo (RN-FIS-06) | v0.3.32 | modulo-fiscal | aberta | hoje bloqueado fail-closed (icms.ts:109), sem reservar número |
 | T-0129 | Formulário só leitura sem a permissão de editar (campo `editar` no descritor; 403 com mensagem do cadastros) | v0.3.32 | engenheiro-software | aberta | 🟡 do shell de Clientes (27/11 20h38) |
 | T-0130 | Filiais no cadastro de usuário do /config (GET de filiais por empresa na plataforma) | v0.3.32 | modulo-core | aberta | campo oculto até lá |
 | T-0131 | Integrações da Config: contadores Enviados/Aceitos/Gravados, histórico de envios por ligação e cabeçalho do Contato só leitura | v0.3.32 | modulo-integracao-fdv | aberta | divergências de contrato da Config v4 |
@@ -238,6 +238,8 @@ Gerente ativo: session_019xHEXorMcUM7hAvrbsGwJd. PO: session_019xHEXqMSs1piLUgLS
 - **Com o Alexandre, sem mexer no quadro:** T-0090 (MFA) e T-0054 (Planos), com o PO pelo Gerente Sênior.
 - **Regra de ST/IPI:** sem carga nem seed em fiscal.regra_tributaria (0013, 0021); na v0.3.31 o cálculo sai "sem regra" em produção e os campos são omitidos (63 A). Sem regra não se inventa alíquota; a carga vira tarefa própria do banco-dados.
 - **PR B do known_hosts (opção c, PO 04h15):** fixar a impressão digital SHA256:wRktlR17… (keyscan -t ed25519, HostKeyAlgorithms ssh-ed25519, StrictHostKeyChecking yes, 4 casos de teste); governança, Agente: alexandre.
+- **Antes de ligar o 1º tenant na bandeira do ST/IPI (engenheiro, revisão do #946):** um evento antigo reprocessado muda de hash e escapa da chave (tenant, pedido, status, hash) de util-pedidos.ts:27, então um faturado_parcial pode chegar de novo ao Hub. Normalizar o hash ou aceitar o reenvio idempotente no Hub, no mesmo PR que liga o tenant.
+- **🟡 do engenheiro para a v0.3.32:** pedido/contracts/index.ts:407-414 repete à mão os esquemas do fiscal (reexportar dos contracts do fiscal); pedido/api/leitores.ts:8 sem limite de p_aliq.
 - **PRs:** #935 (fiscal, contrato) e #936 (cadastros, textos). Migrações reservadas: **0080** (empresas_listar por nome + tem_fdv) e **0081** (trava do último administrador); próxima livre **0082**.
 
 ## 28/11 madrugada — v0.3.30 fechada (Manaus)
