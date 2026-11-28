@@ -15,7 +15,9 @@
  *                       testes-integracao rodam só no manual (workflow_dispatch: o ensaio e a suíte da versão) e na
  *                       chamada do producao-liberar.yml (workflow_call, que chega aqui com o evento workflow_dispatch do
  *                       liberar), uma vez por versão, e na sessão antes de cada push. Só o run com as suítes grava o
- *                       artefato ci-verde-* (ci.yml).
+ *                       artefato ci-verde-* (ci.yml). e2e (decisão 137 A do Alexandre, 28/11/2026: os e2e rodam sempre
+ *                       no liberar): só na matriz completa (manual com `completo` ou com `sha`, e a chamada do liberar,
+ *                       que sempre passa o `sha`), nunca no PR nem no push.
  * matriz:
  *   - "completa" → manual com `completo` (a suíte da versão sempre): todos os pacotes.
  *   - "afetados" → PR, push ao main e ensaio (manual): só os pacotes alterados e os que dependem deles (dependência
@@ -193,8 +195,9 @@ export function decidir({
   const testes = sel('test');
   const estatico = new Set([...sel('lint'), ...sel('typecheck')]);
   const conector = workspace.pacotes.find((p) => p.dir === 'apps/conector');
-  // Suítes só no manual e na chamada do liberar; PR e push só com o estático (cabeçalho).
+  // Suítes só no manual e na chamada do liberar; PR e push só com o estático (cabeçalho). Os e2e só na matriz completa.
   const comTestes = evento === 'workflow_dispatch';
+  const comE2e = comTestes && matriz === 'completa';
   return {
     ...vazio,
     escopo: 'codigo',
@@ -202,6 +205,7 @@ export function decidir({
       'estatico',
       ...(comTestes && testes.size > 0 ? ['testes-pacotes'] : []),
       ...(comTestes ? ['testes-integracao'] : []),
+      ...(comE2e ? ['e2e'] : []),
     ],
     filtro_lint: af.todos ? '' : filtro(sel('lint'), true),
     filtro_typecheck: af.todos ? '' : filtro(sel('typecheck'), true),

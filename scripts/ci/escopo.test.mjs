@@ -122,7 +122,7 @@ test('decidir: só documentação → documentacao (PR, push e ensaio); manual c
     [d.escopo, d.matriz, d.filtro_test, d.build, d.db_sem_super],
     ['codigo', 'completa', '', 'true', 'true'],
   );
-  assert.deepEqual(d.jobs, ['estatico', 'testes-pacotes', 'testes-integracao']);
+  assert.deepEqual(d.jobs, ['estatico', 'testes-pacotes', 'testes-integracao', 'e2e']);
 });
 
 test('decidir: PR e push só com o estático (R-20261120-073449-alexandre); só o manual com as suítes', () => {
@@ -141,6 +141,18 @@ test('decidir: PR e push só com o estático (R-20261120-073449-alexandre); só 
   assert.deepEqual(d.jobs, ['estatico', 'testes-pacotes', 'testes-integracao']);
   const t = decidir({ evento: 'workflow_dispatch', arquivos: ['tests/a.test.ts'], workspace: WS });
   assert.deepEqual(t.jobs, ['estatico', 'testes-integracao']);
+});
+
+test('decidir: e2e só na matriz completa (decisão 137 A: sempre no liberar); nunca no PR, no push nem no ensaio', () => {
+  for (const evento of ['pull_request', 'push'])
+    for (const completo of [false, true])
+      assert.ok(!decidir({ evento, arquivos: ['apps/web/a.tsx'], completo, workspace: WS }).jobs.includes('e2e'), evento);
+  const ensaio = decidir({ evento: 'workflow_dispatch', arquivos: ['apps/web/a.tsx'], workspace: WS });
+  assert.ok(!ensaio.jobs.includes('e2e'));
+  for (const arquivos of [['apps/web/a.tsx'], ['docs/a.md'], null]) {
+    const d = decidir({ evento: 'workflow_dispatch', arquivos, completo: true, workspace: WS });
+    assert.deepEqual([d.matriz, d.jobs.at(-1)], ['completa', 'e2e'], String(arquivos));
+  }
 });
 
 test('decidir: PR, ensaio e push = pacotes afetados com o tests/ da raiz; build só se web ou mobile; db sem superusuário só se o db', () => {
@@ -308,7 +320,7 @@ test('CLI num repositório git: PR só de .coord → documentacao; push → afet
     r = rodar({ GITHUB_EVENT_NAME: 'workflow_dispatch', COMPLETO: 'true' });
     assert.deepEqual(
       [r.escopo, r.matriz, r.filtro_test, r.jobs],
-      ['codigo', 'completa', '', '["estatico","testes-pacotes","testes-integracao"]'],
+      ['codigo', 'completa', '', '["estatico","testes-pacotes","testes-integracao","e2e"]'],
     );
     r = rodar({
       GITHUB_EVENT_NAME: 'push',
