@@ -9,7 +9,7 @@ import { temErros } from '@/lib/descritor/formulario';
 import { aposResposta, chaveParaEnvio, novoEstado, type EstadoChave } from '@/lib/descritor/idempotencia';
 import { telaFormulario } from '@/lib/telas';
 import type { Perfil } from '@macuxierp/platform-sdk';
-import type { CampoFormulario, ErrosFormulario, TelaFormulario, ValoresFormulario } from '@/lib/descritor/tipos';
+import type { CampoFormulario, ErrosFormulario, ItemFormulario, TelaFormulario, ValoresFormulario } from '@/lib/descritor/tipos';
 import { PainelSegredo } from './painel-segredo';
 import { escrever } from '@/lib/acoes-cliente';
 
@@ -56,16 +56,22 @@ function SeletorOpcoes({ id, rotulo, largura = '', valor, opcoes, onChange, erro
 /** Formulário genérico: campos do descritor, seletores lidos do cadastros (opções vêm do servidor) e itens. A API revalida. */
 export function FormularioGenerico({ rota, opcoes, produtos, errosIniciais, perfil, campos, aberto, somenteLeitura = false }: { somenteLeitura?: boolean; rota: string; opcoes: Readonly<Record<string, readonly Opcao[]>>; produtos: readonly Opcao[]; errosIniciais?: ErrosFormulario; perfil?: Perfil; campos?: readonly CampoFormulario[]; aberto?: Aberto }) {
   const tela = telaFormulario(rota);
-  return tela ? <Formulario tela={tela} opcoes={opcoes} produtos={produtos} errosIniciais={errosIniciais} perfil={perfil} campos={perfil && tela.camposDoPerfil ? tela.camposDoPerfil(perfil) : (campos ?? tela.campos)} aberto={aberto} somenteLeitura={somenteLeitura} /> : <p className="erro" role="alert">Formulário não encontrado.</p>;
+  return tela ? <Formulario key={aberto?.versao ?? 'novo'} tela={tela} opcoes={opcoes} produtos={produtos} errosIniciais={errosIniciais} perfil={perfil} campos={perfil && tela.camposDoPerfil ? tela.camposDoPerfil(perfil) : (campos ?? tela.campos)} aberto={aberto} somenteLeitura={somenteLeitura} /> : <p className="erro" role="alert">Formulário não encontrado.</p>;
 }
 
 /** Registro aberto na edição: valores iniciais, o original (para o diff do PATCH) e o id. */
-export interface Aberto { valores: ValoresFormulario; original: unknown; id: string }
+export interface Aberto { valores: ValoresFormulario; original: unknown; id: string; /** `If-Match` do PUT. */ versao?: string; itens?: readonly ItemFormulario[] }
 
 function Formulario({ tela, opcoes, produtos, errosIniciais, perfil, campos, aberto, somenteLeitura }: { somenteLeitura: boolean; tela: TelaFormulario; opcoes: Readonly<Record<string, readonly Opcao[]>>; produtos: readonly Opcao[]; errosIniciais?: ErrosFormulario; perfil?: Perfil; campos: readonly CampoFormulario[]; aberto?: Aberto }) {
   const router = useRouter();
   const [valores, setValores] = useState<ValoresFormulario>(aberto?.valores ?? {});
-  const [itens, setItens] = useState<ItemLinha[]>(() => (tela.itens ? [tela.itens.novoItem('item-1')] : []));
+  const [itens, setItens] = useState<ItemLinha[]>(() => {
+    const t = tela.itens;
+    if (!t) return [];
+    const doRegistro = aberto?.itens && t.daTexto ? aberto.itens.map((i, n) => (t.daTexto as NonNullable<typeof t.daTexto>)(i, `item-${n + 1}`)) : [];
+    return doRegistro.length > 0 ? doRegistro : [t.novoItem('item-1')];
+  });
+  const [recarregar, setRecarregar] = useState(false); // a versão do registro ficou velha: a barra oferece recarregar
   const [erros, setErros] = useState<ErrosFormulario>(errosIniciais ?? {});
   const [resultado, chaveResultado, mostrar, limpar] = useResultado();
   const [ocupado, setOcupado] = useState(false);
@@ -83,13 +89,15 @@ function Formulario({ tela, opcoes, produtos, errosIniciais, perfil, campos, abe
     setErros(e);
     if (temErros(e)) return;
     // Edição: só o que mudou vai no PATCH; sem mudança não há o que enviar.
-    const patch = tela.edicao && aberto && perfil ? tela.edicao.montarPatch(valores, aberto.original, perfil) : undefined;
-    if (tela.edicao && patch === null) return mostrar(resultadoErro('Nada foi alterado.'));
+    const completo = tela.edicao?.metodo === 'PUT'; // PUT leva o corpo inteiro; PATCH, só o que mudou
+    const patch = tela.edicao && !completo && aberto && perfil ? tela.edicao.montarPatch(valores, aberto.original, perfil) : undefined;
+    if (tela.edicao && !completo && patch === null) return mostrar(resultadoErro('Nada foi alterado.'));
     setOcupado(true);
-    const corpo = tela.edicao ? patch : tela.montar(valores, linhas, perfil);
+    setRecarregar(false);
+    const corpo = tela.edicao && !completo ? patch : tela.montar(valores, linhas, perfil);
     const estado = chaveParaEnvio(chave.current ?? novoEstado(tela.novaChave), corpo, tela.novaChave);
     chave.current = estado;
-    const r = await escrever({ metodo: tela.edicao && aberto ? 'PATCH' : 'POST', caminho: tela.edicao && aberto ? `${tela.api}/${aberto.id}` : tela.api, corpo, idempotencia: estado.chave });
+    const r = await escrever({ metodo: tela.edicao && aberto ? (tela.edicao.metodo ?? 'PATCH') : 'POST', caminho: tela.edicao && aberto ? `${tela.api}/${aberto.id}` : tela.api, corpo, idempotencia: estado.chave, ...(completo && aberto?.versao ? { versao: aberto.versao } : {}) });
     chave.current = aposResposta(estado, Boolean(r.definitivo));
     setOcupado(false);
     // Senha provisória (RN-CORE-10): aparece uma vez; a tela só segue depois que a pessoa a anotar.
@@ -97,7 +105,9 @@ function Formulario({ tela, opcoes, produtos, errosIniciais, perfil, campos, abe
     if (r.ok && r.id) return router.push(tela.depois(r.id));
     if (r.ok) return router.push(tela.voltar);
     setErros(r.campos ?? {});
-    mostrar(resultadoErro(r.mensagem));
+    const falha = tela.edicao?.falha?.(r);
+    if (falha?.recarregar) setRecarregar(true);
+    mostrar(resultadoErro(falha?.mensagem ?? r.mensagem));
   }
 
   if (somenteLeitura) {
@@ -116,7 +126,7 @@ function Formulario({ tela, opcoes, produtos, errosIniciais, perfil, campos, abe
         </dl>
         {tela.itens && <Itens tela={tela.itens} itens={itens} produtos={produtos} onChange={setItens} erros={{}} temErroExterno={false} desabilitado />}
         <div className="barra-acoes">
-          <Link className="mx-botao-secundario" href={tela.voltar}>Voltar</Link>
+          <Link className="mx-botao-secundario" href={aberto && tela.edicao?.voltarPara ? tela.edicao.voltarPara(aberto.id) : tela.voltar}>Voltar</Link>
         </div>
       </div>
     );
@@ -144,7 +154,8 @@ function Formulario({ tela, opcoes, produtos, errosIniciais, perfil, campos, abe
       {tela.itens?.totalTexto && <p className="total-pedido" aria-live="polite">Total do pedido: <span data-testid="total-pedido">{tela.itens.totalTexto(itens.map((i) => tela.itens?.paraTexto(i) ?? { produto_id: '', quantidade: '', preco: '' }))}</span></p>}
       <div className="barra-acoes">
         <button className="mx-botao" type="submit" disabled={ocupado}>{ocupado ? 'Enviando…' : tela.enviar}</button>
-        <Link className="mx-botao-secundario" href={tela.voltar}>Cancelar</Link>
+        {recarregar && <button className="mx-botao-secundario" type="button" onClick={() => router.refresh()}>{tela.edicao?.rotuloRecarregar ?? 'Recarregar'}</button>}
+        <Link className="mx-botao-secundario" href={aberto && tela.edicao?.voltarPara ? tela.edicao.voltarPara(aberto.id) : tela.voltar}>Cancelar</Link>
       </div>
       {/* 36 A: o retorno do envio fica logo abaixo da fila do botão Enviar */}
       <ResultadoAcao resultado={resultado} chave={chaveResultado} />

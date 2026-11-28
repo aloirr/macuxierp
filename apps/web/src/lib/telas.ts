@@ -48,7 +48,7 @@ const padraoDe = (caminho: string) => new RegExp(`^${caminho.split(/:[a-z_]*id\b
 /** A escrita (método e caminho) é a que algum descritor declarou: API do formulário ou caminho das ações do detalhe. */
 export function escritaDeclarada(metodo: AcaoVista['metodo'] | string, caminho: string, telas: readonly TelaDescrita[] = Object.values(TELAS)): boolean {
   return telas.some((t) => {
-    if (t.tipo === 'formulario') return (metodo === 'POST' && t.api === caminho) || (metodo === 'PATCH' && t.edicao !== undefined && padraoDe(`${t.api}/:id`).test(caminho));
+    if (t.tipo === 'formulario') return (metodo === 'POST' && t.api === caminho) || (t.edicao !== undefined && metodo === (t.edicao.metodo ?? 'PATCH') && padraoDe(`${t.api}/:id`).test(caminho));
     return executoresDa(t).flatMap((e) => e.escritas ?? []).some((e) => e.metodo === metodo && padraoDe(e.caminho).test(caminho));
   });
 }

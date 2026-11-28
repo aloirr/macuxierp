@@ -90,7 +90,8 @@ export function AcoesDetalhe({ acoes, rota, rotaDaPagina, compacta = false, orig
 
   function abrir(a: AcaoVista) {
     limparErro();
-    if (a.entrada === 'nenhum') void enviar(a, { texto: '' });
+    if (a.rota) router.push(a.rota);
+    else if (a.entrada === 'nenhum') void enviar(a, { texto: '' });
     else setAberta(a);
   }
 

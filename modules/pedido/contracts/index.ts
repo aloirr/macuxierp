@@ -3,6 +3,7 @@
  * Mudança incompatível = nova versão do contrato (@2) + ADR + recado aos consumidores.
  */
 import { z } from 'zod';
+import { ImpostoCalculado, RegraAplicada, TotalImpostoCalculado } from '@macuxierp/fiscal/contracts';
 import { Centavos, Cliente as ClienteSchema, EnderecoCliente as EnderecoClienteSchema, Produto as ProdutoSchema, Qtd4, Uuid } from '@macuxierp/cadastros/contracts';
 
 export * from './zeragem';
@@ -407,11 +408,11 @@ const CHAVE_ACESSO_REGEX = /^\d{6}[A-Z0-9]{12}\d{26}$/;
 /**
  * ICMS-ST e IPI por regra (T-0132, RN-FIS-05, decisão 63 A), copiados do cálculo fiscal da nota; aditivo no @1.
  * Centavos; alíquota com 4 casas (180000 = 18,0000%). Campo ausente = "sem regra"; zero COM regra é legítimo.
- * Cópia local dos grupos de `modules/fiscal/contracts` (o pedido não depende do fiscal); mantenha iguais.
+ * Reexportados de `modules/fiscal/contracts` (fonte única), com alias para os nomes que o pedido já usava.
  */
-export const ImpostoCalculadoPedido = z.object({ v_bc: Centavos, p_aliq: z.number().int().min(0).max(1_000_000), v_valor: Centavos });
-export const TotalImpostoCalculadoPedido = z.object({ v_bc: Centavos, v_valor: Centavos });
-export const RegraAplicadaPedido = z.object({ st: z.boolean(), ipi: z.boolean() });
+export const ImpostoCalculadoPedido = ImpostoCalculado;
+export const TotalImpostoCalculadoPedido = TotalImpostoCalculado;
+export const RegraAplicadaPedido = RegraAplicada;
 
 export const PedidoFaturadoV1 = PedidoEventoBase.extend({
   ambiente: z.enum(['homologacao', 'producao']),

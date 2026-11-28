@@ -30,7 +30,7 @@ type Valores = Readonly<Record<string, string>>;
 // ---- Peças comuns ----
 
 /** Filtro "Situação" que toda lista do cadastros declara (`inativos`); os seletores de cadastro leem do próprio cadastros. */
-const FILTRO_INATIVOS: FiltroTela = { chave: 'inativos', rotulo: 'Situação', tipo: 'selecao', vazio: 'Só ativos', opcoes: [{ valor: 'true', rotulo: 'Ativos e inativos' }] };
+export const FILTRO_INATIVOS: FiltroTela = { chave: 'inativos', rotulo: 'Situação', tipo: 'selecao', vazio: 'Só ativos', opcoes: [{ valor: 'true', rotulo: 'Ativos e inativos' }] };
 
 const SIM_NAO = [{ valor: 'true', rotulo: 'Sim' }, { valor: 'false', rotulo: 'Não' }] as const;
 
@@ -52,7 +52,7 @@ const camposDe = (campos: (perfil: Perfil, modo: Modo) => CampoEdicao[], modo: M
 interface PaginaDoModulo { colunas: readonly { id: string; valor: unknown }[] }
 
 /** Lista do cadastros a partir da página do módulo: colunas, busca e CSV vêm do descritor; o shell liga a rota, o selo de situação e o botão "Novo". */
-function listaDe(pagina: PaginaDoModulo, o: { rotuloBusca: string; filtros?: readonly FiltroTela[]; tipos: Readonly<Record<string, Tipo>>; novo: NonNullable<TelaLista['novo']>; rota: string; rotuloLinha: string; campoRotulo: string }): TelaLista {
+export function listaDe(pagina: PaginaDoModulo, o: { rotuloBusca: string; filtros?: readonly FiltroTela[]; tipos: Readonly<Record<string, Tipo>>; novo: NonNullable<TelaLista['novo']>; rota: string; rotuloLinha: string; campoRotulo: string }): TelaLista {
   return {
     tipo: 'lista',
     pagina: pagina as unknown as TelaLista['pagina'],
@@ -78,7 +78,7 @@ interface Cadastro<R> {
 }
 
 /** Novo (POST) e edição (PATCH só do que mudou, em `api/:id`; a rota é declarada em `escritaDeclarada`) do mesmo cadastro. */
-function formularios<R>(f: Cadastro<R>): { novo: TelaFormulario; editar: TelaFormulario } {
+export function formularios<R>(f: Cadastro<R>): { novo: TelaFormulario; editar: TelaFormulario } {
   const base = { api: f.api, depois: () => f.voltar, voltar: f.voltar, novaChave } as const;
   const novo: TelaFormulario = {
     tipo: 'formulario', ...base, enviar: f.salvar,
