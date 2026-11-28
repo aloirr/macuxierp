@@ -46,7 +46,7 @@ a { color: var(--mx-cor-azul-noite); }
 .conteudo h1 { font-size: var(--mx-tamanho-h1); font-weight: var(--mx-peso-titulo); color: var(--mx-cor-azul-noite); margin: 0 0 4px; } /* MC-0216: azul-noite (não herda o grafite do body) e 4 px sob o título, nunca os 13,4 px do navegador */
 .conteudo h1 + :not(p) { margin-top: 16px; }
 .conteudo h1 + p { margin-top: 0; } /* MC-0216: o h1 fica a 4 px da saudação (o p logo abaixo não soma a margem do navegador) */
-.conteudo h2 { font-size: var(--mx-tamanho-titulo-cartao); font-weight: var(--mx-peso-titulo); color: var(--mx-cor-rotulo-destaque); }
+.conteudo h2 { margin-top: 24px; /* espaco.xl: respiro acima do título de seção (marca) */ font-size: var(--mx-tamanho-titulo-cartao); font-weight: var(--mx-peso-titulo); color: var(--mx-cor-rotulo-destaque); }
 table { border-collapse: collapse; width: 100%; background: var(--mx-cor-branco); }
 th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--mx-cor-linha-suave); }
 /* Decisões 40 e 44 A (MC-0201/0202): cabeçalho na névoa, 12/700 em caixa-alta azul-noite com linha de 2 px; linha par na linhaAlternada. */
@@ -173,8 +173,11 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 .formulario > .campo.campo-curto { grid-column: span 2; }
 .formulario > .campo.campo-medio { grid-column: span 4; }
 .formulario > .campo.campo-largo { grid-column: 1 / -1; }
-@media (max-width: 1100px) { .formulario > .campo { grid-column: 1 / -1; } .formulario > .campo.campo-curto { grid-column: span 3; } .formulario > .campo.campo-medio { grid-column: span 6; } }
-@media (max-width: 640px) { .formulario > .campo, .formulario > .campo.campo-curto, .formulario > .campo.campo-medio { grid-column: 1 / -1; } }
+.formulario > .campo.campo-8 { grid-column: span 8; }
+.formulario > .campo.campo-3 { grid-column: span 3; }
+.formulario > .campo.campo-curto.campo-inicio-linha { grid-column: 1 / span 2; }
+@media (max-width: 1100px) { .formulario > .campo { grid-column: 1 / -1; } .formulario > .campo.campo-curto, .formulario > .campo.campo-curto.campo-inicio-linha { grid-column: span 3; } .formulario > .campo.campo-medio, .formulario > .campo.campo-3 { grid-column: span 6; } .formulario > .campo.campo-8 { grid-column: 1 / -1; } }
+@media (max-width: 640px) { .formulario > .campo, .formulario > .campo.campo-curto.campo-inicio-linha, .formulario > .campo.campo-curto, .formulario > .campo.campo-medio, .formulario > .campo.campo-3, .formulario > .campo.campo-8 { grid-column: 1 / -1; } }
 /* Texto corrido: no máximo 72 caracteres por linha, só nos blocos de texto (nunca no contêiner). */
 .apoio, p.erro, .aviso-sucesso, .faixa-aviso { max-width: 72ch; }
 .painel-senha { margin-top: 16px; padding: 12px 16px; border: 1px solid var(--mx-cor-borda-tabela); border-radius: 6px; background: var(--mx-cor-perola); }

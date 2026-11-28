@@ -52,8 +52,9 @@ describe('grade de 12 colunas do formulário (T-0121, regra 11)', () => {
     expect(larguraDoCampo({ nome: 'filial_id', tipo: 'cadastro' })).toBe(' campo-medio');
     expect(larguraDoCampo({ nome: 'razao_social', tipo: 'texto' })).toBe('');
     expect(larguraDoCampo({ nome: 'observacao', tipo: 'area' })).toBe(' campo-largo');
-    expect(larguraDoCampo({ nome: 'nfe_serie', tipo: 'texto' })).toBe(larguraDoCampo({ nome: 'serie', tipo: 'texto' }));
-    expect(larguraDoCampo({ nome: 'nfe_numero_inicial', tipo: 'texto' })).toBe(larguraDoCampo({ nome: 'numero', tipo: 'texto' }));
+    expect(larguraDoCampo({ nome: 'nfe_serie', tipo: 'texto' })).toBe(' campo-medio');
+    expect(larguraDoCampo({ nome: 'nfe_numero_inicial', tipo: 'texto' })).toBe(' campo-medio');
+    expect(larguraDoCampo({ nome: 'serie', tipo: 'texto' })).toBe(' campo-curto');
     expect(larguraDoCampo({ nome: 'end_numero', tipo: 'texto' })).toBe(' campo-curto');
     expect(larguraDoCampo({ nome: 'numeroso', tipo: 'texto' })).toBe('');
     const css = readFileSync(`${__dirname}/../../app/globals.css`, 'utf8');
