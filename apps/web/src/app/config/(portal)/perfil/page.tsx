@@ -11,7 +11,7 @@ export default async function PerfilPlataforma() {
     <>
       <h1>Meu perfil</h1>
       <section className="bloco" aria-label="Dados cadastrais">
-        <dl className="ficha">
+        <dl className="dados">
           <div><dt>Nome</dt><dd>{eu.superadmin.nome}</dd></div>
           <div><dt>Perfil</dt><dd>Plataforma</dd></div>
         </dl>

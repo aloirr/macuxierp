@@ -79,9 +79,9 @@ export function MenuUsuario({ nome, detalhe, hrefPerfil, hrefSenha, comDestino =
         <span className="seta" aria-hidden="true">{aberto ? '⌃' : '⌄'}</span>
       </button>
       <div id={id} ref={lista} role="menu" aria-label="Usuário" className="menu-usuario-lista" hidden={!aberto} onKeyDown={teclasLista}>
-        <a role="menuitem" href={hrefPerfil}>{ROTULOS_MENU_USUARIO.ver}</a>
-        <a role="menuitem" href={hrefAlterarSenha(hrefSenha, caminho, comDestino)}>{ROTULOS_MENU_USUARIO.senha}</a>
-        <form action={sair}><button role="menuitem" type="submit" className="perigo">{ROTULOS_MENU_USUARIO.sair}</button></form>
+        <a role="menuitem" className="mx-acoes-item" href={hrefPerfil}>{ROTULOS_MENU_USUARIO.ver}</a>
+        <a role="menuitem" className="mx-acoes-item" href={hrefAlterarSenha(hrefSenha, caminho, comDestino)}>{ROTULOS_MENU_USUARIO.senha}</a>
+        <form action={sair}><button role="menuitem" type="submit" className="mx-acoes-item mx-acoes-perigo">{ROTULOS_MENU_USUARIO.sair}</button></form>
       </div>
     </div>
   );

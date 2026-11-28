@@ -11,7 +11,7 @@ export default async function Perfil() {
     <>
       <h1>Meu perfil</h1>
       <section className="bloco" aria-label="Dados cadastrais">
-        <dl className="ficha">
+        <dl className="dados">
           <div><dt>Nome</dt><dd>{eu.usuario.nome}</dd></div>
           <div><dt>Perfil</dt><dd>{ROTULOS_PERFIL[eu.usuario.perfil]}</dd></div>
           <div><dt>Empresa</dt><dd>{eu.empresa.razao_social}</dd></div>
