@@ -1,13 +1,12 @@
 'use client';
 import { useRouter } from 'next/navigation';
-import { useRef, useState, useTransition } from 'react';
-import { CaixaResumo, Chip, Dialogo, DialogoMotivo, MenuAcoes, ResultadoAcao, TabelaDensa, useResultado, type ColunaTabela } from '@macuxierp/ui';
-import { resultadoErro, resultadoSucesso } from '@/lib/resultado-acao';
+import { useRef, useState } from 'react';
+import { CaixaResumo, Chip, Dialogo, MenuAcoes, ResultadoAcao, TabelaDensa, useResultado, type ColunaTabela } from '@macuxierp/ui';
+import { resultadoSucesso } from '@/lib/resultado-acao';
 import { ConfirmarComFrase } from '@/components/confirmar-com-frase';
 import { ChavesIdempotencia } from '@/lib/config/chaves';
 import { salvarCsv } from '@/lib/baixar-csv';
-import { acoesDaCarga, avisoCarga, estadoCargaCompleta, menuDaLinha } from '@/lib/config/integracao-fdv';
-import { cargaCompletaFdvAcao } from '@/lib/acoes-cliente';
+import { acoesDaCarga, menuDaLinha } from '@/lib/config/integracao-fdv';
 import { ultimoLoteDoCadastro } from '@/lib/config/ligacoes';
 import { AUSENTE } from '@/lib/config/empresa';
 import {
@@ -15,15 +14,15 @@ import {
   podeGravar, rotuloAdicionar, rotuloLinhaErro, textoEfeito, textoGravado, textoErrosOmitidos, textoLinhaErro, tituloImportar, type LinhaCarga, type Retorno,
 } from '@/lib/config/cargas';
 import {
-  FRASE_SUBSTITUIR_TUDO, nomeErrosCarga, plural, substituirPermitido, type CadastroCargaPortal, type IntegracaoFdvPlataforma, type PortalEntradaLeitura, type EfeitoSubstituir as Efeito, type GravarCargaPlataformaResposta, type ModoGravarCarga, type SituacaoCargasPlataforma,
+  FRASE_SUBSTITUIR_TUDO, nomeErrosCarga, plural, substituirPermitido, type CadastroCargaPortal, type PortalEntradaLeitura, type EfeitoSubstituir as Efeito, type GravarCargaPlataformaResposta, type ModoGravarCarga, type SituacaoCargasPlataforma,
   type ValidarCargaPlataformaResposta as Conferencia,
 } from '@macuxierp/platform-sdk';
 
 /**
  * Aba "Dados" da ficha da empresa (era "Cargas", T-0058; T-0086 v0.3.12; v0.3.24: dividida pelos dois sentidos das ligações,
  * "Sistema do cliente → ERP" com os cadastros recebidos e "ERP → Macuxi FDV" com os enviados, `SecaoEnvioFdv`): cargas recentes e importação numa tabela só, uma linha por
- * cadastro, com situação, última carga (data, hora e registros), Modelo, Importar e Carga completa (reenvia tudo ao FDV, com
- * confirmação; decisão do PO em 24/11: a carga completa fica aqui, não na aba Integração). "Importar" abre a conferência
+ * cadastro, com situação, última carga (data, hora e registros), Modelo e Importar. O reenvio de tudo ao FDV (era a "Carga completa")
+ * saiu daqui no T-0137: é o "Reenviar tudo ao FDV" do menu Ações do bloco "ERP → Macuxi FDV" (`envio-fdv.tsx`). "Importar" abre a conferência
  * automática (sem botão Validar), "Adicionar" acrescenta e atualiza, "Substituir tudo" pede uma frase. O "Zerar" saiu daqui: é por
  * cadastro, na aba Integração. Tudo passa pelos route handlers do portal (`/config/empresas/:id/cargas/...`, cookie mx_config). O
  * arquivo fica só na memória desta tela, o tempo do envio.
@@ -36,13 +35,10 @@ function seguir(r: Retorno<unknown>): void {
   if (!r.ok && r.redirecionar) window.location.assign(r.redirecionar);
 }
 
-export function AbaDados({ empresaId, dados, fuso, integracao = null, entrada = null }: { empresaId: string; dados: SituacaoCargasPlataforma | null; fuso: string; integracao?: IntegracaoFdvPlataforma | null; entrada?: PortalEntradaLeitura | null }) {
+export function AbaDados({ empresaId, dados, fuso, entrada = null }: { empresaId: string; dados: SituacaoCargasPlataforma | null; fuso: string; entrada?: PortalEntradaLeitura | null }) {
   const router = useRouter();
-  const [pendente, iniciar] = useTransition();
-  const [carga, setCarga] = useState<LinhaCarga | null>(null);
-  const chaves = useRef(new ChavesIdempotencia());
   const [importar, setImportar] = useState<CadastroCargaPortal | null>(null);
-  // 36 A: o retorno das ações do menu "Ações" (Carga completa, Importar) fica logo abaixo da tabela, não no topo.
+  // 36 A: o retorno das ações do menu "Ações" (Importar) fica logo abaixo da tabela, não no topo.
   const [resultado, chaveResultado, mostrar] = useResultado();
   const linhas = linhasCargas(dados, fuso);
   // O último lote de cada cadastro, calculado uma vez por linha (RD-1118).
@@ -56,34 +52,17 @@ export function AbaDados({ empresaId, dados, fuso, integracao = null, entrada = 
       </>
     );
   }
-  /** Uma Idempotency-Key por entidade; só renova depois de resposta definitiva. Cadastro com duas entidades (condição, cliente) manda uma por vez. */
-  const pedirCargaCompleta = (l: LinhaCarga) => {
-    setCarga(null);
-    iniciar(async () => {
-      for (const e of estadoCargaCompleta(l.cadastro, integracao).entidades) {
-        const id = `carga:${e}`;
-        const r = await cargaCompletaFdvAcao(empresaId, e, chaves.current.de(id));
-        chaves.current.aposResposta(id, r);
-        if (!r.ok) return mostrar(resultadoErro(r.erro || 'Não foi possível pedir a carga completa. Tente de novo.'));
-      }
-      mostrar(resultadoSucesso(`Carga completa pedida: ${l.rotulo}.`));
-      router.refresh();
-    });
-  };
   const colunas: ColunaTabela<LinhaCarga>[] = [
     // #840: em tela estreita a última carga sobe para sob o nome e a coluna dela some (só um dos dois aparece, por CSS).
-    { id: 'cadastro', titulo: 'Cadastro', largura: '42%', celula: (l) => <>{l.rotulo}{l.ultima && <span className="carga-sob-nome">Última carga: {l.ultima}</span>}</> },
+    { id: 'cadastro', titulo: 'Cadastro', largura: '50%', celula: (l) => <>{l.rotulo}{l.ultima && <span className="carga-sob-nome">Última carga: {l.ultima}</span>}</> },
     { id: 'situacao', titulo: 'Situação', tipo: 'status', celula: (l) => <Chip tom={l.chip.tom}>{l.chip.texto}</Chip> },
     { id: 'ultima', titulo: 'Última carga', tipo: 'data', celula: (l) => l.ultima ?? AUSENTE },
-    // "Registros" e "Com erro" são do último lote recebido pela ligação do sistema do cliente (a tabela "Lotes recebidos" saiu, RD-1103); sem lote, vêm da própria carga, a mesma do selo e da "Última carga" (RD-2422).
-    { id: 'registros', titulo: 'Registros', tipo: 'numero', celula: (l) => lotes.get(l.cadastro)?.recebidos ?? l.registros ?? '—' },
+    // "Com erro" é do último lote recebido pela ligação do sistema do cliente (a tabela "Lotes recebidos" saiu, RD-1103); sem lote, vem da própria carga, a mesma do selo. O total de registros fica só na "Última carga" (RD-2422, T-0137).
     { id: 'comErro', titulo: 'Com erro', tipo: 'numero', celula: (l) => lotes.get(l.cadastro)?.com_erro ?? l.erros ?? '—' },
     { id: 'acoes', titulo: 'Ações', largura: '1%', celula: (l) => {
-      const c = estadoCargaCompleta(l.cadastro, integracao);
-      // Um botão "Ações" só (T-0099, regra 12): Importar, o Modelo (baixa o CSV) e a Carga completa ficam no menu.
-      const a = acoesDaCarga(c, pendente);
-      const fazer: Record<string, () => void> = { importar: () => setImportar(l.cadastro), modelo: () => window.location.assign(enderecoModelo(empresaId, l.cadastro)), 'carga-completa': () => setCarga(l) };
-      return <MenuAcoes rotuloLinha={l.rotulo} {...menuDaLinha(a, fazer)} />;
+      // Um botão "Ações" só (T-0099, regra 12): Importar e o Modelo (baixa o CSV) ficam no menu.
+      const fazer: Record<string, () => void> = { importar: () => setImportar(l.cadastro), modelo: () => window.location.assign(enderecoModelo(empresaId, l.cadastro)) };
+      return <MenuAcoes rotuloLinha={l.rotulo} {...menuDaLinha(acoesDaCarga(), fazer)} />;
     } },
   ];
   return (
@@ -92,16 +71,6 @@ export function AbaDados({ empresaId, dados, fuso, integracao = null, entrada = 
         <TabelaDensa colunas={colunas} linhas={linhas} chaveLinha={(l) => l.cadastro} textoVazio="Nenhum cadastro." legenda={LEGENDA_RECEBIDOS} />
       </div>
       <ResultadoAcao resultado={resultado} chave={chaveResultado} />
-      {carga && (
-        <DialogoMotivo
-          titulo={`Carga completa de ${carga.rotulo}?`}
-          aviso={avisoCarga}
-          semTexto
-          rotuloConfirmar="Carga completa"
-          aoConfirmar={() => pedirCargaCompleta(carga)}
-          aoCancelar={() => setCarga(null)}
-        />
-      )}
       {importar && (
         <ImportarCarga
           empresaId={empresaId}

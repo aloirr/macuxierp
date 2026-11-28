@@ -284,7 +284,7 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
   .corpo-log .selo { padding-inline: 6px; }
   /* Aba Dados no celular (#840): ficam Cadastro (com a última carga sob o nome), Situação e Ações, com Importar e "Ações" um sobre o outro;
      a posição está presa à ordem das colunas por aba-dados.test.tsx. */
-  .tabela-dados th:nth-child(3), .tabela-dados td:nth-child(3), .tabela-dados th:nth-child(4), .tabela-dados td:nth-child(4), .tabela-dados th:nth-child(5), .tabela-dados td:nth-child(5) { display: none; }
+  .tabela-dados th:nth-child(3), .tabela-dados td:nth-child(3), .tabela-dados th:nth-child(4), .tabela-dados td:nth-child(4) { display: none; }
   .tabela-dados th, .tabela-dados td { padding: 6px 4px !important; }
   .corpo-log .selo, .corpo-log td span { white-space: normal; }
 }
@@ -476,7 +476,7 @@ button.link { background: none; border: 0; padding: 0; color: inherit; font: inh
 .cartao-ligacao .tabela-fdv table { min-width: 0; }
 .cartao-ligacao .tabela-fdv th:nth-child(4), .cartao-ligacao .tabela-fdv td:nth-child(4), .cartao-ligacao .tabela-fdv th:nth-child(5), .cartao-ligacao .tabela-fdv td:nth-child(5) { min-width: 0; }
 .cartao-ficha > .bloco { border: 0; padding: 0; background: none; }
-/* Cartão da ligação de entrada: a última carga sobe para sob o nome; Registros, Com erro e Ações ficam (a Origem saiu das colunas). O cartão é um só (sem borda dupla). */
+/* Cartão da ligação de entrada: a última carga sobe para sob o nome; Com erro e Ações ficam (a Origem saiu das colunas). O cartão é um só (sem borda dupla). */
 .cartao-ligacao .tabela-dados th:nth-child(3), .cartao-ligacao .tabela-dados td:nth-child(3) { display: none; }
 .cartao-ligacao .tabela-dados .carga-sob-nome { display: block; font-size: var(--mx-tamanho-micro); color: var(--mx-cor-texto-secundario); font-weight: var(--mx-peso-normal); margin-top: 2px; }
 .cartao-ligacao .tabela-dados table { min-width: 0; }

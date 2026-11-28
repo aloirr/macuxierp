@@ -4,20 +4,20 @@ import { DialogoMotivo, MenuAcoes, ResultadoAcao, TabelaDensa, useResultado, typ
 import { useRouter } from 'next/navigation';
 import { useId, useRef, useState, useTransition } from 'react';
 import { createPortal } from 'react-dom';
-import { LIMITE_INICIAL_FDV, habilitadasApos, validarLimiteLote, acoesDaLinhaFdv, menuDaLinha, linhasCadastros, avisoLigar, type LinhaCadastroFdv } from '@/lib/config/integracao-fdv';
+import { LIMITE_INICIAL_FDV, habilitadasApos, validarLimiteLote, acoesDaLinhaFdv, menuDaLinha, linhasCadastros, avisoLigar, avisoCarga, cadastroDaEntidade, estadoCargaCompleta, nomeDoCadastroDaCarga, ROTULO_REENVIAR_TUDO, tituloReenviarTudo, type LinhaCadastroFdv } from '@/lib/config/integracao-fdv';
 import { ChavesIdempotencia } from '@/lib/config/chaves';
 import { colunasStatusFdv } from '@/lib/integracao-fdv';
 import { textoZerado } from '@/lib/config/cargas';
 import type { Resultado } from '@/lib/config/executar';
 import { resultadoErro, resultadoSucesso } from '@/lib/resultado-acao';
-import { configurarFdvAcao, reprocessarFdvAcao, retomarFdvAcao } from '@/lib/acoes-cliente';
+import { cargaCompletaFdvAcao, configurarFdvAcao, reprocessarFdvAcao, retomarFdvAcao } from '@/lib/acoes-cliente';
 import { RETORNOS_FDV, ROTULOS_FDV, textoDaFalha, textoReprocessarOk } from '@/lib/config/operacao-fdv';
 import { textoPedidosZerados } from '@/lib/config/pedidos-zerar';
 import { LogCadastro } from './log-cadastro';
 import { ZerarCadastro } from './zerar-cadastro';
 import { ZerarPedidos } from './zerar-pedidos';
 
-type Pedido = { tipo: 'ligar' | 'desligar' | 'retomar'; linha: LinhaCadastroFdv };
+type Pedido = { tipo: 'ligar' | 'desligar' | 'retomar' | 'reenviar'; linha: LinhaCadastroFdv };
 
 const LEGENDA_ENVIADOS = 'Cadastros enviados';
 
@@ -68,10 +68,26 @@ export function SecaoEnvioFdv({ empresaId, dados, fuso, barra }: { empresaId: st
       concluir(id, r, r.ok ? textoReprocessarOk(r.valor.falhas, r.valor.pendentes) : '', mostrarLinha);
     });
   };
+  /**
+   * "Reenviar tudo ao FDV" (T-0137; era a Carga completa da aba Dados): uma Idempotency-Key por entidade, que só renova depois de
+   * resposta definitiva. Cliente e condição de pagamento mandam as duas entidades do cadastro, uma por vez; a primeira falha para.
+   */
+  const reenviarTudo = async (l: LinhaCadastroFdv) => {
+    const cadastro = cadastroDaEntidade(l.entidade);
+    for (const e of estadoCargaCompleta(cadastro, dados).entidades) {
+      const id = `carga:${e}`;
+      const r = await cargaCompletaFdvAcao(empresaId, e, chaveDe(id));
+      chaves.current.aposResposta(id, r);
+      if (!r.ok) return mostrarLinha(resultadoErro(r.erro || 'Não foi possível reenviar tudo ao FDV. Tente de novo.'));
+    }
+    mostrarLinha(resultadoSucesso(`Reenvio pedido: ${nomeDoCadastroDaCarga(cadastro)}.`));
+    router.refresh();
+  };
   const confirmar = (p: Pedido) => {
     setPedido(null);
     const e: EntidadeEnvioFdv = p.linha.entidade;
     iniciar(async () => {
+      if (p.tipo === 'reenviar') return reenviarTudo(p.linha);
       if (p.tipo === 'retomar') {
         const r = await retomarFdvAcao(empresaId, e, chaveDe(`retomar:${e}`));
         return concluir(`retomar:${e}`, r, r.ok && !r.valor.retomada ? RETORNOS_FDV.naoEstavaParado : RETORNOS_FDV.envioLiberado, mostrarLinha);
@@ -87,11 +103,12 @@ export function SecaoEnvioFdv({ empresaId, dados, fuso, barra }: { empresaId: st
     const fazer: Record<string, () => void> = {
       ligar: () => setPedido({ tipo: l.ligada ? 'desligar' : 'ligar', linha: l }),
       retomar: () => setPedido({ tipo: 'retomar', linha: l }),
+      'reenviar-tudo': () => setPedido({ tipo: 'reenviar', linha: l }),
       reprocessar: () => reprocessar(l),
       log: () => setLog(l),
       zerar: () => setZerar(l),
     };
-    const a = acoesDaLinhaFdv(l, { bloqueado, semCredencial, licenciado: dados.modulo_licenciado });
+    const a = acoesDaLinhaFdv(l, { bloqueado, semCredencial, licenciado: dados.modulo_licenciado, reenvio: estadoCargaCompleta(cadastroDaEntidade(l.entidade), dados) });
     return <MenuAcoes rotuloLinha={l.rotulo} {...menuDaLinha(a, fazer)} />;
   };
 
@@ -150,10 +167,10 @@ export function SecaoEnvioFdv({ empresaId, dados, fuso, barra }: { empresaId: st
       )}
       {pedido && (
         <DialogoMotivo
-          titulo={pedido.tipo === 'ligar' ? `Ligar ${pedido.linha.rotulo}?` : pedido.tipo === 'desligar' ? `Desligar ${pedido.linha.rotulo}?` : `${ROTULOS_FDV.tentarDeNovo} o envio de ${pedido.linha.rotulo}?`}
-          aviso={pedido.tipo === 'retomar' ? undefined : avisoLigar(pedido.tipo === 'ligar')}
+          titulo={pedido.tipo === 'reenviar' ? tituloReenviarTudo(cadastroDaEntidade(pedido.linha.entidade)) : pedido.tipo === 'ligar' ? `Ligar ${pedido.linha.rotulo}?` : pedido.tipo === 'desligar' ? `Desligar ${pedido.linha.rotulo}?` : `${ROTULOS_FDV.tentarDeNovo} o envio de ${pedido.linha.rotulo}?`}
+          aviso={pedido.tipo === 'retomar' ? undefined : pedido.tipo === 'reenviar' ? avisoCarga : avisoLigar(pedido.tipo === 'ligar')}
           semTexto
-          rotuloConfirmar={pedido.tipo === 'ligar' ? 'Ligar' : pedido.tipo === 'desligar' ? 'Desligar' : ROTULOS_FDV.tentarDeNovo}
+          rotuloConfirmar={pedido.tipo === 'reenviar' ? ROTULO_REENVIAR_TUDO : pedido.tipo === 'ligar' ? 'Ligar' : pedido.tipo === 'desligar' ? 'Desligar' : ROTULOS_FDV.tentarDeNovo}
           destrutivo={pedido.tipo === 'desligar'}
           aoConfirmar={() => confirmar(pedido)}
           aoCancelar={() => setPedido(null)}
