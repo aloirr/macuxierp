@@ -1,4 +1,5 @@
 import { cor, espaco, faixaLateral, soLeitor, texto, tons } from './estilos.js';
+import { exigirSemPrefixo } from './semPrefixo.js';
 
 export type NivelPendencia = 'bloqueante' | 'aceitavel';
 
@@ -22,6 +23,7 @@ export function ordenarPendencias(itens: Pendencia[]): Pendencia[] {
 
 export function FaixaPendencias({ itens }: FaixaPendenciasProps) {
   if (itens.length === 0) return null;
+  for (const i of itens) exigirSemPrefixo(i.texto, 'FaixaPendencias');
   const bloqueia = itens.some((i) => i.nivel === 'bloqueante');
   return (
     <section aria-label="Pendências" role={bloqueia ? 'alert' : 'status'} style={{ display: 'grid', gap: espaco.xs }}>
