@@ -242,7 +242,8 @@ function FormularioUsuario({ empresaId, formulario, primeiro, chaves, aoFechar, 
           </select>
           {campos.perfil && <span className="erro-campo">{campos.perfil}</span>}
         </label>
-        {erro && <p className="erro" role="alert">{erro}</p>}
+        {/* o texto que já está sob o campo (ex.: e-mail em uso, ADR 0021) não se repete na caixa */}
+        {erro && !Object.values(campos).includes(erro) && <p className="erro" role="alert">{erro}</p>}
       </form>
     </Dialogo>
   );

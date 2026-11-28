@@ -18,9 +18,9 @@ export async function lerSituacaoEsqueci(): Promise<boolean> {
   }
 }
 
-/** `POST /v1/auth/esqueci`: para todos; a API desvia o código reservado por dentro. */
-export async function pedirSenhaTemporaria(entrada: { empresa: string; email: string }): Promise<ResultadoEsqueci> {
-  const v = validarComSdk(PedirSenhaTemporariaEntrada, ['empresa', 'email'], entrada);
+/** `POST /v1/auth/esqueci`: para todos, só com o e-mail (ADR 0021); a API acha a conta pelo e-mail. */
+export async function pedirSenhaTemporaria(entrada: { email: string }): Promise<ResultadoEsqueci> {
+  const v = validarComSdk(PedirSenhaTemporariaEntrada, ['email'], entrada);
   if (!v.ok) return { tipo: 'campos', erros: v.erros };
   if (usaApiFalsaAgora()) return { tipo: 'ok' };
   try {

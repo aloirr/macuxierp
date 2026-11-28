@@ -1,4 +1,5 @@
-import { MENSAGEM_EMAIL_EM_USO, MENSAGEM_ULTIMO_ADMIN, type UsuarioConfig } from '@macuxierp/core/contracts';
+import { MENSAGEM_ULTIMO_ADMIN, type UsuarioConfig } from '@macuxierp/core/contracts';
+import { CODIGO_EMAIL_EM_USO, MENSAGEM_EMAIL_EM_USO } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { ErroPlataforma, SENHA_JA_EXIBIDA, USUARIO_NAO_ENCONTRADO, mensagemDoErro } from './erros';
 import { etiquetaUltimoAdmin, filtrarUsuarios, itensDoMenuUsuario, seloDoUsuario, textoUltimoAcesso } from './usuarios';
@@ -51,8 +52,8 @@ describe('Usuários da Config: mensagens de erro (ctx "usuario")', () => {
     expect(erro(422, 'RN-CORE-17', 'Dado recusado pelo cadastro')).toMatchObject({ texto: 'Dado recusado pelo cadastro' });
     expect(erro(422, 'RN-CORE-17').texto).toBe('Confira os dados e tente de novo.');
   });
-  it('409 com a mensagem de e-mail em uso → MENSAGEM_EMAIL_EM_USO; outro 409 (chave repetida) → senha já exibida, com chave nova', () => {
-    expect(erro(409, 'CONFLITO', MENSAGEM_EMAIL_EM_USO).texto).toBe(MENSAGEM_EMAIL_EM_USO);
+  it('409 email_em_uso (ADR 0021) → o texto do SDK no campo e-mail; outro 409 (chave repetida) → senha já exibida, com chave nova', () => {
+    expect(mensagemDoErro(new ErroPlataforma(409, 'CONFLITO', {}, 'outro texto', { codigo: CODIGO_EMAIL_EM_USO }), 'usuario')).toMatchObject({ texto: MENSAGEM_EMAIL_EM_USO, campos: { email: MENSAGEM_EMAIL_EM_USO } });
     expect(erro(409, 'CONFLITO', 'Requisição já concluída')).toMatchObject({ texto: SENHA_JA_EXIBIDA, chaveNova: true });
   });
   it('404 → usuário fora da empresa; 400 → campos', () => {

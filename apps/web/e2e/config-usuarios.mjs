@@ -61,7 +61,7 @@ const usadas = new Set();
 const enviar = (res, status, corpo) => { res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(corpo)); };
 const erro = (res, status, codigo, mensagem) => enviar(res, status, { codigo, mensagem });
 const MSG_ULTIMO = 'A empresa precisa de ao menos um administrador ativo';
-const MSG_EMAIL = 'Já existe usuário com este e-mail';
+const MSG_EMAIL = 'Este e-mail já está em uso em outra empresa. Use outro e-mail.'; // MENSAGEM_EMAIL_EM_USO do SDK (ADR 0021)
 const api = createServer((req, res) => {
   let corpo = '';
   req.on('data', (d) => { corpo += d; });
@@ -82,7 +82,7 @@ const api = createServer((req, res) => {
         if (!chave || usadas.has(chave)) return erro(res, 409, 'CONFLITO', 'Requisição já concluída');
         usadas.add(chave);
         const c = JSON.parse(corpo || '{}');
-        if (c.email === 'ana@exemplo.com') return erro(res, 409, 'CONFLITO', MSG_EMAIL);
+        if (c.email === 'ana@exemplo.com') return enviar(res, 409, { codigo: 'CONFLITO', mensagem: MSG_EMAIL, detalhes: { codigo: 'email_em_uso' } });
         novos += 1;
         const u = base(`7d8e9f0a-4b52-4d6e-9f0a-3b4c5d6e7f${String(novos).padStart(2, '0')}`, c.nome, c.perfil, { ultimo_acesso_em: null, deve_trocar_senha: true });
         usuarios.push(u);
@@ -185,8 +185,8 @@ try {
   await p.getByRole('dialog').getByLabel('E-mail', { exact: true }).fill('ana@exemplo.com');
   await p.getByRole('button', { name: 'Criar usuário' }).click();
   await p.getByText(MSG_EMAIL).waitFor();
-  confere(true, '409: "Já existe usuário com este e-mail" no diálogo, que continua aberto');
-  await p.getByRole('dialog').getByLabel('E-mail', { exact: true }).fill('diego@exemplo.com');
+  confere(true, '409 email_em_uso: o texto do SDK no diálogo, que continua aberto');
+  await p.getByRole('dialog').locator('input[type="email"]').fill('diego@exemplo.com');
   await p.getByRole('dialog').getByLabel('Perfil').selectOption('vendedor');
   await p.getByRole('button', { name: 'Criar usuário' }).click();
   await p.getByTestId('senha-provisoria').waitFor();

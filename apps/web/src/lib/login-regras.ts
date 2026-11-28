@@ -1,16 +1,18 @@
 import { RESPOSTA_CONTA_BLOQUEADA, TEXTO_CONTA_DESBLOQUEADA } from '@macuxierp/core/web';
-import { CODIGO_CONTA_BLOQUEADA, CodigoEmpresaLogin, EmailUsuario, MuitasTentativasResposta } from '@macuxierp/platform-sdk';
+import { CODIGO_CONTA_BLOQUEADA, EmailUsuario, MENSAGEM_EMPRESA_SUSPENSA, MENSAGEM_LOGIN_INVALIDO, MuitasTentativasResposta } from '@macuxierp/platform-sdk';
 
 /** Textos e validação por campo da tela única de login e do "esqueci a senha" (docs/design/login-unico). Pura: sem Node, serve ao cliente e ao servidor. */
 export const TEXTOS_LOGIN = {
   titulo: 'Acesse sua conta',
-  rotulos: { empresa: 'Código da empresa', email: 'E-mail', senha: 'Senha' },
-  obrigatorio: { empresa: 'Informe o código da empresa.', email: 'Informe o e-mail.', senha: 'Informe a senha.' },
+  rotulos: { email: 'E-mail', senha: 'Senha' },
+  obrigatorio: { email: 'Informe o e-mail.', senha: 'Informe a senha.' },
   emailInvalido: 'E-mail inválido. Confira o endereço.',
   botao: 'Entrar',
   botaoEnviando: 'Entrando…',
-  /** 401 neutro: nunca diz qual campo errou, nem se a conta está travada ou a empresa suspensa. */
-  credencial: 'Empresa, e-mail ou senha incorretos.',
+  /** 401 neutro (ADR 0021): nunca diz qual campo errou, nem se a conta está travada. Texto do SDK. */
+  credencial: MENSAGEM_LOGIN_INVALIDO,
+  /** 403 EMPRESA_SUSPENSA: só com a senha certa. Texto do SDK. */
+  suspensa: MENSAGEM_EMPRESA_SUSPENSA,
   indisponivel: 'Serviço indisponível no momento. Tente de novo em instantes.',
 } as const;
 
@@ -52,21 +54,9 @@ export function entrouComTemporaria(eu: { deve_trocar_senha?: boolean | undefine
   return eu?.deve_trocar_senha === true && eu.motivo_troca === 'temporaria';
 }
 
-export type CampoLogin ='empresa' | 'email' | 'senha';
+export type CampoLogin = 'email' | 'senha';
 export type ErrosLogin = Partial<Record<CampoLogin, string>>;
 export type DadosLogin = Partial<Record<CampoLogin, string>>;
-
-/** Código aparado e em maiúsculas (RN-CORE-11); `undefined` se não passa no `CodigoEmpresaLogin` do SDK. */
-export function normalizarCodigo(valor: string): string | undefined {
-  const p = CodigoEmpresaLogin.safeParse(valor);
-  return p.success ? p.data : undefined;
-}
-
-function erroDoCodigo(valor: string): string | undefined {
-  if (!valor.trim()) return TEXTOS_LOGIN.obrigatorio.empresa;
-  const p = CodigoEmpresaLogin.safeParse(valor);
-  return p.success ? undefined : (p.error.issues[0]?.message ?? TEXTOS_LOGIN.obrigatorio.empresa);
-}
 
 function erroDoEmail(valor: string): string | undefined {
   if (!valor.trim()) return TEXTOS_LOGIN.obrigatorio.email;
@@ -78,7 +68,7 @@ export function validarCampos(campos: readonly CampoLogin[], dados: DadosLogin):
   const erros: ErrosLogin = {};
   for (const c of campos) {
     const v = dados[c] ?? '';
-    const e = c === 'empresa' ? erroDoCodigo(v) : c === 'email' ? erroDoEmail(v) : v === '' ? TEXTOS_LOGIN.obrigatorio.senha : undefined;
+    const e = c === 'email' ? erroDoEmail(v) : v === '' ? TEXTOS_LOGIN.obrigatorio.senha : undefined;
     if (e) erros[c] = e;
   }
   return erros;
@@ -93,7 +83,7 @@ export function primeiroVazio<C extends CampoLogin>(campos: readonly C[], dados:
 export function camposDoEnvelope(campos: unknown): ErrosLogin {
   const saida: ErrosLogin = {};
   if (campos && typeof campos === 'object') {
-    for (const c of ['empresa', 'email', 'senha'] as const) {
+    for (const c of ['email', 'senha'] as const) {
       const v = (campos as Record<string, unknown>)[c];
       if (typeof v === 'string' && v.trim()) saida[c] = v.trim();
     }

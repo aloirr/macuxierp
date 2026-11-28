@@ -14,7 +14,7 @@ import { trocarSenhaBkoAction as trocarSenhaBkoBruta } from '@/app/senha/acoes';
 /**
  * ÚNICA porta das Server Actions chamadas por componente de cliente (BKO e /config): cada uma passa por `comVersao`
  * (lib/acao-versao.ts), que trata a action de um build anterior (recarga única e aviso). O login (`entrarAction`) usa
- * `chamarAcao` direto no formulário, que guarda empresa e e-mail antes da recarga. Os botões Sair são `<form action>` de componente de servidor e ficam de fora. Importe daqui, não do arquivo `'use server'`.
+ * `chamarAcao` direto no formulário, que guarda só o e-mail antes da recarga. Os botões Sair são `<form action>` de componente de servidor e ficam de fora. Importe daqui, não do arquivo `'use server'`.
  */
 export const pedirEsqueciAction = comVersao(() => pedirEsqueciBruta);
 export const lerLogFdv = comVersao(() => lerLogFdvBruta);

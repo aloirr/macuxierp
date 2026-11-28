@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { COOKIE_CONFIG_WEB, PATH_CONFIG } from './constantes';
-import { ROTA_LOGIN_SUPERADMIN } from '../rota-login';
+import { ROTA_LOGIN } from '../rota-login';
 
 /**
  * Sessão do superadmin no shell (ADR 0012, seção 2): cookie PRÓPRIO, com nome e path distintos do BKO (`mx_acesso`, `mx_refresh`,
@@ -28,12 +28,12 @@ export async function tokenConfig(): Promise<string | null> {
 /** Token para uma página ou ação: sem sessão de superadmin, vai ao login da plataforma. */
 export async function exigirTokenConfig(): Promise<string> {
   const t = await tokenConfig();
-  if (!t) redirect(ROTA_LOGIN_SUPERADMIN);
+  if (!t) redirect(ROTA_LOGIN);
   return t;
 }
 
 /** Em ação de servidor (pode alterar cookie): sessão terminada, apaga o cookie e volta ao login. */
 export async function encerrarEVoltar(): Promise<never> {
   (await cookies()).delete({ name: COOKIE_CONFIG_WEB, path: PATH_CONFIG });
-  redirect(ROTA_LOGIN_SUPERADMIN);
+  redirect(ROTA_LOGIN);
 }

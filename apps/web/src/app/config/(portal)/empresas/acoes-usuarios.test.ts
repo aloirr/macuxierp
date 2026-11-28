@@ -12,7 +12,8 @@ vi.mock('next/navigation', () => ({
 }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
-import { MENSAGEM_EMAIL_EM_USO, MENSAGEM_ULTIMO_ADMIN, type UsuarioConfig } from '@macuxierp/core/contracts';
+import { MENSAGEM_ULTIMO_ADMIN, type UsuarioConfig } from '@macuxierp/core/contracts';
+import { CODIGO_EMAIL_EM_USO, MENSAGEM_EMAIL_EM_USO } from '@macuxierp/platform-sdk';
 import { criarUsuarioAcao, editarUsuarioAcao, excluirUsuarioAcao, inativarUsuarioAcao, reativarUsuarioAcao, redefinirSenhaUsuarioAcao } from './acoes-usuarios';
 import { listarUsuarios } from '@/lib/config/api';
 
@@ -52,7 +53,7 @@ function apiFalsa(url: string, init: { method: string; body?: string; headers: R
     if (!chave || chavesUsadas.has(chave)) return erro(409, 'CONFLITO', 'Requisição já concluída');
     chavesUsadas.add(chave);
     const c = JSON.parse(init.body ?? '{}') as { nome: string; email: string; perfil: UsuarioConfig['perfil'] };
-    if (c.email === 'ana@exemplo.com') return erro(409, 'CONFLITO', MENSAGEM_EMAIL_EM_USO);
+    if (c.email === 'ana@exemplo.com') return json({ codigo: 'CONFLITO', mensagem: MENSAGEM_EMAIL_EM_USO, detalhes: { codigo: CODIGO_EMAIL_EM_USO } }, 409);
     const u = novo('9b3c5d7e-2f40-4b6c-8d8e-1f2a3b4c5d6e', c.nome, c.perfil);
     lista.push(u);
     recalcular();
@@ -144,9 +145,9 @@ describe('Usuários da Config: fluxo completo contra a API falsa (criar → senh
     }
   });
 
-  it('409 de e-mail em uso → MENSAGEM_EMAIL_EM_USO; e-mail inválido → campo, sem chamar a API', async () => {
+  it('409 email_em_uso (ADR 0021) → o texto do SDK; e-mail inválido → campo, sem chamar a API', async () => {
     const r = await criarUsuarioAcao(EMP, { nome: 'Ana Repetida', email: 'ana@exemplo.com', perfil: 'fiscal' }, 'k1');
-    expect(r).toMatchObject({ ok: false, erro: MENSAGEM_EMAIL_EM_USO, chaveNova: true });
+    expect(r).toMatchObject({ ok: false, erro: MENSAGEM_EMAIL_EM_USO, campos: { email: MENSAGEM_EMAIL_EM_USO } });
     chamadas.length = 0;
     expect(await criarUsuarioAcao(EMP, { nome: 'Ana', email: 'sem-arroba', perfil: 'fiscal' }, 'k2')).toMatchObject({ ok: false, campos: { email: 'E-mail inválido. Confira o endereço.' } });
     expect(chamadas).toHaveLength(0);
@@ -169,7 +170,7 @@ describe('Usuários da Config: fluxo completo contra a API falsa (criar → senh
 
   it('sem sessão do superadmin, vai ao login e não chama a API', async () => {
     estado.cookie = undefined;
-    await expect(inativarUsuarioAcao(EMP, ADM)).rejects.toThrow('REDIRECT /#codigo=MACUXI');
+    await expect(inativarUsuarioAcao(EMP, ADM)).rejects.toThrow('REDIRECT /');
     expect(chamadas).toHaveLength(0);
   });
 });
