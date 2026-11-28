@@ -107,7 +107,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — seed fiscal de exemplo (T-0
     const [b] = consultar<{ sem_exemplo: number; titulo_exemplo: number; texto_tecnico: number }>(
       banco.conexao,
       `SELECT count(*) FILTER (WHERE fonte_referencia IS DISTINCT FROM '${FONTE}')::int AS sem_exemplo,
-              count(*) FILTER (WHERE titulo ILIKE 'exemplo%')::int AS titulo_exemplo,
+              count(*) FILTER (WHERE titulo ILIKE 'exemplo%' OR titulo ~ 'CST|CSOSN')::int AS titulo_exemplo,
               count(*) FILTER (WHERE concat_ws(' ', titulo, descricao, fonte_referencia) ~* '(e2e|/|\\.sql)')::int
                 AS texto_tecnico
        FROM fiscal.regra_base`,
@@ -117,7 +117,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — seed fiscal de exemplo (T-0
       banco.conexao,
       `SELECT titulo AS t FROM fiscal.regra_base WHERE chave = 'exemplo.am.icms.interna.00'`,
     );
-    expect(titulo?.t).toBe('ICMS interno de AM, regime normal, tributado integralmente (CST 00)');
+    expect(titulo?.t).toBe('ICMS interno de AM, regime normal, tributado integralmente');
     const [t] = consultar<{ sem_exemplo: number; mva_nao_falso: number; st: number }>(
       banco.conexao,
       `SELECT count(*) FILTER (WHERE fonte_referencia IS DISTINCT FROM '${FONTE}')::int AS sem_exemplo,
