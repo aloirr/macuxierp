@@ -70,15 +70,38 @@ describe('calcularDocumento', () => {
     const r = calcularDocumento(base({ itens: [it2('a', '22021000'), it2('b', '30049099'), it2('c', '30049099')], regras: [regra({ ncm_prefixo: '2202' })] }));
     expect(r).toMatchObject({ ok: false, erros: [{ item_id: 'b' }, { item_id: 'c' }] });
   });
-  it('RN-FIS-02: interestadual a consumidor final não contribuinte volta CODIGO_NAO_SUPORTADO (DIFAL)', () => {
-    const r = calcularDocumento(
-      base({
-        destinatario: { uf: 'SP', tipo_contribuinte: 'nao_contribuinte', consumidor_final: true, tipo_pessoa: 'PF' },
-        itens: [item({ id: 'a', cfop: '6108' })],
-        regras: [regra({ aliquota_icms: 120000 })],
-      }),
-    );
-    expect(r).toMatchObject({ ok: false, erros: [{ rn: 'RN-FIS-02', codigo: 'CODIGO_NAO_SUPORTADO', item_id: 'a' }] });
+  describe('DIFAL no documento (RN-FIS-06)', () => {
+    const naoContribuinte = { uf: 'SP', tipo_contribuinte: 'nao_contribuinte', consumidor_final: true, tipo_pessoa: 'PF' };
+    const regraDifal = (p: Record<string, unknown> = {}) => regra({ aliquota_icms: 120000, aliquota_interna_destino: 180000, p_fcp_uf_dest: 20000, difal_base_dupla: false, ...p });
+    const doc = (p: Record<string, unknown> = {}) => calcularDocumento(base({ destinatario: naoContribuinte, itens: [item({ id: 'a', cfop: '6108' })], regras: [regraDifal()], ...p }));
+    it('RN-FIS-06: o item traz icms_uf_dest e os totais somam vFCPUFDest, vICMSUFDest e vICMSUFRemet', () => {
+      const r = doc();
+      expect(r).toMatchObject({ ok: true, valor: { itens: [{ icms_uf_dest: { v_icms_uf_dest: 6000, v_fcp_uf_dest: 2000 } }], totais: { v_fcp_uf_dest: 2000, v_icms_uf_dest: 6000, v_icms_uf_remet: 0 } } });
+      if (r.ok) expect(CalculoSaida.safeParse(r.valor).success).toBe(true);
+    });
+    it('RN-FIS-06: o DIFAL é informativo e NÃO soma no vNF nem no vICMS (MOC NF-e, W16 vNF; NT 2015.003)', () => {
+      const com = doc();
+      if (!com.ok) throw new Error('devia calcular');
+      expect(com.valor.totais.v_nf).toBe(100000);
+      expect(com.valor.totais.v_icms).toBe(12000);
+      expect(com.valor.totais.v_nf).toBe(com.valor.totais.v_prod - com.valor.totais.v_desc + com.valor.totais.v_frete + com.valor.totais.v_seg + com.valor.totais.v_outro + com.valor.totais.v_st + com.valor.totais.v_fcp_st + com.valor.totais.v_ipi);
+    });
+    it('RN-FIS-06: contribuinte, consumidor final contribuinte e operação interna não geram o grupo nem os totais', () => {
+      for (const p of [
+        { destinatario: { ...naoContribuinte, tipo_contribuinte: 'contribuinte', consumidor_final: false } },
+        { destinatario: { ...naoContribuinte, uf: 'AM' }, regras: [regraDifal({ aliquota_icms: 180000 })] },
+      ]) {
+        const r = doc(p);
+        expect(r.ok).toBe(true);
+        if (r.ok) {
+          expect(r.valor.itens[0]).not.toHaveProperty('icms_uf_dest');
+          expect(r.valor.totais).not.toHaveProperty('v_icms_uf_dest');
+        }
+      }
+    });
+    it('RN-FIS-06: DIFAL sem alíquota interna do destino volta REGRA_INCOMPLETA com o item (não inventa alíquota)', () => {
+      expect(doc({ regras: [regraDifal({ aliquota_interna_destino: null })] })).toMatchObject({ ok: false, erros: [{ rn: 'RN-FIS-02', codigo: 'REGRA_INCOMPLETA', item_id: 'a' }] });
+    });
   });
 
   describe('IPI, PIS e COFINS no documento (RF-FIS-01/02)', () => {

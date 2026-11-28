@@ -101,6 +101,7 @@ export function calcularDocumento(entrada: CalculoEntrada, opcoes: OpcoesDocumen
 
     const ri = calcularIcmsItem({ item, regra, interestadual, ipi_na_bc, destinatario_nao_contribuinte_final: entrada.destinatario.consumidor_final && entrada.destinatario.tipo_contribuinte !== 'contribuinte', consumidor_final: entrada.destinatario.consumidor_final });
     if (!ri.ok) erroCalculo(ri, [regra.id]);
+    const ufDest = ri.ok ? ri.icms_uf_dest : undefined;
 
     // PIS e COFINS: a regra só é obrigatória no CRT 3; no DAS (CRT 1/2/4), sem regra sai CST 99 sem valor.
     const pc: Partial<Record<'pis' | 'cofins', { grupo: NonNullable<ItemResultado['pis']>; v: number }>> = {};
@@ -151,6 +152,7 @@ export function calcularDocumento(entrada: CalculoEntrada, opcoes: OpcoesDocumen
       ...(calcSt ? { calc_st: calcSt } : {}),
       ...(calcIpi ? { calc_ipi: calcIpi } : {}),
       icms: i,
+      ...(ufDest ? { icms_uf_dest: ufDest } : {}),
       ...(ipi ? { ipi } : {}),
       ...(pc.pis ? { pis: pc.pis.grupo } : {}),
       ...(pc.cofins ? { cofins: pc.cofins.grupo } : {}),
@@ -171,6 +173,12 @@ export function calcularDocumento(entrada: CalculoEntrada, opcoes: OpcoesDocumen
     t.v_fcp_st += i.v_fcp_st ?? 0;
     if (i.v_fcp_st_ret !== undefined) t.v_fcp_st_ret = (t.v_fcp_st_ret ?? 0) + i.v_fcp_st_ret;
     t.v_cred_icms_sn += i.v_cred_icms_sn ?? 0;
+    // RN-FIS-06: DIFAL informativo; os totais existem só se algum item o tem e NÃO entram no vNF (MOC NF-e, ICMSTot).
+    if (ufDest) {
+      t.v_fcp_uf_dest = (t.v_fcp_uf_dest ?? 0) + ufDest.v_fcp_uf_dest;
+      t.v_icms_uf_dest = (t.v_icms_uf_dest ?? 0) + ufDest.v_icms_uf_dest;
+      t.v_icms_uf_remet = (t.v_icms_uf_remet ?? 0) + ufDest.v_icms_uf_remet;
+    }
     t.v_prod += item.valor_bruto_centavos;
     t.v_desc += item.desconto_centavos;
     t.v_frete += item.frete_centavos;

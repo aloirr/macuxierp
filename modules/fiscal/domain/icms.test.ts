@@ -137,10 +137,10 @@ describe('calcularIcmsItem por código', () => {
     expect(calcularIcmsItem(ctx({ codigo: '00' }, { desconto_centavos: 100001, frete_centavos: 50000 }))).toMatchObject({ ok: false, codigo: 'BASE_NEGATIVA' });
     expect(calcularIcmsItem(ctx({ codigo: '40' }, { desconto_centavos: 100001 }))).toMatchObject({ ok: false, codigo: 'BASE_NEGATIVA' });
   });
-  it('RN-FIS-02: venda interestadual a consumidor final não contribuinte (DIFAL) é código não suportado', () => {
+  it('RN-FIS-06: intraestadual a não contribuinte não gera DIFAL', () => {
     const c = { ...ctx({ codigo: '00', aliquota_icms: 120000 }, {}, true), destinatario_nao_contribuinte_final: true };
-    expect(calcularIcmsItem(c)).toMatchObject({ ok: false, codigo: 'CODIGO_NAO_SUPORTADO' });
     expect(calcularIcmsItem({ ...c, interestadual: false })).toMatchObject({ ok: true });
+    expect(calcularIcmsItem({ ...c, interestadual: false })).not.toHaveProperty('icms_uf_dest');
   });
   it('RN-FIS-02: CST 30 tem ST sem ICMS próprio', () => {
     expect(calcularIcmsItem(ctx({ codigo: '30', mva_original: 400000, aliquota_interna_destino: 180000 }))).toMatchObject({ ok: true, icms: { v_bc_st: 140000, v_icms_st: 25200 } });
@@ -275,5 +275,46 @@ describe('ST: recusas até existir pauta e ajuste explícito da MVA (RN-FIS-05)'
     expect(rodar({ mva_original: null })).toMatchObject({ ok: false, codigo: 'REGRA_INCOMPLETA' });
     expect(rodar({ mva_original: null, mod_bc_st: 4 })).toMatchObject({ ok: false, codigo: 'REGRA_INCOMPLETA' });
     expect(rodar({ mva_original: null, mva_ajustada: 500000 }, true)).toMatchObject({ ok: true, icms: { p_mva_st: 500000 } });
+  });
+});
+
+describe('DIFAL / ICMSUFDest (RN-FIS-06; EC 87/2015, LC 190/2022, Convênio ICMS 236/2021)', () => {
+  const ctx = (r: Parameters<typeof regra>[0], i: Partial<ItemCalculo> = {}, interestadual = false, ipi_na_bc = false) => ({ item: item(i), regra: regra(r), interestadual, ipi_na_bc });
+  // R$ 1.000,00 de AM para SP (consumidor final não contribuinte): inter 12%, interna do destino 18%.
+  const difal = (r: Record<string, unknown> = {}, i: Record<string, unknown> = {}) =>
+    calcularIcmsItem({ ...ctx({ codigo: '00', aliquota_icms: 120000, aliquota_interna_destino: 180000, p_fcp_uf_dest: 0, difal_base_dupla: false, ...r }, i, true), destinatario_nao_contribuinte_final: true });
+  it('RN-FIS-06: base única, sem FCP: DIFAL = BC × (interna − interestadual), 100% para o destino; o ICMS próprio segue na origem', () => {
+    expect(difal()).toMatchObject({
+      ok: true,
+      icms: { v_bc: 100000, p_icms: 120000, v_icms: 12000 },
+      icms_uf_dest: { v_bc_uf_dest: 100000, v_bc_fcp_uf_dest: 100000, p_fcp_uf_dest: 0, p_icms_uf_dest: 180000, p_icms_inter: 120000, p_icms_inter_part: 1000000, v_fcp_uf_dest: 0, v_icms_uf_dest: 6000, v_icms_uf_remet: 0 },
+    });
+  });
+  it('RN-FIS-06: FCP do destino (2%) sai à parte, sobre a mesma base, e não entra no vICMSUFDest', () => {
+    expect(difal({ p_fcp_uf_dest: 20000 })).toMatchObject({ ok: true, icms_uf_dest: { p_fcp_uf_dest: 20000, v_fcp_uf_dest: 2000, v_icms_uf_dest: 6000 } });
+  });
+  it('RN-FIS-06: base dupla: BC do destino = (BC − ICMS interestadual) / (1 − interna); DIFAL = BC dest × interna − ICMS interestadual', () => {
+    // (100000 − 12000) / (1 − 0,18) = 107317,07 -> 107317 ; 107317 × 18% = 19317,06 -> 19317 ; − 12000 = 7317
+    expect(difal({ difal_base_dupla: true, p_fcp_uf_dest: 20000 })).toMatchObject({ ok: true, icms_uf_dest: { v_bc_uf_dest: 107317, v_bc_fcp_uf_dest: 107317, v_icms_uf_dest: 7317, v_fcp_uf_dest: 2146, v_icms_uf_remet: 0 } });
+  });
+  it('RN-FIS-06: importado (origem 1) usa 4% interestadual: pICMSInter 4% e DIFAL sobre 14%', () => {
+    expect(difal({}, { origem: '1' })).toMatchObject({ ok: true, icms: { p_icms: 40000, v_icms: 4000 }, icms_uf_dest: { p_icms_inter: 40000, v_icms_uf_dest: 14000 } });
+  });
+  it('RN-FIS-06: interna menor que a interestadual não gera DIFAL negativo (0)', () => {
+    expect(difal({ aliquota_interna_destino: 100000 })).toMatchObject({ ok: true, icms_uf_dest: { v_icms_uf_dest: 0 } });
+  });
+  it('RN-FIS-06: não inventa alíquota: sem interna do destino, sem FCP do destino ou sem a base (única ou dupla) é REGRA_INCOMPLETA', () => {
+    expect(difal({ aliquota_interna_destino: null })).toMatchObject({ ok: false, codigo: 'REGRA_INCOMPLETA' });
+    expect(difal({ p_fcp_uf_dest: null })).toMatchObject({ ok: false, codigo: 'REGRA_INCOMPLETA' });
+    expect(difal({ difal_base_dupla: null })).toMatchObject({ ok: false, codigo: 'REGRA_INCOMPLETA' });
+    expect(difal({ aliquota_icms: null })).toMatchObject({ ok: false, codigo: 'REGRA_INCOMPLETA' });
+  });
+  it('RN-FIS-06: CST 20 usa a BC reduzida como base do DIFAL; CST 40, 41, 50, 60 e CSOSN 300, 400, 500 não geram DIFAL', () => {
+    expect(difal({ codigo: '20', reducao_bc: 500000 })).toMatchObject({ ok: true, icms_uf_dest: { v_bc_uf_dest: 50000, v_icms_uf_dest: 3000 } });
+    for (const codigo of ['40', '41', '50', '60']) expect(difal({ codigo })).toEqual({ ok: true, icms: expect.any(Object) });
+  });
+  it('RN-FIS-06: Simples (CSOSN 102) calcula o DIFAL com as alíquotas da regra; ST, CST 51 e 90/900 seguem não suportados (fail-closed)', () => {
+    expect(difal({ codigo: '102' })).toMatchObject({ ok: true, icms_uf_dest: { v_bc_uf_dest: 100000, v_icms_uf_dest: 6000 } });
+    for (const codigo of ['10', '30', '70', '51', '90', '900', '201', '202', '203']) expect(difal({ codigo, mva_original: 400000, p_dif: 500000 })).toMatchObject({ ok: false, codigo: 'CODIGO_NAO_SUPORTADO' });
   });
 });

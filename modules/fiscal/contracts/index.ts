@@ -216,6 +216,13 @@ const RegraBase = z.object({
   aliquota_interna_destino: Percentual.nullable().default(null),
   p_fcp: Percentual.nullable().default(null),
   p_fcp_st: Percentual.nullable().default(null),
+  /**
+   * DIFAL (RN-FIS-06, EC 87/2015, LC 190/2022, Convênio ICMS 236/2021): FCP da UF de destino (pFCPUFDest, 4 casas; 0 explícito = a UF não tem FCP) e a base
+   * do DIFAL (true = base dupla, "por dentro" pela alíquota interna; false = base única). Nulos = não informado: a venda interestadual a consumidor final
+   * não contribuinte não é calculada (REGRA_INCOMPLETA). A alíquota interna do destino é `aliquota_interna_destino`; a interestadual, `aliquota_icms`.
+   */
+  p_fcp_uf_dest: Percentual.nullable().default(null),
+  difal_base_dupla: z.boolean().nullable().default(null),
   /** Crédito do Simples (CSOSN 101/201/900), vem da faixa do contribuinte. */
   p_cred_sn: Percentual.nullable().default(null),
   /** CST 51: percentual de diferimento (pDif, 4 casas; 1000000 = 100%). Obrigatório nessa regra (sem ele: REGRA_INCOMPLETA). Com `p_fcp` o CST 51 é CODIGO_NAO_SUPORTADO (FCP diferido sem fonte). */
@@ -272,6 +279,23 @@ export const CalculoEntrada = z.object({
 });
 export type CalculoEntrada = z.infer<typeof CalculoEntrada>;
 export type ItemCalculo = z.infer<typeof ItemCalculo>;
+
+/**
+ * Grupo ICMSUFDest do item (NT 2015.003; MOC NF-e): DIFAL da venda interestadual a consumidor final não contribuinte. Valores em centavos; percentuais de 4 casas.
+ * Informativo: não entra no vNF (nem no vICMS). Desde 2019 a partilha é 100% para o destino (`p_icms_inter_part` = 1000000; `v_icms_uf_remet` = 0).
+ */
+export const IcmsUfDest = z.object({
+  v_bc_uf_dest: CentavosNaoNeg,
+  v_bc_fcp_uf_dest: CentavosNaoNeg,
+  p_fcp_uf_dest: Percentual,
+  p_icms_uf_dest: Percentual,
+  p_icms_inter: Percentual,
+  p_icms_inter_part: Percentual,
+  v_fcp_uf_dest: CentavosNaoNeg,
+  v_icms_uf_dest: CentavosNaoNeg,
+  v_icms_uf_remet: CentavosNaoNeg,
+});
+export type IcmsUfDest = z.infer<typeof IcmsUfDest>;
 
 export const IcmsItem = z.object({
   orig: OrigemMercadoria,
@@ -390,6 +414,8 @@ export const ItemResultado = z.object({
   calc_st: ImpostoCalculado.optional(),
   calc_ipi: ImpostoCalculado.optional(),
   icms: IcmsItem,
+  /** RN-FIS-06 (aditivo no @1): DIFAL; só na venda interestadual a consumidor final não contribuinte. Informativo (fora do vNF). */
+  icms_uf_dest: IcmsUfDest.optional(),
   /** Reservados: IPI/PIS/COFINS (lote 2) e IBS/CBS/IS (lote 3). */
   ipi: IpiItem.optional(),
   pis: PisCofinsItem.optional(),
@@ -431,6 +457,10 @@ export const TotaisCalculo = z.object({
   /** vProd − vDesc + vFrete + vSeg + vOutro + vST + vFCPST + vIPI. Não soma IBS/CBS/IS (ver o cabeçalho do contrato). */
   v_nf: CentavosNaoNeg,
   v_cred_icms_sn: CentavosNaoNeg,
+  /** RN-FIS-06 (aditivo no @1): vFCPUFDest, vICMSUFDest e vICMSUFRemet do ICMSTot; só com DIFAL em algum item. Informativos: o vNF não os soma (MOC NF-e, grupo W03). */
+  v_fcp_uf_dest: CentavosNaoNeg.optional(),
+  v_icms_uf_dest: CentavosNaoNeg.optional(),
+  v_icms_uf_remet: CentavosNaoNeg.optional(),
   /** Lotes 2 e 3: opcionais para não quebrar o @1. */
   v_pis: CentavosNaoNeg.optional(),
   v_cofins: CentavosNaoNeg.optional(),

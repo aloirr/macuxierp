@@ -1,4 +1,4 @@
-import type { IcmsItem, ImpostoCalculado, ItemCalculo, RegraTributaria } from '../contracts';
+import type { IcmsItem, IcmsUfDest, ImpostoCalculado, ItemCalculo, RegraTributaria } from '../contracts';
 import type { CodigoErroCalculo } from './erros';
 import { ehCsosn } from './regra';
 import { aplicarPercentual, BASE_PERCENTUAL, divArredonda, valorOperacao } from './dinheiro';
@@ -82,7 +82,7 @@ export interface ContextoIcmsItem {
   interestadual: boolean;
   /** IPI entra na BC do próprio (destinatário consumidor final/não contribuinte). */
   ipi_na_bc: boolean;
-  /** Destinatário consumidor final não contribuinte (gera DIFAL na interestadual; não suportado no lote 1). */
+  /** Destinatário consumidor final não contribuinte: na interestadual gera o DIFAL (ICMSUFDest, RN-FIS-06). */
   destinatario_nao_contribuinte_final?: boolean;
   /** Destinatário consumidor final: habilita o ICMS efetivo do ST retido (CST 60 / CSOSN 500 com `st_retido` e `p_icms_efet` na regra). */
   consumidor_final?: boolean;
@@ -96,7 +96,15 @@ const COM_ST = ['10', '30', '70', '201', '202', '203'];
 /** CST 90 e CSOSN 900: calculam ICMS próprio/ST só se a regra trouxer a alíquota. */
 const COM_ALIQ_OPCIONAL = ['90', '900'];
 
-export type ResultadoIcmsItem = { ok: true; icms: IcmsItem } | { ok: false; codigo: CodigoErroCalculo; mensagem: string };
+/** RN-FIS-06: CST/CSOSN em que o DIFAL é devido e calculado (ICMS próprio normal ou Simples sem ST). */
+const COM_DIFAL = ['00', '20', '101', '102', '103'];
+/** Sem ICMS a partilhar: isento, não tributado, suspenso, ST retido e CSOSN 300/400/500. Sem grupo ICMSUFDest. */
+const SEM_DIFAL = ['40', '41', '50', '60', '300', '400', '500'];
+
+/** Partilha 100% para o destino desde 2019 (EC 87/2015, art. 99 do ADCT). */
+const PARTILHA_DESTINO = 1_000_000;
+
+export type ResultadoIcmsItem = { ok: true; icms: IcmsItem; icms_uf_dest?: IcmsUfDest } | { ok: false; codigo: CodigoErroCalculo; mensagem: string };
 
 /** Monta o grupo ICMS do item conforme o CST/CSOSN da regra (RN-FIS-02). CST 51 (diferimento) e ST retido (60/500) desde o lote 4. */
 export function calcularIcmsItem(c: ContextoIcmsItem): ResultadoIcmsItem {
@@ -105,8 +113,11 @@ export function calcularIcmsItem(c: ContextoIcmsItem): ResultadoIcmsItem {
   const simples = ehCsosn(cod);
   const icms: IcmsItem = { orig: item.origem, ...(simples ? { csosn: cod } : { cst: cod }) };
   if (item.desconto_centavos > item.valor_bruto_centavos) return { ok: false, codigo: 'BASE_NEGATIVA', mensagem: 'O desconto é maior que o valor bruto do item.' };
-  // DIFAL (ICMSUFDest) fica para um lote seguinte: venda interestadual a consumidor final não contribuinte não é calculada.
-  if (c.interestadual && c.destinatario_nao_contribuinte_final) return { ok: false, codigo: 'CODIGO_NAO_SUPORTADO', mensagem: 'Venda interestadual a consumidor final não contribuinte (DIFAL/ICMSUFDest) ainda não é calculada pelo motor.' };
+  // DIFAL (RN-FIS-06): interestadual a consumidor final não contribuinte. Combinações sem fonte para calcular (ST, diferimento, CST 90/900, CSOSN 201/202/203) seguem recusadas.
+  const difal = c.interestadual && c.destinatario_nao_contribuinte_final === true;
+  if (difal && !COM_DIFAL.includes(cod) && !SEM_DIFAL.includes(cod)) {
+    return { ok: false, codigo: 'CODIGO_NAO_SUPORTADO', mensagem: `DIFAL (ICMSUFDest) com o código ${cod} (ST, diferimento ou CST/CSOSN 90/900) ainda não é calculado pelo motor.` };
+  }
   if (ST_RETIDO.includes(cod) && item.st_retido) {
     const { p_red_bc_efet, ...retido } = item.st_retido;
     // Os valores vêm da nota de compra: o motor só valida a coerência e repassa (erro da entrada, não da regra). FCP-ST retido: os três campos juntos ou nenhum.
@@ -123,7 +134,14 @@ export function calcularIcmsItem(c: ContextoIcmsItem): ResultadoIcmsItem {
     }
   }
   // Sem st_retido o 60/500 sai só com orig e CST/CSOSN: os grupos de ST retido e de ICMS efetivo são opcionais no leiaute.
-  if (SEM_CALCULO.includes(cod)) return { ok: true, icms };
+  if (SEM_CALCULO.includes(cod)) {
+    // CSOSN 102/103 não calculam ICMS próprio, mas a venda interestadual a não contribuinte tem DIFAL (RN-FIS-06); os demais códigos daqui não têm ICMS a partilhar.
+    if (difal && COM_DIFAL.includes(cod)) {
+      const g = calcularDifal({ regra, aliq_inter: c.interestadual ? aliquotaInterestadual(item.origem, regra.aliquota_icms) : null, v_bc: calcularIcms({ base_centavos: baseIcms(item, c.ipi_na_bc), reducao_bc: regra.reducao_bc, aliquota: 0 }).v_bc });
+      return g.ok ? { ok: true, icms, icms_uf_dest: g.grupo } : g;
+    }
+    return { ok: true, icms };
+  }
 
   const base = baseIcms(item, c.ipi_na_bc);
   if (base < 0) return { ok: false, codigo: 'BASE_NEGATIVA', mensagem: 'O desconto é maior que o valor do item: base de cálculo negativa.' };
@@ -203,7 +221,54 @@ export function calcularIcmsItem(c: ContextoIcmsItem): ResultadoIcmsItem {
     icms.p_cred_sn = regra.p_cred_sn;
     icms.v_cred_icms_sn = aplicarPercentual(baseIcms(item, false), regra.p_cred_sn);
   }
+  if (difal && COM_DIFAL.includes(cod)) {
+    const g = calcularDifal({ regra, aliq_inter: aliqRegra, v_bc: simples ? calcularIcms({ base_centavos: base, reducao_bc: regra.reducao_bc, aliquota: aliqRegra ?? 0 }).v_bc : (icms.v_bc ?? 0) });
+    if (!g.ok) return g;
+    return { ok: true, icms, icms_uf_dest: g.grupo };
+  }
   return { ok: true, icms };
+}
+
+export interface EntradaDifal {
+  regra: RegraTributaria;
+  /** pICMSInter: a alíquota interestadual da operação (4% no importado, senão a da regra). */
+  aliq_inter: number | null;
+  /** BC do ICMS da operação (já com a redução da regra). */
+  v_bc: number;
+}
+
+/**
+ * RN-FIS-06 (EC 87/2015, LC 190/2022, Convênio ICMS 236/2021): ICMSUFDest da venda interestadual a consumidor final não contribuinte.
+ * Base única: BC do destino = BC da operação. Base dupla: BC do destino = (BC − ICMS interestadual) / (1 − alíquota interna do destino), "por dentro".
+ * vICMSUFDest = BC do destino × pICMSUFDest − vICMS interestadual (mínimo 0); vFCPUFDest = BC do destino × pFCPUFDest; partilha 100% destino (vICMSUFRemet = 0).
+ * Nenhuma alíquota é inventada: interna do destino, FCP do destino (0 explícito) e a base (única ou dupla) vêm da regra, senão REGRA_INCOMPLETA.
+ */
+export function calcularDifal(e: EntradaDifal): { ok: true; grupo: IcmsUfDest } | { ok: false; codigo: CodigoErroCalculo; mensagem: string } {
+  const { regra } = e;
+  if (e.aliq_inter === null) return { ok: false, codigo: 'REGRA_INCOMPLETA', mensagem: `A regra ${regra.id} (DIFAL) exige a alíquota interestadual (aliquota_icms).` };
+  if (regra.aliquota_interna_destino === null) return { ok: false, codigo: 'REGRA_INCOMPLETA', mensagem: `A regra ${regra.id} (DIFAL) exige a alíquota interna da UF de destino (aliquota_interna_destino).` };
+  if (regra.p_fcp_uf_dest === null) return { ok: false, codigo: 'REGRA_INCOMPLETA', mensagem: `A regra ${regra.id} (DIFAL) exige o FCP da UF de destino (p_fcp_uf_dest; 0 se a UF não tem FCP).` };
+  if (regra.difal_base_dupla === null) return { ok: false, codigo: 'REGRA_INCOMPLETA', mensagem: `A regra ${regra.id} (DIFAL) não diz se a base é única ou dupla (difal_base_dupla).` };
+  const interna = regra.aliquota_interna_destino;
+  if (interna >= Number(BASE_PERCENTUAL)) return { ok: false, codigo: 'REGRA_INCOMPLETA', mensagem: `A regra ${regra.id} (DIFAL) tem alíquota interna de 100% ou mais.` };
+  const icmsInter = aplicarPercentual(e.v_bc, e.aliq_inter);
+  const vBcDest = regra.difal_base_dupla
+    ? Number(divArredonda(BigInt(e.v_bc) * (BASE_PERCENTUAL - BigInt(e.aliq_inter)), BASE_PERCENTUAL - BigInt(interna)))
+    : e.v_bc;
+  return {
+    ok: true,
+    grupo: {
+      v_bc_uf_dest: vBcDest,
+      v_bc_fcp_uf_dest: vBcDest,
+      p_fcp_uf_dest: regra.p_fcp_uf_dest,
+      p_icms_uf_dest: interna,
+      p_icms_inter: e.aliq_inter,
+      p_icms_inter_part: PARTILHA_DESTINO,
+      v_fcp_uf_dest: aplicarPercentual(vBcDest, regra.p_fcp_uf_dest),
+      v_icms_uf_dest: Math.max(0, aplicarPercentual(vBcDest, interna) - icmsInter),
+      v_icms_uf_remet: 0,
+    },
+  };
 }
 
 /**
