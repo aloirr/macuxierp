@@ -1,21 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { SenhaATrocarResposta } from './esqueci-senha';
+import { CODIGO_EMAIL_EM_USO, CODIGO_EMPRESA_SUSPENSA, corpoErroApi, erros, MENSAGEM_EMAIL_EM_USO, MENSAGEM_EMPRESA_SUSPENSA, MENSAGEM_LOGIN_INVALIDO } from './erros';
+import { MENSAGEM_ESQUECI_NEUTRA, SenhaATrocarResposta } from './esqueci-senha';
 import { CODIGO_TROCAR_SENHA, EuResposta, MOTIVOS_TROCA_SENHA } from './eu';
 import {
   CAMINHO_LOGIN,
   CodigoEmpresaLogin,
   DESTINOS_LOGIN,
-  destinoDoCodigo,
   LoginEntrada,
   LoginResposta,
 } from './login';
-import { CODIGO_SUPERADMIN_LOGIN, EntrarPlataformaEntrada, EuPlataforma } from './portal-config';
+import { CODIGO_SUPERADMIN_LOGIN, EntrarPlataformaEntrada, EuPlataforma, SLUG_RESERVADO_SUPERADMIN } from './portal-config';
 import { SENHA_MAXIMA } from './senha';
 
 const ID = '00000000-0000-4000-8000-000000000001';
 const EXPIRA = '2026-11-23T21:00:00.000Z';
 
-describe('CodigoEmpresaLogin: formato do slug da 0002 (PADRAO_SLUG_EMPRESA), sem diferenciar maiúsculas', () => {
+describe('CodigoEmpresaLogin (transição da v0.3.30, só para a apps/web): formato do slug da 0002, sem diferenciar maiúsculas', () => {
   it('aceita UF + 4 dígitos, o código reservado e o slug antigo (antes da T-0053), aparados e em maiúsculas', () => {
     const casos: [string, string][] = [
       ['AM2808', 'AM2808'],
@@ -42,33 +42,42 @@ describe('RN-CORE-12: login único (POST /v1/auth/login)', () => {
     expect(DESTINOS_LOGIN).toEqual(['bko', 'config']);
   });
 
-  it('LoginEntrada: código (aparado, maiúsculo), e-mail normalizado e a senha como veio', () => {
-    expect(
-      LoginEntrada.parse({ empresa: ' am2808 ', email: ' Ana@Exemplo.COM ', senha: ' s e n h a ' }),
-    ).toEqual({
-      empresa: 'AM2808',
-      email: 'ana@exemplo.com',
-      senha: ' s e n h a ',
-    });
-    expect(LoginEntrada.parse({ empresa: 'macuxi', email: 'root@macuxi.com.br', senha: 'x' }).empresa).toBe(
-      CODIGO_SUPERADMIN_LOGIN,
-    );
+  it('LoginEntrada (ADR 0021 §6): e-mail normalizado e a senha como veio; `empresa` opcional e ignorado (qualquer valor passa)', () => {
+    expect(LoginEntrada.parse({ email: ' Ana@Exemplo.COM ', senha: ' s e n h a ' })).toEqual({ email: 'ana@exemplo.com', senha: ' s e n h a ' });
+    for (const empresa of [' am2808 ', '', '-abc', 'MACUXI', 42, null]) {
+      expect(LoginEntrada.safeParse({ empresa, email: 'a@b.co', senha: 'x' }).success, JSON.stringify(empresa)).toBe(true);
+    }
     for (const errado of [
-      { empresa: '', email: 'a@b.co', senha: 'x' },
-      { empresa: '-abc', email: 'a@b.co', senha: 'x' },
-      { empresa: 'AM2808', email: 'sem-arroba', senha: 'x' },
-      { empresa: 'AM2808', email: 'a@b.co', senha: '' },
-      { empresa: 'AM2808', email: 'a@b.co', senha: 'x'.repeat(SENHA_MAXIMA + 1) },
+      { email: 'sem-arroba', senha: 'x' },
+      { email: 'a@b.co', senha: '' },
+      { email: 'a@b.co', senha: 'x'.repeat(SENHA_MAXIMA + 1) },
+      { senha: 'x' },
     ]) {
-      expect(() => LoginEntrada.parse(errado), JSON.stringify(errado.empresa)).toThrow();
+      expect(() => LoginEntrada.parse(errado), JSON.stringify(errado)).toThrow();
     }
   });
 
-  it('destinoDoCodigo: só o código reservado leva ao /config; qualquer empresa leva ao BKO', () => {
-    expect(destinoDoCodigo(CODIGO_SUPERADMIN_LOGIN)).toBe('config');
-    expect(destinoDoCodigo(CodigoEmpresaLogin.parse(' macuxi '))).toBe('config');
-    expect(destinoDoCodigo('AM2808')).toBe('bko');
-    expect(destinoDoCodigo(CodigoEmpresaLogin.parse('am2808'))).toBe('bko');
+  it('textos travados pelo PO (ADR 0021, seção Textos), exatamente assim, e os erros do SDK que os usam', () => {
+    expect(MENSAGEM_LOGIN_INVALIDO).toBe('E-mail ou senha inválidos.');
+    expect(MENSAGEM_EMPRESA_SUSPENSA).toBe('Sua empresa está suspensa. Fale com o administrador da Macuxi.');
+    expect(MENSAGEM_EMAIL_EM_USO).toBe('Este e-mail já está em uso em outra empresa. Use outro e-mail.');
+    expect(MENSAGEM_ESQUECI_NEUTRA).toBe('Se o e-mail estiver cadastrado, enviamos as instruções.');
+    expect(corpoErroApi(erros.loginInvalido())).toEqual({ codigo: 'NAO_AUTENTICADO', mensagem: MENSAGEM_LOGIN_INVALIDO });
+    expect(erros.loginInvalido().status).toBe(401);
+    const suspensa = erros.empresaSuspensa();
+    expect([suspensa.status, suspensa.codigo, suspensa.message]).toEqual([403, CODIGO_EMPRESA_SUSPENSA, MENSAGEM_EMPRESA_SUSPENSA]);
+    expect(CODIGO_EMPRESA_SUSPENSA).toBe('EMPRESA_SUSPENSA');
+    const emUso = erros.emailEmUso();
+    expect(corpoErroApi(emUso)).toEqual({ codigo: 'CONFLITO', mensagem: MENSAGEM_EMAIL_EM_USO, campos: { email: MENSAGEM_EMAIL_EM_USO }, detalhes: { codigo: CODIGO_EMAIL_EM_USO } });
+    expect(CODIGO_EMAIL_EM_USO).toBe('email_em_uso');
+  });
+
+  it('ADR 0021 §5: o MACUXI não é mais caminho de login (destinoDoCodigo saiu); fica só o slug reservado', async () => {
+    const login = await import('./login');
+    expect(login).not.toHaveProperty('destinoDoCodigo');
+    expect(SLUG_RESERVADO_SUPERADMIN).toBe('macuxi');
+    expect(CODIGO_SUPERADMIN_LOGIN.toLowerCase()).toBe(SLUG_RESERVADO_SUPERADMIN);
+    expect(LoginEntrada.parse({ empresa: 'MACUXI', email: 'a@b.co', senha: 'x'.repeat(8) })).not.toHaveProperty('empresa', 'config');
   });
 
   it('LoginResposta do BKO: a resposta de hoje (sem destino) continua passando e vira destino bko', () => {

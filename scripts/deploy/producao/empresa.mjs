@@ -25,6 +25,11 @@
  * (nem nos erros do psql). A auditoria guarda o slug (o código em minúsculas), nunca o nome da empresa. A última linha é o
  * estado que o operador.sh lê: `estado: usuario-criado`, `estado: usuario-existia` ou `estado: simulacao`.
  * Saída 0 = ok; 2 = argumento inválido; 1 = falha (nada gravado: a transação é desfeita).
+ *
+ * E-mail único no sistema (ADR 0021 §1): antes de criar a empresa ou o administrador, confere se o e-mail
+ * (`lower(btrim(email))`, só os vivos) já é de um usuário de OUTRA empresa; se for, sai com 1 e a mensagem
+ * `MENSAGEM_EMAIL_EM_USO`, sem dizer qual empresa e sem imprimir o e-mail. A corrida (o índice `usuario_email_global_uq`
+ * da 0079, 23505) sai com a mesma mensagem.
  */
 import { spawnSync } from 'node:child_process';
 import * as crypto from 'node:crypto';
@@ -41,6 +46,12 @@ const PADRAO_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MODULOS_LIGAR = ['core', 'cadastros', 'pedido', 'integracao-fdv'];
 const MODULOS_INFORMAR = ['faturamento', 'fiscal'];
 const ARGON2 = { memoria: 19_456, passes: 2, paralelismo: 1, tamanho: 32 }; // ARGON2_PADRAO da API
+// Cópia de MENSAGEM_EMAIL_EM_USO (packages/platform-sdk/src/erros.ts, ADR 0021, texto travado pelo PO): o contêiner não
+// tem node_modules; o teste scripts/deploy/empresa.test.mjs trava contra o SDK.
+const MENSAGEM_EMAIL_EM_USO = 'Este e-mail já está em uso em outra empresa. Use outro e-mail.';
+// Marca do RAISE do SQL abaixo e o índice da 0079: um ou outro no erro do psql = e-mail já usado em outra empresa.
+const MARCA_EMAIL_EM_USO = 'macuxierp_email_em_uso';
+const INDICE_EMAIL_GLOBAL = 'usuario_email_global_uq';
 // Regra única de senha (packages/platform-sdk/src/senha.ts, T-0052): letra, número 0-9 e caractere especial, além do
 // tamanho. Cópia (o contêiner não tem node_modules); o teste apps/api/src/operador-senha.test.ts trava contra o SDK.
 const SENHA_LETRA = /\p{L}/u;
@@ -157,6 +168,13 @@ BEGIN
     END IF;
   END IF;
 
+  -- ADR 0021 §1: o e-mail é único entre os usuários vivos de TODAS as empresas; o da própria empresa (o slug) segue a
+  -- regra de sempre abaixo. Sem o e-mail na mensagem: só a marca, que o empresa.mjs troca pelo texto do SDK.
+  IF EXISTS (SELECT 1 FROM plataforma.usuario uo JOIN plataforma.tenant tn ON tn.id = uo.tenant_id
+             WHERE lower(btrim(uo.email)) = v_email AND uo.deleted_at IS NULL AND tn.slug <> v_slug) THEN
+    RAISE EXCEPTION '${MARCA_EMAIL_EM_USO}' USING ERRCODE = 'P0001';
+  END IF;
+
   SELECT id, situacao, deleted_at INTO t FROM plataforma.tenant WHERE slug = v_slug;
   IF FOUND THEN
     IF t.deleted_at IS NOT NULL OR t.situacao <> 'ativo' THEN
@@ -264,6 +282,11 @@ function errosSeguros(stderr, sensiveis) {
     .join('\n');
 }
 
+/** O erro do psql é o e-mail já usado em outra empresa: a checagem do SQL ou, numa corrida, o 23505 do índice da 0079. */
+function emailEmUso(stderr) {
+  return stderr.includes(MARCA_EMAIL_EM_USO) || stderr.includes(INDICE_EMAIL_GLOBAL);
+}
+
 async function main(argv, env) {
   let op;
   try {
@@ -300,6 +323,10 @@ async function main(argv, env) {
     encoding: 'utf8',
     timeout: 120_000,
   });
+  if (r.status !== 0 && !r.error && emailEmUso(r.stderr ?? '')) {
+    console.error(`[empresa] ${MENSAGEM_EMAIL_EM_USO}\n[empresa] nada foi gravado (transação desfeita).`);
+    return 1;
+  }
   if (r.status !== 0) {
     const msg = r.error ? `psql não executou (${r.error.code ?? r.error.name})` : errosSeguros(r.stderr ?? '', [op.nome, op.email, op.adminNome, hash, op.senha]);
     console.error(`[empresa] falhou; nada foi gravado (transação desfeita).\n${msg}`);

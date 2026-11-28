@@ -15,7 +15,7 @@
  * - "Esqueci a senha" (T-0076): `POST /v1/plataforma/auth/esqueci`, pública (com o anti-CSRF), com o limite por IP
  *   (anti-spam) antes do banco e SEMPRE o mesmo 202 neutro; o e-mail sai só depois da
  *   resposta (`auth/esqueci.ts`). Sem a porta de e-mail, o mesmo 202 (sem banco e sem envio). Login com a temporária = 200 com a
- *   sessão e o cookie (`responderLoginPlataforma`, o mesmo da tela única com o código MACUXI); as outras rotas dão o 403
+ *   sessão e o cookie (`responderLoginPlataforma`, o mesmo da tela única com o e-mail de superadmin); as outras rotas dão o 403
  *   `TROCAR_SENHA` do bloqueio (`SenhaATrocarResposta`, motivo 'temporaria', `expira_em` = o fim da temporária).
  */
 import {
@@ -107,7 +107,7 @@ async function sessaoDoPedido(req: FastifyRequest, reply: FastifyReply, c: Conte
 }
 
 /**
- * Resposta do login do superadmin (`/v1/plataforma/auth/entrar` e, pela tela única, `/v1/auth/login` com MACUXI): o
+ * Resposta do login do superadmin (`/v1/plataforma/auth/entrar` e, pela tela única, `/v1/auth/login` com o e-mail de superadmin): o
  * cookie `COOKIE_CONFIG` (Path=/v1/plataforma) e 200 `{ expira_em }` (a sessão), também com a senha temporária ou a
  * provisória (a troca pendente sai no `GET /v1/plataforma/auth/eu` e no 403 das outras rotas). `extra` entra no corpo
  * (o `destino` da tela única, `LoginResposta`).

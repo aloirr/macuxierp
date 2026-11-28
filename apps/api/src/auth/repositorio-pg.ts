@@ -1,20 +1,43 @@
 /**
  * `RepositorioAuth` no PostgreSQL (migrações 0002 e 0004 do `db/`). Tudo roda na transação do `BancoPg` no papel
- * `macuxierp_app`: o login acha o tenant por `plataforma.tenant_por_slug()` (sem tenant na transação) e o resto passa
- * pela RLS do tenant (`app.tenant_id`). O e-mail chega normalizado (minúsculas, sem espaços), como a tabela guarda.
+ * `macuxierp_app`: o login acha a conta por `plataforma.conta_por_email()` (0079, ADR 0021; sem tenant na transação) e o
+ * resto passa pela RLS do tenant (`app.tenant_id`). O e-mail chega normalizado (minúsculas, sem espaços), como a tabela guarda.
  */
 import type { Transacao } from '@macuxierp/platform-sdk';
-import type { FilialAuth, RepositorioAuth, SessaoRefresh, TenantAuth, UsuarioAuth } from './portas';
+import type { ContaPorEmail, FilialAuth, RepositorioAuth, SessaoRefresh, TenantAuth, UsuarioAuth } from './portas';
 
 const USUARIO = `id, tenant_id, nome, email, senha_hash, perfil, filial_ids, ativo, falhas_login, bloqueado_ate, deve_trocar_senha,
   senha_temporaria_hash, senha_temporaria_expira_em`;
 const SESSAO = 'id, tenant_id, usuario_id, familia, refresh_hash, expira_em, revogada_em';
 
+/** Linha crua da `plataforma.conta_por_email` (0079): `suspensa` boolean ou, conforme a versão da função, `situacao_tenant`. */
+export interface LinhaContaPorEmail {
+  tipo: unknown;
+  tenant_id: unknown;
+  suspensa?: unknown;
+  situacao_tenant?: unknown;
+}
+
+/**
+ * Mapeia a linha da `conta_por_email` para a `ContaPorEmail`. Aceita os dois formatos da coluna da empresa suspensa
+ * (`suspensa = true` ou `situacao_tenant = 'suspensa'`); linha fora do formato (tipo desconhecido, usuário sem tenant) =
+ * nenhuma conta, que dá a mesma falha neutra do e-mail inexistente.
+ */
+export function contaDaLinha(l: LinhaContaPorEmail | null | undefined): ContaPorEmail | null {
+  if (!l) return null;
+  if (l.tipo === 'superadmin') return { tipo: 'superadmin', tenant_id: null, suspensa: false };
+  if (l.tipo !== 'usuario' || typeof l.tenant_id !== 'string' || l.tenant_id === '') return null;
+  return { tipo: 'usuario', tenant_id: l.tenant_id, suspensa: l.suspensa === true || l.situacao_tenant === 'suspensa' };
+}
+
 const primeira = async <L>(linhas: Promise<L[]>): Promise<L | null> => (await linhas)[0] ?? null;
 
 export class RepositorioAuthPg implements RepositorioAuth {
-  async tenantIdPorSlug(tx: Transacao, slug: string) {
-    return (await primeira(tx.consultar<{ id: string | null }>('SELECT plataforma.tenant_por_slug($1) AS id', [slug])))?.id ?? null;
+  async contaPorEmail(tx: Transacao, email: string) {
+    // A 0079 devolve no máximo uma linha de cada tipo, o usuário antes do superadmin (ADR 0021 §7, opção A); a ordem e o
+    // LIMIT aqui garantem a regra mesmo se a função devolver as duas.
+    const sql = "SELECT * FROM plataforma.conta_por_email($1) ORDER BY (tipo = 'usuario') DESC LIMIT 1";
+    return contaDaLinha(await primeira(tx.consultar<LinhaContaPorEmail>(sql, [email])));
   }
 
   tenantPorId(tx: Transacao, id: string) {
