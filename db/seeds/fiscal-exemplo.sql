@@ -2,7 +2,9 @@
 -- NUNCA em produção e NUNCA em migração: o migrar (db/src/migrar.ts, o único que o deploy roda) só lê db/migrations
 -- e db/tabelas-fiscais, e a imagem da API (apps/api/Dockerfile) não copia db/seeds. A trava abaixo ainda recusa
 -- qualquer banco que não seja efêmero de teste ou de desenvolvimento (macuxi_teste_*, macuxi_dev_*).
--- Valores fictícios, sem regra de cliente real e sem valor fiscal: o título e a fonte_referencia dizem EXEMPLO.
+-- Valores fictícios, sem regra de cliente real e sem valor fiscal. O título é o da regra, em português claro; o exemplo
+-- fica marcado só na fonte_referencia (e na descrição): "Exemplo para demonstração, sem valor fiscal", sem caminho de
+-- arquivo nem nome de ambiente, porque o texto aparece na tela.
 -- Sem ST interestadual (regra_base_sem_st_interestadual, T-0127): só ICMS interno do AM (00 e 20), IPI, PIS e COFINS.
 -- Uso: db/seeds/fiscal-exemplo.ts (sqlSeedFiscalExemplo ou carregarSeedFiscalExemplo), que fixa o tenant de teste em
 -- macuxierp.seed_tenant na mesma transação. Idempotente: ON CONFLICT DO NOTHING nos índices únicos
@@ -33,35 +35,35 @@ INSERT INTO fiscal.regra_base (chave, titulo, descricao, tributo, ncm_prefixo, u
   aliquota_icms, reducao_bc, cst_ipi, aliquota_ipi, cst_pis, aliquota_pis, cst_cofins, aliquota_cofins,
   fonte_tipo, fonte_referencia, versao, vigencia_inicio, external_id)
 VALUES
-  ('exemplo.am.icms.interna.00', 'EXEMPLO: ICMS interno AM, tributado integralmente (CST 00)',
-   'Valor de exemplo para desenvolvimento e e2e; sem valor fiscal.', 'icms', NULL, 'AM', 'AM', 3, '5102', '00',
+  ('exemplo.am.icms.interna.00', 'ICMS interno de AM, regime normal, tributado integralmente (CST 00)',
+   'Exemplo para demonstração, sem valor fiscal.', 'icms', NULL, 'AM', 'AM', 3, '5102', '00',
    200000, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-   'outro', 'EXEMPLO de desenvolvimento e e2e, sem valor fiscal (db/seeds/fiscal-exemplo.sql)', 'exemplo-2026.1',
+   'outro', 'Exemplo para demonstração, sem valor fiscal', 'exemplo-2026.1',
    '2026-01-01', 'seed-exemplo:exemplo.am.icms.interna.00'),
-  ('exemplo.am.icms.interna.20', 'EXEMPLO: ICMS interno AM, com redução da base (CST 20)',
-   'Valor de exemplo para desenvolvimento e e2e; sem valor fiscal.', 'icms', '8471', 'AM', 'AM', 3, '5102', '20',
+  ('exemplo.am.icms.interna.20', 'ICMS interno de AM, regime normal, com redução da base (CST 20)',
+   'Exemplo para demonstração, sem valor fiscal.', 'icms', '8471', 'AM', 'AM', 3, '5102', '20',
    200000, 300000, NULL, NULL, NULL, NULL, NULL, NULL,
-   'outro', 'EXEMPLO de desenvolvimento e e2e, sem valor fiscal (db/seeds/fiscal-exemplo.sql)', 'exemplo-2026.1',
+   'outro', 'Exemplo para demonstração, sem valor fiscal', 'exemplo-2026.1',
    '2026-01-01', 'seed-exemplo:exemplo.am.icms.interna.20'),
-  ('exemplo.ipi.tributado.50', 'EXEMPLO: IPI tributado (CST 50)',
-   'Valor de exemplo para desenvolvimento e e2e; sem valor fiscal.', 'ipi', NULL, NULL, NULL, NULL, NULL, NULL,
+  ('exemplo.ipi.tributado.50', 'IPI tributado na saída (CST 50)',
+   'Exemplo para demonstração, sem valor fiscal.', 'ipi', NULL, NULL, NULL, NULL, NULL, NULL,
    NULL, NULL, '50', 50000, NULL, NULL, NULL, NULL,
-   'outro', 'EXEMPLO de desenvolvimento e e2e, sem valor fiscal (db/seeds/fiscal-exemplo.sql)', 'exemplo-2026.1',
+   'outro', 'Exemplo para demonstração, sem valor fiscal', 'exemplo-2026.1',
    '2026-01-01', 'seed-exemplo:exemplo.ipi.tributado.50'),
-  ('exemplo.ipi.nao-tributado.53', 'EXEMPLO: IPI não tributado (CST 53)',
-   'Valor de exemplo para desenvolvimento e e2e; sem valor fiscal.', 'ipi', '4901', NULL, NULL, NULL, NULL, NULL,
+  ('exemplo.ipi.nao-tributado.53', 'IPI não tributado na saída (CST 53)',
+   'Exemplo para demonstração, sem valor fiscal.', 'ipi', '4901', NULL, NULL, NULL, NULL, NULL,
    NULL, NULL, '53', NULL, NULL, NULL, NULL, NULL,
-   'outro', 'EXEMPLO de desenvolvimento e e2e, sem valor fiscal (db/seeds/fiscal-exemplo.sql)', 'exemplo-2026.1',
+   'outro', 'Exemplo para demonstração, sem valor fiscal', 'exemplo-2026.1',
    '2026-01-01', 'seed-exemplo:exemplo.ipi.nao-tributado.53'),
-  ('exemplo.pis.tributado.01', 'EXEMPLO: PIS tributado à alíquota básica (CST 01)',
-   'Valor de exemplo para desenvolvimento e e2e; sem valor fiscal.', 'pis', NULL, NULL, NULL, NULL, NULL, NULL,
+  ('exemplo.pis.tributado.01', 'PIS tributado à alíquota básica (CST 01)',
+   'Exemplo para demonstração, sem valor fiscal.', 'pis', NULL, NULL, NULL, NULL, NULL, NULL,
    NULL, NULL, NULL, NULL, '01', 16500, NULL, NULL,
-   'outro', 'EXEMPLO de desenvolvimento e e2e, sem valor fiscal (db/seeds/fiscal-exemplo.sql)', 'exemplo-2026.1',
+   'outro', 'Exemplo para demonstração, sem valor fiscal', 'exemplo-2026.1',
    '2026-01-01', 'seed-exemplo:exemplo.pis.tributado.01'),
-  ('exemplo.cofins.tributado.01', 'EXEMPLO: COFINS tributada à alíquota básica (CST 01)',
-   'Valor de exemplo para desenvolvimento e e2e; sem valor fiscal.', 'cofins', NULL, NULL, NULL, NULL, NULL, NULL,
+  ('exemplo.cofins.tributado.01', 'COFINS tributada à alíquota básica (CST 01)',
+   'Exemplo para demonstração, sem valor fiscal.', 'cofins', NULL, NULL, NULL, NULL, NULL, NULL,
    NULL, NULL, NULL, NULL, NULL, NULL, '01', 76000,
-   'outro', 'EXEMPLO de desenvolvimento e e2e, sem valor fiscal (db/seeds/fiscal-exemplo.sql)', 'exemplo-2026.1',
+   'outro', 'Exemplo para demonstração, sem valor fiscal', 'exemplo-2026.1',
    '2026-01-01', 'seed-exemplo:exemplo.cofins.tributado.01')
 ON CONFLICT DO NOTHING;
 
@@ -84,6 +86,6 @@ ON CONFLICT DO NOTHING;
 INSERT INTO fiscal.regra_tributaria (tenant_id, tributo, ncm_prefixo, uf_origem, uf_destino, crt, cfop, codigo,
   aliquota_icms, ajustar_mva, fonte_tipo, fonte_referencia, versao, vigencia_inicio, external_id)
 VALUES (current_setting('macuxierp.seed_tenant')::uuid, 'icms', '2202', 'AM', 'AM', 3, '5102', '00', 250000, false,
-  'outro', 'EXEMPLO de desenvolvimento e e2e, cadastrada à mão, sem valor fiscal (db/seeds/fiscal-exemplo.sql)',
+  'outro', 'Exemplo para demonstração, sem valor fiscal',
   'exemplo-2026.1', '2026-01-01', 'seed-exemplo:manual.am.icms.2202.00')
 ON CONFLICT DO NOTHING;

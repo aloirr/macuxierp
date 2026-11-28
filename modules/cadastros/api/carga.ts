@@ -189,7 +189,7 @@ export function rotaModeloCarga(): RotaModulo {
 
 export function rotaCarga(deps: Dependencias): RotaModulo {
   return definirRota({
-    metodo: 'POST', caminho: '/cargas', acao: 'cadastros.carga.executar', corpo: CargaCampos,
+    metodo: 'POST', caminho: '/cargas', acao: 'cadastros.carga.executar', semPermissao: 'Seu perfil não pode executar a carga de cadastros.', corpo: CargaCampos,
     multipart: { arquivos: [{ campo: 'arquivos', tamanhoMaximo: MAX_BYTES_LOTE, quantidadeMaxima: MAX_ARQUIVOS_LOTE }], tamanhoMaximoTotal: MAX_BYTES_LOTE },
     idempotencia: 'opcional', tempoMaximoMs: TEMPO_MAXIMO_ROTA_MS,
     async executar(c, e) {

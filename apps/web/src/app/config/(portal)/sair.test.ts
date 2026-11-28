@@ -31,10 +31,10 @@ describe('Sair é POST (server action), nunca GET', () => {
     expect(estado.chamadas).toEqual(['sair:tok']);
     expect(estado.apagados).toEqual([{ name: 'mx_config', path: '/config' }]);
   });
-  it('o topo liga o Sair a um formulário com ação de servidor (sem link)', () => {
+  it('o topo liga o Sair do botão do usuário à ação de servidor (sem link)', () => {
     const el = TopoPlataforma({ nome: 'Operadora' });
     const json = JSON.stringify(el, (_, v) => (typeof v === 'function' ? `fn:${v.name}` : v));
-    expect(json).toContain('"action":"fn:');
+    expect(json).toContain('"sair":"fn:sairConfigAcao"');
     expect(json).not.toContain('sessao/encerrar');
   });
 });
