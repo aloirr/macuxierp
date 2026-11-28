@@ -116,7 +116,7 @@ const itemBase: CSSProperties = {
   boxSizing: 'border-box',
 };
 
-/** Botão "Ações" da linha (T-0099): um componente único para todas as tabelas e listas. */
+/** Botão "Ações ▾" da linha (T-0099; v0.3.30, padrão da T-0134): um componente único para todas as tabelas e listas. A seta é aria-hidden. */
 export function MenuAcoes({ acoes, principal, rotuloLinha, abertoInicial = false }: MenuAcoesProps) {
   const id = useId();
   const menuId = `${id}-menu`;
@@ -295,9 +295,12 @@ export function MenuAcoes({ acoes, principal, rotuloLinha, abertoInicial = false
             onClick={() => setAberto(!aberto)}
             onKeyDown={tecladoGatilho}
             onKeyUp={soltarGatilho}
-            style={estiloBotao}
+            style={{ ...estiloBotao, gap: espaco.xs }}
           >
             Ações
+            <span aria-hidden="true" style={{ fontSize: texto('micro').fontSize, lineHeight: 1 }}>
+              ▾
+            </span>
           </button>
           {aberto ? (
             <div

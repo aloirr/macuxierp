@@ -60,7 +60,7 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config: isolamento das credenciais de t
     // Tenant com todos os módulos e o administrador: o JWT e o refresh são credenciais de tenant reais.
     const t = await criarTenant(b.admin, 'e6-isolamento', modulos.map((m) => m.manifesto.id));
     await inserirAdministradorDeTeste(b.admin, t, { id: randomUUID(), email: 'adm-e6@exemplo.invalid', nome: 'Pessoa Fictícia', filialIds: [] });
-    const login = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa: 'e6-isolamento', email: 'adm-e6@exemplo.invalid', senha: SENHA_DE_TESTE } });
+    const login = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { email: 'adm-e6@exemplo.invalid', senha: SENHA_DE_TESTE } });
     expect(login.statusCode).toBe(200);
     jwt = login.json<{ token_acesso: string }>().token_acesso;
     refreshTenant = login.cookies.find((c) => c.name === COOKIE_REFRESH)!.value;

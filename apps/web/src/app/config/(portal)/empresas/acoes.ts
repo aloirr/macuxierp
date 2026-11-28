@@ -1,14 +1,14 @@
 'use server';
-import { AlterarModulosEntrada, CriarEmpresaEntrada, PrimeiroAdminEntrada, SituacaoEmpresaEntrada } from '@macuxierp/platform-sdk';
+import { AlterarModulosEntrada, CriarEmpresaEntrada, SituacaoEmpresaEntrada } from '@macuxierp/platform-sdk';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { alterarModulos, alterarSituacao, criarEmpresa, criarPrimeiroAdmin, listarEmpresas, mostrarEmailPrimeiroAdmin, redefinirSenhaPrimeiroAdmin } from '@/lib/config/api';
+import { alterarModulos, alterarSituacao, criarEmpresa, listarEmpresas } from '@/lib/config/api';
 import { executarConfig, falha, type Resultado } from '@/lib/config/executar';
 import { MOTIVO_INVALIDO, traduzirCriarEmpresa } from '@/lib/config/formularios';
 
 /**
  * Ações do portal. Cada uma refaz a validação do contrato (a API revalida de novo, regra 2) e manda a Idempotency-Key.
- * A senha provisória sai só no `valor` da resposta: nada vai a log, URL ou armazenamento.
+ * O 1º administrador saiu na Config v4: os usuários da empresa ficam em `acoes-usuarios.ts`.
  */
 const atualizar = (id: string) => {
   revalidatePath('/config');
@@ -30,28 +30,6 @@ export async function alterarModulosAcao(id: string, modulos: unknown) {
   const r = await executarConfig('modulos', (t) => alterarModulos(t, id, p.data));
   if (r.ok) atualizar(id);
   return r.ok ? ({ ok: true, valor: null } as const) : r;
-}
-
-export async function criarAdminAcao(id: string, entrada: { email: string; nome: string }, chave: string) {
-  const p = PrimeiroAdminEntrada.safeParse({ email: entrada.email, nome: entrada.nome || undefined });
-  if (!p.success) {
-    const nome = p.error.issues.some((i) => i.path[0] === 'nome');
-    return falha('', nome ? { nome: 'Informe o nome (2 a 80 caracteres).' } : { email: 'E-mail inválido. Confira o endereço.' });
-  }
-  const r = await executarConfig('criar_admin', (t) => criarPrimeiroAdmin(t, id, p.data, chave));
-  if (r.ok) atualizar(id);
-  return r.ok ? ({ ok: true, valor: { senha: r.valor.senha_provisoria } } as const) : r;
-}
-
-export async function redefinirSenhaAcao(id: string, chave: string) {
-  const r = await executarConfig('redefinir', (t) => redefinirSenhaPrimeiroAdmin(t, id, chave));
-  if (r.ok) atualizar(id);
-  return r.ok ? ({ ok: true, valor: { senha: r.valor.senha_provisoria } } as const) : r;
-}
-
-/** O e-mail inteiro do 1º admin vai só no `valor`: a API audita a leitura; nada de log, URL ou armazenamento. */
-export async function mostrarEmailAcao(id: string) {
-  return executarConfig('email', (t) => mostrarEmailPrimeiroAdmin(t, id));
 }
 
 export async function situacaoAcao(id: string, situacao: string, motivo: string, chave: string) {

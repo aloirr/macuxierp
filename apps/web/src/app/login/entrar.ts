@@ -16,7 +16,7 @@ export interface EstadoLogin {
   campos?: ErrosLogin;
   /** Conta bloqueada (ver `contaBloqueada`): a tela mostra o aviso e o "Recuperar a senha", sem `erro`. */
   bloqueada?: boolean;
-  /** Login aceito: o cliente grava a preferência (só com `bko`) e navega para `para`. Nunca carrega senha nem token. */
+  /** Login aceito: o cliente navega para `para`. Nunca carrega senha nem token. */
   entrou?: { destino: 'bko' | 'config'; para: string };
 }
 
@@ -43,7 +43,7 @@ async function trocaPendente(s: SessaoAberta): Promise<boolean> {
 }
 
 /**
- * Login único (T-0076): uma ação para empresa e superadmin. Quem decide o destino é a API (`bko` ou `config`); o web só navega.
+ * Login único (T-0076): uma ação para empresa e superadmin, só com e-mail e senha (ADR 0021). Quem decide o destino é a API (`bko` ou `config`); o web só navega.
  * Troca pendente (lida no `eu` do destino) leva a `/senha` no BKO ou `/config/senha` no config. Nada de senha em log.
  */
 export async function entrarAction(dados: FormData): Promise<EstadoLogin> {
@@ -56,8 +56,8 @@ export async function entrarAction(dados: FormData): Promise<EstadoLogin> {
 }
 
 async function entrar(dados: FormData): Promise<EstadoLogin> {
-  const bruto = { empresa: String(dados.get('empresa') ?? ''), email: String(dados.get('email') ?? ''), senha: String(dados.get('senha') ?? '') };
-  const v = validarComSdk(LoginEntrada, ['empresa', 'email', 'senha'], bruto);
+  const bruto = { email: String(dados.get('email') ?? ''), senha: String(dados.get('senha') ?? '') };
+  const v = validarComSdk(LoginEntrada, ['email', 'senha'], bruto);
   if (!v.ok) return { campos: v.erros };
   const r = await loginUnico(v.dados);
 
@@ -66,6 +66,7 @@ async function entrar(dados: FormData): Promise<EstadoLogin> {
   if (r.tipo === 'limite') return { erro: textoMuitasTentativas(r.retry_after_s) };
   if (r.tipo === 'recusado') return { erro: r.mensagem };
   if (r.tipo === 'indisponivel') return { erro: TEXTOS_LOGIN.indisponivel };
+  if (r.tipo === 'suspensa') return { erro: TEXTOS_LOGIN.suspensa };
   if (r.tipo === 'credencial') return { erro: TEXTOS_LOGIN.credencial };
   await gravarSessao(r.sessao);
   const destino = r.sessao.destino;

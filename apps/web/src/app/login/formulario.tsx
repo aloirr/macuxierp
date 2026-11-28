@@ -5,17 +5,16 @@ import { ComEsqueciSenha } from '@/components/esqueci-senha';
 import { CampoSenha, ResultadoAcao, useResultado, type Resultado } from '@macuxierp/ui';
 import { resultadoErro } from '@/lib/resultado-acao';
 import { TEXTOS_ESQUECI } from '@/lib/esqueci-resultado';
-import { gravarCodigoDoLogin, lerCodigoSalvo } from '@/lib/codigo-salvo';
 import { valoresIniciaisLogin } from '@/lib/login-preenchimento';
 import { primeiroVazio, TEXTOS_BLOQUEIO, TEXTOS_LOGIN as T, validarCampos, type CampoLogin, type ErrosLogin } from '@/lib/login-regras';
 import { chamarAcao, ErroVersaoNova, lerRascunho } from '@/lib/acao-versao';
 import { entrarAction, type EstadoLogin } from './entrar';
 
 const TEXTOS_LOGIN_TITULO = 'Acesse sua conta';
-export interface ValoresLogin { empresa: string; email: string; senha: string }
-const CAMPOS: readonly CampoLogin[] = ['empresa', 'email', 'senha'];
+export interface ValoresLogin { email: string; senha: string }
+const CAMPOS: readonly CampoLogin[] = ['email', 'senha'];
 
-/** Parte visual pura (testável sem DOM). Código, e-mail e senha só no estado do formulário: nunca em URL nem storage (o código, só pelo `codigo-salvo`). */
+/** Parte visual pura (testável sem DOM). E-mail e senha só no estado do formulário: nunca em URL nem storage. */
 export function VisaoLogin({ valores, erros = {}, resultado, chave = 0, bloqueada = false, aoRecuperar, pendente = false, senhaVisivel = false, aoAlternarSenha = () => undefined, aoMudar, aoEnviar }: {
   valores: ValoresLogin;
   erros?: ErrosLogin;
@@ -31,7 +30,7 @@ export function VisaoLogin({ valores, erros = {}, resultado, chave = 0, bloquead
   aoMudar?: (campo: CampoLogin, valor: string) => void;
   aoEnviar?: (f: HTMLFormElement) => void;
 }) {
-  const campo = (c: 'empresa' | 'email', tipo: 'text' | 'email', auto: string) => (
+  const campo = (c: 'email', tipo: 'email', auto: string) => (
     <label className="campo campo-login">
       <span>{T.rotulos[c]}</span>
       <input
@@ -59,7 +58,6 @@ export function VisaoLogin({ valores, erros = {}, resultado, chave = 0, bloquead
           {aoRecuperar && <button className="mx-botao botao-recuperar" type="button" onClick={aoRecuperar}>{TEXTOS_BLOQUEIO.botao}</button>}
         </>
       )}
-      {campo('empresa', 'text', 'organization')}
       {campo('email', 'email', 'username')}
       <div className="campo-senha-bloco"><CampoSenha id="login-senha" rotulo={T.rotulos.senha} nome="senha" valor={valores.senha} aoMudar={(v) => aoMudar?.('senha', v)} visivel={senhaVisivel} aoAlternar={aoAlternarSenha} erro={erros.senha} /></div>
       <button className="mx-botao" type="submit" disabled={pendente || bloqueada}>{pendente ? T.botaoEnviando : T.botao}</button>
@@ -70,7 +68,7 @@ export function VisaoLogin({ valores, erros = {}, resultado, chave = 0, bloquead
 }
 
 export function FormularioLogin({ esqueciDisponivel = false }: { esqueciDisponivel?: boolean }) {
-  const [valores, setValores] = useState<ValoresLogin>({ empresa: '', email: '', senha: '' });
+  const [valores, setValores] = useState<ValoresLogin>({ email: '', senha: '' });
   const [erros, setErros] = useState<ErrosLogin>({});
   const [resultado, chave, mostrar, limpar] = useResultado();
   const [bloqueada, setBloqueada] = useState(false);
@@ -81,21 +79,20 @@ export function FormularioLogin({ esqueciDisponivel = false }: { esqueciDisponiv
   function focar(nome: CampoLogin | undefined) {
     if (nome) (raiz.current?.querySelector(`[name="${nome}"]`) as HTMLInputElement | null)?.focus();
   }
-  // Valores iniciais (v0.3.20): o link do e-mail (fragmento), o /config sem sessão (fragmento com o código da plataforma) ou o código lembrado do BKO.
+  // Valor inicial: o e-mail do link do e-mail (fragmento `#email=…`) ou o rascunho da recarga por versão nova.
   // O fragmento sai da barra de endereço logo depois de lido; o foco abre no primeiro campo vazio.
   useEffect(() => {
-    const ini = valoresIniciaisLogin({ salvo: lerCodigoSalvo(), fragmento: window.location.hash });
-    // Depois da recarga por versão nova (lib/acao-versao.ts): empresa e e-mail voltam; lidos uma vez e apagados. A senha nunca foi guardada.
+    const ini = valoresIniciaisLogin({ fragmento: window.location.hash });
+    // Depois da recarga por versão nova (lib/acao-versao.ts): o e-mail volta; lidos uma vez e apagados. A senha nunca foi guardada.
     const rascunho = lerRascunho();
-    if (rascunho) { ini.empresa = rascunho.empresa || ini.empresa; ini.email = rascunho.email || ini.email; }
+    if (rascunho) ini.email = rascunho.email || ini.email;
     if (window.location.hash) window.history.replaceState(null, '', window.location.pathname + window.location.search);
-    setValores((v) => ({ ...v, empresa: v.empresa || ini.empresa, email: v.email || ini.email }));
-    focar(primeiroVazio(['empresa', 'email'], ini));
+    setValores((v) => ({ ...v, email: v.email || ini.email }));
+    focar(primeiroVazio(CAMPOS, ini));
   }, []);
 
   function aplicar(r: EstadoLogin) {
     if (r.entrou) {
-      gravarCodigoDoLogin(r.entrou.destino, valores.empresa);
       window.location.assign(r.entrou.para);
       return;
     }
@@ -119,7 +116,7 @@ export function FormularioLogin({ esqueciDisponivel = false }: { esqueciDisponiv
     const dados = new FormData(f);
     comecar(async () => {
       try {
-        aplicar(await chamarAcao(entrarAction, [dados], { rascunho: () => ({ empresa: valores.empresa, email: valores.email }), lancar: true }));
+        aplicar(await chamarAcao(entrarAction, [dados], { rascunho: () => ({ email: valores.email }), lancar: true }));
       } catch (e) {
         if (!(e instanceof ErroVersaoNova)) throw e; // o aviso de versão nova já está na tela (AvisoVersaoNova); aqui só solta o botão
       }
@@ -128,7 +125,7 @@ export function FormularioLogin({ esqueciDisponivel = false }: { esqueciDisponiv
 
   return (
     <div ref={raiz}>
-      <ComEsqueciSenha disponivel={esqueciDisponivel} ocultarLink={bloqueada} empresaInicial={valores.empresa} emailInicial={valores.email} cabecalho={(aberto) => <CabecalhoCartao titulo={aberto ? TEXTOS_ESQUECI.tituloPainel : TEXTOS_LOGIN_TITULO} />}>
+      <ComEsqueciSenha disponivel={esqueciDisponivel} ocultarLink={bloqueada} emailInicial={valores.email} cabecalho={(aberto) => <CabecalhoCartao titulo={aberto ? TEXTOS_ESQUECI.tituloPainel : TEXTOS_LOGIN_TITULO} />}>
         {(abrir) => (
           <VisaoLogin valores={valores} erros={erros} resultado={resultado} chave={chave} bloqueada={bloqueada} aoRecuperar={esqueciDisponivel ? abrir : undefined} pendente={pendente} senhaVisivel={senhaVisivel} aoAlternarSenha={() => setSenhaVisivel((v) => !v)} aoMudar={(c, v) => { if (c !== 'senha') setBloqueada(false); setValores((x) => ({ ...x, [c]: v })); }} aoEnviar={enviar} />
         )}

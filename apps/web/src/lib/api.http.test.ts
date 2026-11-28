@@ -73,7 +73,7 @@ describe('BFF: prova e IP do cliente (T-0050)', () => {
   it('o login único leva os dois', async () => {
     await carregarBff(SEGREDO);
     const { loginUnico } = await import('./login-unico');
-    await loginUnico({ empresa: 'AM0001', email: 'a@exemplo.invalid', senha: 'x' });
+    await loginUnico({ email: 'a@exemplo.invalid', senha: 'x' });
     expect(enviados[0]).toMatchObject({ 'x-macuxierp-bff': SEGREDO, 'x-macuxierp-ip-cliente': '203.0.113.9' });
   });
 });

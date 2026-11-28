@@ -1,5 +1,6 @@
 /** Usuários do ERP (RF-CORE-02, RN-CORE-01). */
 import { gerarSenhaTemporaria, type Perfil, type Sortear } from '@macuxierp/platform-sdk';
+import { MENSAGEM_ULTIMO_ADMIN } from '../contracts';
 
 export interface UsuarioAtual {
   id: string;
@@ -21,7 +22,7 @@ export function avaliarAlteracaoUsuario(p: {
   const eraAdminAtivo = p.atual.perfil === 'administrador' && p.atual.ativo;
   const continua = (p.alteracao.perfil ?? p.atual.perfil) === 'administrador' && (p.alteracao.ativo ?? p.atual.ativo);
   if (eraAdminAtivo && !continua && p.outrosAdministradoresAtivos < 1) {
-    return { ok: false, mensagem: 'A empresa precisa de ao menos um administrador ativo' };
+    return { ok: false, mensagem: MENSAGEM_ULTIMO_ADMIN };
   }
   return { ok: true };
 }

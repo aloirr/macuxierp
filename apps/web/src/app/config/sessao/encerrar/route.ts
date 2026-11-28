@@ -2,7 +2,7 @@ import { euPlataforma } from '@/lib/config/api';
 import { COOKIE_CONFIG_WEB, PATH_CONFIG } from '@/lib/config/constantes';
 import { ConfigNaoAutenticado } from '@/lib/config/erros';
 import { tokenConfig } from '@/lib/config/sessao';
-import { ROTA_LOGIN_SUPERADMIN } from '@/lib/rota-login';
+import { ROTA_LOGIN } from '@/lib/rota-login';
 import { redirecionar } from '@/lib/redirecionar';
 
 /**
@@ -12,12 +12,12 @@ import { redirecionar } from '@/lib/redirecionar';
  */
 export async function GET() {
   const token = await tokenConfig();
-  if (!token) return redirecionar(ROTA_LOGIN_SUPERADMIN);
+  if (!token) return redirecionar(ROTA_LOGIN);
   try {
     await euPlataforma(token);
   } catch (e) {
     if (e instanceof ConfigNaoAutenticado) {
-      const r = redirecionar(ROTA_LOGIN_SUPERADMIN);
+      const r = redirecionar(ROTA_LOGIN);
       r.cookies.delete({ name: COOKIE_CONFIG_WEB, path: PATH_CONFIG });
       return r;
     }

@@ -97,7 +97,7 @@ export const ROTULO_BAIXAR_RECEBIDOS = 'Baixar recebidos (.csv)';
 export const textoRecebidosForaDaLista = (mostrados: number, total: number): string => `Mostrando os ${mostrados} mais recentes de ${total}.`;
 
 /** Última linha do arquivo quando passou do teto: o arquivo parou nos mais recentes (texto curto, sem jargão). */
-export const textoRecebidosCortados = (naoPassaDe: number): string => `Aviso: o arquivo traz só os ${naoPassaDe} recebidos mais recentes.`;
+export const textoRecebidosCortados = (naoPassaDe: number): string => `O arquivo traz só os ${naoPassaDe} recebidos mais recentes.`;
 
 /** Caminho do arquivo completo dos recebidos (relativo à origem da API); o navegador baixa direto e a API aplica perfil e licença. */
 export const caminhoDoRecebidosCsv = (situacao?: SituacaoClienteRecebidoFdv): string =>

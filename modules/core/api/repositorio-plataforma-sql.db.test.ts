@@ -4,13 +4,30 @@
  * Sem Postgres o teste pula (falha com `MACUXI_PG_EXIGIR=1`). Local: `bash db/scripts/pg-local.sh`.
  */
 import { randomUUID } from 'node:crypto';
-import { cnpjValido, ErroApi, MENSAGEM_CODIGO_RESERVADO, type Transacao } from '@macuxierp/platform-sdk';
+import { cnpjValido, ErroApi, erros, MENSAGEM_CODIGO_RESERVADO, type Transacao } from '@macuxierp/platform-sdk';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { CnpjAlterado, EVENTO_CNPJ_ALTERADO, MENSAGENS_BLOQUEIO_CNPJ, ROTAS_FICHA, type EdicaoFicha, type FichaReceitaPlana } from '../contracts';
+import {
+  CnpjAlterado,
+  EVENTO_CNPJ_ALTERADO,
+  ListaUsuariosConfig,
+  MENSAGEM_ULTIMO_ADMIN,
+  MENSAGENS_BLOQUEIO_CNPJ,
+  ROTAS_FICHA,
+  UsuarioConfig,
+  UsuarioConfigComSenha,
+  type EdicaoFicha,
+  type FichaReceitaPlana,
+} from '../contracts';
 import { MANIFESTOS_TESTE } from './manifestos-teste';
 import { criarPluginPlataformaCore } from './plataforma';
 import { RepositorioPlataformaSql } from './repositorio-plataforma-sql';
+
+/** O corpo do 409 do SDK (`erros.emailEmUso()`), sem repetir o texto. */
+const corpoEmailEmUso = (): object => {
+  const e = erros.emailEmUso();
+  return { status: e.status, codigo: e.codigo, message: e.message, campos: e.campos, detalhes: e.detalhes };
+};
 
 const HASH = '$argon2id$v=19$m=65536,t=3,p=4$c2FsdGZpY3RpY2lv$aGFzaGZpY3RpY2lv';
 const SA = '5a000000-0000-4000-8000-0000000000c1';
@@ -353,6 +370,56 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
     const lista = await chamar('GET', '/empresas', { consulta: { busca: 'portal-core' } });
     expect((lista.corpo as { itens: { id: string }[] }).itens.map((x) => x.id)).toContain(id);
     const nf = await chamar('GET', '/empresas/:id', { params: { id: randomUUID() } }).catch((x: unknown) => x);
+    expect((nf as ErroApi).status).toBe(404);
+  });
+
+  it('v0.3.30 (0079, RN-CORE-18): o mesmo e-mail em duas empresas = 409 email_em_uso, no criar usuário e no 1º admin', async () => {
+    const a = await criarTenant(b.admin, `portal-eml-${randomUUID().slice(0, 8)}`, ['core']);
+    const c2 = await criarTenant(b.admin, `portal-eml-${randomUUID().slice(0, 8)}`, ['core']);
+    const corpo = { nome: 'Dora Dupla', email: 'dora.dupla@exemplo.com.br', perfil: 'faturista' };
+    expect((await chamar('POST', '/empresas/:id/usuarios', { params: { id: a }, corpo }, true)).status).toBe(201);
+    const e1 = await chamar('POST', '/empresas/:id/usuarios', { params: { id: c2 }, corpo }).catch((x: unknown) => x);
+    expect(e1).toMatchObject(corpoEmailEmUso());
+    const e2 = await chamar('POST', '/empresas/:id/primeiro-admin', { params: { id: c2 }, corpo: { email: 'DORA.dupla@exemplo.com.br' } }).catch((x: unknown) => x);
+    expect(e2).toMatchObject(corpoEmailEmUso());
+  });
+
+  it('v0.3.28 (0078): Usuários na Config — criar, listar mascarado, travar o último admin, inativar, reativar e excluir', async () => {
+    const id = await criarTenant(b.admin, `portal-usu-${randomUUID().slice(0, 8)}`, ['core']);
+    const P = (usuario?: string): Record<string, string> => (usuario ? { id, usuario } : { id });
+    const adm = await chamar('POST', '/empresas/:id/usuarios', { params: P(), corpo: { nome: 'Ana Admin', email: 'ana@exemplo.com.br', perfil: 'administrador' } }, true);
+    expect(adm.status).toBe(201);
+    const { usuario: a, senha_provisoria } = UsuarioConfigComSenha.parse(adm.corpo);
+    expect(senha_provisoria.length).toBeGreaterThan(8);
+    expect([a.email_mascarado, a.ultimo_admin_ativo, a.acoes]).toEqual(['an****@exemplo.com.br', true, ['editar', 'redefinir_senha', 'inativar']]);
+    // RN-CORE-01: a API recusa antes do banco; e o banco recusa sozinho (MXU01 → 422) quando a API é contornada.
+    const e1 = await chamar('POST', '/empresas/:id/usuarios/:usuario/excluir', { params: P(a.id) }).catch((x: unknown) => x);
+    expect([(e1 as ErroApi).status, (e1 as ErroApi).message]).toEqual([422, MENSAGEM_ULTIMO_ADMIN]);
+    const e2 = await comPlataforma((tx) => new RepositorioPlataformaSql().mudarSituacaoUsuario(tx, { id, usuario: a.id, acao: 'inativar', request_id: randomUUID() })).catch((x: unknown) => x);
+    expect((e2 as ErroApi).status).toBe(422);
+    // RN-CORE-17: e-mail em uso = 409; inativar é reversível; excluir libera o e-mail.
+    const fat = UsuarioConfigComSenha.parse((await chamar('POST', '/empresas/:id/usuarios', { params: P(), corpo: { nome: 'Bia Fat', email: 'bia@exemplo.com.br', perfil: 'faturista' } }, true)).corpo).usuario;
+    const rep = await chamar('POST', '/empresas/:id/usuarios', { params: P(), corpo: { nome: 'Outra', email: 'BIA@exemplo.com.br', perfil: 'fiscal' } }).catch((x: unknown) => x);
+    expect((rep as ErroApi).status).toBe(409);
+    const ina = UsuarioConfig.parse((await chamar('POST', '/empresas/:id/usuarios/:usuario/inativar', { params: P(fat.id) }, true)).corpo);
+    expect([ina.situacao, ina.acoes]).toEqual(['inativo', ['editar', 'reativar', 'excluir']]);
+    const lista = ListaUsuariosConfig.parse((await chamar('GET', '/empresas/:id/usuarios', { params: P() })).corpo);
+    expect(lista.itens.map((u) => [u.nome, u.situacao])).toEqual([['Ana Admin', 'ativo'], ['Bia Fat', 'inativo']]);
+    expect(JSON.stringify(lista)).not.toContain('bia@');
+    expect(UsuarioConfig.parse((await chamar('POST', '/empresas/:id/usuarios/:usuario/reativar', { params: P(fat.id) }, true)).corpo).situacao).toBe('ativo');
+    const editado = UsuarioConfig.parse((await chamar('PATCH', '/empresas/:id/usuarios/:usuario', { params: P(fat.id), corpo: { perfil: 'administrador' } }, true)).corpo);
+    expect(editado.perfil).toBe('administrador');
+    // Com dois administradores, o Excluir volta ao menu e sai (deleted_at): some da lista e o e-mail pode voltar.
+    expect((await chamar('POST', '/empresas/:id/usuarios/:usuario/excluir', { params: P(fat.id) }, true)).corpo).toEqual({ id: fat.id, situacao: 'excluido' });
+    const depois = ListaUsuariosConfig.parse((await chamar('GET', '/empresas/:id/usuarios', { params: P() })).corpo);
+    expect(depois.itens.map((u) => u.id)).toEqual([a.id]);
+    expect((await chamar('POST', '/empresas/:id/usuarios', { params: P(), corpo: { nome: 'Bia de Volta', email: 'bia@exemplo.com.br', perfil: 'fiscal' } })).status).toBe(201);
+    // Redefinir senha: provisória só na resposta, troca obrigatória no próximo acesso.
+    const r = UsuarioConfigComSenha.parse((await chamar('POST', '/empresas/:id/usuarios/:usuario/senha', { params: P(a.id) })).corpo);
+    expect(r.usuario.deve_trocar_senha).toBe(true);
+    // Usuário de outro tenant = 404.
+    const outro = await criarTenant(b.admin, `portal-usu-${randomUUID().slice(0, 8)}`, ['core']);
+    const nf = await chamar('POST', '/empresas/:id/usuarios/:usuario/senha', { params: { id: outro, usuario: a.id } }).catch((x: unknown) => x);
     expect((nf as ErroApi).status).toBe(404);
   });
 });

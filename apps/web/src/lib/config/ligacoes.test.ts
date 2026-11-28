@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { IntegracaoFdvPlataforma, LoteEntradaResumo, MonitorConectorFdv, PortalEntradaLeitura } from '@macuxierp/platform-sdk';
 import {
   APOIO_INDISPONIVEL, LIGACAO_ENTRADA, LIGACAO_SAIDA, ROTULO_DESTINO_FDV, ROTULO_FORCA_VENDAS, SITUACAO_INDISPONIVEL, SITUACAO_RECEBENDO, SITUACAO_SEM_ENVIO,
-  fichaEntrada, fichaSaida, origemDaCarga, ultimoLoteDoCadastro,
+  fichaEntrada, fichaSaida, ultimoLoteDoCadastro,
 } from './ligacoes';
 
 const FUSO = 'America/Manaus';
@@ -66,11 +66,5 @@ describe('aba Dados: Cadastros recebidos (último lote por cadastro e origem)', 
     expect(ultimoLoteDoCadastro(lotes, 'condicao_pagamento')).toMatchObject({ entidade: 'prazo_pagamento', recebidos: 7 });
     expect(ultimoLoteDoCadastro(lotes, 'cliente')).toMatchObject({ entidade: 'cliente_endereco', com_erro: 3 });
     expect(ultimoLoteDoCadastro(lotes, 'produto')).toBeNull();
-  });
-  it('origem: Automática (lote) ou Planilha (CSV), a mais recente; sem nada, null', () => {
-    expect(origemDaCarga(null, null)).toBeNull();
-    expect(origemDaCarga('2026-11-27T09:00:00.000Z', null)).toBe('Planilha');
-    expect(origemDaCarga('2026-11-27T09:00:00.000Z', lotes[0]!)).toBe('Automática');
-    expect(origemDaCarga('2026-11-27T12:00:00.000Z', lotes[0]!)).toBe('Planilha');
   });
 });

@@ -1,6 +1,7 @@
 /**
  * Login, refresh rotativo e saída (desenho T-0002, seção 2, "Plataforma"):
- * - login por empresa (slug), e-mail e senha (D2); argon2id; bloqueio sem prazo após 5 falhas (só a temporária ou o --destravar liberam);
+ * - login por e-mail e senha (ADR 0021: e-mail único no sistema, sem o código da empresa; a conta sai da
+ *   `conta_por_email`); argon2id; bloqueio sem prazo após 5 falhas (só a temporária ou o --destravar liberam);
  * - JWT de acesso de 15 min + refresh rotativo (cookie httpOnly, posto pela rota);
  * - refresh reutilizado (já revogado) revoga a família inteira;
  * - troca da própria senha (T-0052, RN-CORE-10): a senha provisória (`deve_trocar_senha`) vai no JWT de acesso e o
@@ -16,7 +17,9 @@
  *   dispensa de informar a senha atual. A troca zera as duas colunas da temporária no mesmo UPDATE. Estas regras valem
  *   também para o superadmin (`plataforma/servico.ts`).
  * - pedido (`esqueci`): ordem e regras em `auth/esqueci.ts`.
- * Mensagem de falha única ("empresa, e-mail ou senha inválidos"), sem dizer qual campo errou.
+ * Mensagem de falha única (`MENSAGEM_LOGIN_INVALIDO` do SDK), sem dizer qual campo errou. Empresa suspensa: 403
+ * `EMPRESA_SUSPENSA` só depois de a senha conferir, sem sessão (ADR 0021 §3). E-mail só de superadmin: o login devolve
+ * `DESVIO_SUPERADMIN` e a rota segue pelo `ServicoPlataforma` (§5 e §7, opção A: o usuário de empresa vem primeiro).
  */
 import { randomBytes, randomUUID } from 'node:crypto';
 import {
@@ -38,7 +41,7 @@ import { emitirTokenAcesso, type SessaoAcesso } from './jwt';
 import type { RepositorioAuth, SessaoRefresh, UsuarioAuth } from './portas';
 import { ARGON2_PADRAO, conferirSenha, gerarHashSenha, type ParametrosArgon2 } from './senha';
 import type { MensagemEmail } from '../email/porta';
-import { chaveEmpresaEmail, TravaContaMemoria } from '../plataforma/limite-ip';
+import { chaveEmail, TravaContaMemoria } from '../plataforma/limite-ip';
 import { custoTemporariaDescartada, emitirTemporaria, lerMarcaTemporaria, marcaTemporaria, mensagemSenhaTemporaria } from './senha-temporaria';
 import type { TrocaPendente } from './troca-senha';
 
@@ -62,12 +65,21 @@ export interface ResultadoLogin {
   expira_em: Date;
   refresh: string;
   refresh_expira_em: Date;
+  /** Tenant da sessão aberta (só para o log da rota; não vai no corpo). */
+  tenant_id: string;
   /** `LoginResposta.desbloqueou` do SDK (RN-CORE-15). */
   desbloqueou?: true;
 }
 
-/** Mensagem única do 401 do login (tenant e, pela tela única, o superadmin): não diz qual campo errou. */
-export const FALHA_LOGIN = 'Empresa, e-mail ou senha inválidos';
+/**
+ * O e-mail é só de superadmin (ADR 0021 §5 e §7): o `ServicoAuth` não confere nada e a rota segue pelo
+ * `ServicoPlataforma` (cookie do `/config`), que paga o argon2 e a trava dele.
+ */
+export const DESVIO_SUPERADMIN = 'superadmin' as const;
+export type DesvioSuperadmin = typeof DESVIO_SUPERADMIN;
+
+/** Saída de dentro da transação do login, devolvida (não lançada) para a falha gravada não ser desfeita. */
+type SaidaLogin = Recusa | ResultadoLogin | { suspensa: true; conferencias: number } | null;
 
 /** 400 `VALIDACAO` da senha atual errada na troca (tenant e superadmin): `campos.senha_atual` com o texto da marca. */
 export const erroSenhaAtualIncorreta = (): ErroApi => erros.validacao({ senha_atual: MENSAGEM_SENHA_ATUAL_INCORRETA });
@@ -117,19 +129,27 @@ export class ServicoAuth {
   }
 
   /**
-   * Login do tenant (RN-CORE-15, T-0111; decisão R-20261126-175321): a decisão é a `decidirEntrada` (apoio-login.ts), a
-   * mesma do superadmin. A conta que não existe trava pela memória (empresa + e-mail); o 423 e o custo saem iguais. O
-   * `operador.sh --destravar` (banco) vale na hora.
+   * Login pela tela única (ADR 0021; RN-CORE-15, T-0111; decisão R-20261126-175321): a conta sai da `conta_por_email`
+   * (sem tenant na transação) e a decisão é a `decidirEntrada` (apoio-login.ts), a mesma do superadmin.
+   * - sem conta (e-mail inexistente, empresa encerrada, usuário inativo): a trava em memória por e-mail (`chaveEmail`) e o
+   *   mesmo custo de argon2 da conta que existe; 401 `MENSAGEM_LOGIN_INVALIDO`;
+   * - empresa suspensa: a senha é conferida primeiro; certa = 403 `EMPRESA_SUSPENSA` sem sessão (nem consumo da
+   *   temporária, nem `ultimo_acesso_em`); errada = a falha de sempre (401, conta na trava);
+   * - só superadmin com o e-mail: `DESVIO_SUPERADMIN`, sem argon2 aqui (a rota chama o `ServicoPlataforma`).
+   * O `operador.sh --destravar` (banco) vale na hora.
    */
-  async entrar(entrada: { empresa: string; email: string; senha: string }, limite?: () => ErroApi): Promise<ResultadoLogin> {
+  async entrar(entrada: { email: string; senha: string }, limite?: () => ErroApi): Promise<ResultadoLogin | DesvioSuperadmin> {
     const agora = this.relogio.agora();
-    const chave = chaveEmpresaEmail(entrada.empresa, entrada.email);
-    const semConta = () => this.custoIgual.recusarSemConta(entrada.senha, this.travaConta, chave, () => erros.naoAutenticado(FALHA_LOGIN), limite);
-    const tenantId = await this.banco.semTenant((tx) => this.repo.tenantIdPorSlug(tx, entrada.empresa.trim().toLowerCase()));
-    if (!tenantId) return semConta();
+    const email = entrada.email.trim().toLowerCase();
+    const falha = erros.loginInvalido;
+    const semConta = () => this.custoIgual.recusarSemConta(entrada.senha, this.travaConta, chaveEmail(email), falha, limite);
+    const conta = await this.banco.semTenant((tx) => this.repo.contaPorEmail(tx, email));
+    if (conta?.tipo === 'superadmin') return DESVIO_SUPERADMIN;
+    if (!conta) return semConta();
+    const { tenant_id: tenantId, suspensa } = conta;
     // A recusa é devolvida, não lançada, dentro da transação: o erro desfaria a contagem de falhas gravada.
-    const r = await this.banco.comTenant(tenantId, async (tx): Promise<Recusa | ResultadoLogin | null> => {
-      const usuario = await this.repo.usuarioPorEmail(tx, entrada.email.trim().toLowerCase());
+    const r = await this.banco.comTenant(tenantId, async (tx): Promise<SaidaLogin> => {
+      const usuario = await this.repo.usuarioPorEmail(tx, email);
       if (!usuario || !usuario.ativo) return null;
       const { resultado, fimTemporaria, conferencias } = await this.custoIgual.decidirEntrada(entrada.senha, usuario, agora, limite !== undefined);
       if (resultado === 'bloqueada') return { recusa: 'bloqueada', conferencias };
@@ -139,6 +159,8 @@ export class ServicoAuth {
         await this.registrarFalha(tx, usuario, agora);
         return { recusa: 'falha', conferencias };
       }
+      // ADR 0021 §3: a senha (ou a temporária) conferiu; com a empresa suspensa, nada muda na conta e não há sessão.
+      if (suspensa) return { suspensa: true, conferencias };
       if (fimTemporaria) {
         // Uso único (zera falhas_login e bloqueado_ate): só abre a sessão se o consumo atômico devolveu true.
         if (!(await this.repo.consumirTemporaria(tx, usuario.id))) return { recusa: 'falha', conferencias };
@@ -150,41 +172,46 @@ export class ServicoAuth {
       return this.abrirSessao(tx, usuario, randomUUID(), agora);
     });
     if (r === null) return semConta();
-    if ('recusa' in r) return this.custoIgual.recusarConta(entrada.senha, r, () => erros.naoAutenticado(FALHA_LOGIN), limite);
+    if ('suspensa' in r) return this.custoIgual.recusar(entrada.senha, r.conferencias, erros.empresaSuspensa);
+    if ('recusa' in r) return this.custoIgual.recusarConta(entrada.senha, r, falha, limite);
     return r;
   }
 
   /**
-   * Pedido de senha temporária (T-0076). O argon2 roda antes de saber se a conta existe. Quem decide se grava é o
-   * `avaliarPedidoSenhaEsquecida` do core (RN-CORE-13) e quem grava é o `emitirSenhaTemporaria` do `RepositorioCore`, na
-   * transação do tenant. Devolve a mensagem de e-mail (só se gravou) para a rota agendar depois da resposta; `aoGravar`
-   * roda na mesma transação (a auditoria).
+   * Pedido de senha temporária pela tela de login (T-0076; ADR 0021 §4): a conta sai da `conta_por_email`, sem empresa.
+   * Só superadmin com o e-mail = `DESVIO_SUPERADMIN` (a rota chama o `ServicoPlataforma.esqueci`, que paga o argon2 dele).
+   * Senão o argon2 da temporária roda sempre, exista ou não a conta. Quem decide se grava é o
+   * `avaliarPedidoSenhaEsquecida` do core (RN-CORE-13; empresa suspensa não recebe) e quem grava é o
+   * `emitirSenhaTemporaria` do `RepositorioCore`, na transação do tenant. Devolve a mensagem de e-mail (só se gravou),
+   * sem o código da empresa, para a rota agendar depois da resposta; `aoGravar` roda na mesma transação (a auditoria).
    */
   async esqueci(
-    entrada: { empresa: string; email: string },
+    entrada: { email: string },
     repoCore: Pick<RepositorioCore, 'emitirSenhaTemporaria'>,
     aoGravar: (tx: Transacao, conta: { tenant_id: string; usuario_id: string }) => Promise<void>,
     log?: LogEsqueci,
-  ): Promise<MensagemEmail | null> {
-    const temporaria = await emitirTemporaria(this.cfg.argon2, this.relogio.agora());
+  ): Promise<MensagemEmail | null | DesvioSuperadmin> {
     const email = entrada.email.trim().toLowerCase();
-    // `tenant_por_slug` só devolve o tenant ativo: empresa suspensa, encerrada ou inexistente = nada a avaliar nem gravar.
-    const tenantId = await this.banco.semTenant((tx) => this.repo.tenantIdPorSlug(tx, entrada.empresa.trim().toLowerCase()));
-    if (!tenantId) {
-      registrarSemEnvio(log, 'empresa_inexistente_ou_suspensa');
+    const conta = await this.banco.semTenant((tx) => this.repo.contaPorEmail(tx, email));
+    if (conta?.tipo === 'superadmin') return DESVIO_SUPERADMIN;
+    const temporaria = await emitirTemporaria(this.cfg.argon2, this.relogio.agora());
+    if (!conta) {
+      registrarSemEnvio(log, 'conta_inexistente_ou_inativa');
       return null;
     }
-    const gravou = await this.banco.comTenant(tenantId, async (tx) => {
+    const tenantId = conta.tenant_id;
+    const r = await this.banco.comTenant(tenantId, async (tx) => {
       const usuario = await this.repo.usuarioPorEmail(tx, email);
-      // `usuarioPorEmail` já exclui `deleted_at`; o tenant achado pelo slug está ativo.
-      const avaliacao = avaliarPedidoSenhaEsquecida(usuario && { ativo: usuario.ativo, excluido: false }, { situacao: 'ativo' });
-      if (!usuario || !avaliacao.enviar) return false;
+      // `usuarioPorEmail` já exclui `deleted_at`; a empresa encerrada não tem conta e a suspensa o core recusa.
+      const avaliacao = avaliarPedidoSenhaEsquecida(usuario && { ativo: usuario.ativo, excluido: false }, { situacao: conta.suspensa ? 'suspenso' : 'ativo' });
+      if (!avaliacao.enviar) return avaliacao.motivo;
+      if (!usuario) return 'usuario_inexistente';
       await repoCore.emitirSenhaTemporaria(tx, usuario.id, temporaria.hash, temporaria.expira_em);
       await aoGravar(tx, { tenant_id: tenantId, usuario_id: usuario.id });
-      return true;
+      return 'gravou' as const;
     });
-    if (gravou) return mensagemSenhaTemporaria(email, temporaria.senha, entrada.empresa.trim().toUpperCase());
-    registrarSemEnvio(log, 'conta_inexistente_ou_inativa');
+    if (r === 'gravou') return mensagemSenhaTemporaria(email, temporaria.senha);
+    registrarSemEnvio(log, r === 'empresa_inativa' ? 'empresa_inexistente_ou_suspensa' : 'conta_inexistente_ou_inativa');
     return null;
   }
 
@@ -280,7 +307,7 @@ export class ServicoAuth {
     };
     await this.repo.criarSessao(tx, linha);
     const acesso = emitirTokenAcesso(sessao, this.cfg.jwtSegredo, agora, this.cfg.acessoSegundos);
-    return { token_acesso: acesso.token, expira_em: acesso.expira_em, refresh, refresh_expira_em: linha.expira_em };
+    return { token_acesso: acesso.token, expira_em: acesso.expira_em, refresh, refresh_expira_em: linha.expira_em, tenant_id: u.tenant_id };
   }
 
   private async registrarFalha(tx: Transacao, u: UsuarioAuth, agora: Date): Promise<void> {
@@ -291,5 +318,4 @@ export class ServicoAuth {
     await this.repo.registrarFalha(tx, u.id, trava ? 0 : falhas, trava);
   }
 
-  /** Confere contra um hash falso para o tempo de resposta não revelar se a empresa ou o e-mail existem. */
 }

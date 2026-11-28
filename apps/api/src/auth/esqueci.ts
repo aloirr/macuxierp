@@ -1,9 +1,9 @@
 /**
- * Peças comuns das rotas do "Esqueci a senha" (T-0076): `POST /v1/auth/esqueci` (tenant e MACUXI) e
+ * Peças comuns das rotas do "Esqueci a senha" (T-0076): `POST /v1/auth/esqueci` (tenant e superadmin, pelo e-mail) e
  * `POST /v1/plataforma/auth/esqueci` (portal `/config`).
  * - Ordem: limite por IP (429, só anti-spam; sem limite por conta desde o hotfix v0.3.16.1) → corpo (400) → banco e argon2 → 202 neutro → e-mail, só depois
  *   da resposta (hook `onResponse` da rota + `agendarEnvioEmail`). O 429 é igual para conta que existe ou não.
- * - Os limites são os mesmos objetos nas duas rotas (um por processo): o MACUXI da tela única e o `/config` somam juntos.
+ * - Os limites são os mesmos objetos nas duas rotas (um por processo): o superadmin da tela única e o `/config` somam juntos.
  * - As rotas ficam sempre montadas. Sem a porta de e-mail (`envio: null`), o pedido segue a mesma ordem até o limite por
  *   IP e responde o mesmo 202 neutro, com o mesmo custo de argon2 (`esqueciSemEnvio` dos serviços, que chama
  *   `custoTemporariaDescartada`), sem tocar o banco, sem gravar temporária e sem enviar nada; a situação diz

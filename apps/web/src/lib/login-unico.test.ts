@@ -1,3 +1,4 @@
+import { CODIGO_EMPRESA_SUSPENSA, MENSAGEM_EMPRESA_SUSPENSA } from '@macuxierp/platform-sdk';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 let resposta: () => Response;
@@ -22,10 +23,10 @@ beforeEach(() => {
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.doUnmock('next/headers'); });
 const json = (c: unknown, s = 200, cookie?: string) => new Response(JSON.stringify(c), { status: s, headers: cookie ? { 'set-cookie': cookie } : {} });
-const entrada = { empresa: 'AM2808', email: 'a@b.co', senha: 'x' };
+const entrada = { email: 'a@b.co', senha: 'x' };
 
 describe('login único (SDK): POST /v1/auth/login, destino pela API', () => {
-  it('uma rota só, com { empresa, email, senha }', async () => {
+  it('uma rota só, com { email, senha } (sem empresa, ADR 0021)', async () => {
     const entrar = await carregar();
     resposta = () => json({ destino: 'bko', token_acesso: 't1', expira_em: '2026-11-23T20:00:00.000Z' }, 200, 'macuxierp_refresh=r1; Path=/; HttpOnly');
     await entrar(entrada);
@@ -58,10 +59,12 @@ describe('login único (SDK): POST /v1/auth/login, destino pela API', () => {
     resposta = () => json({ destino: 'config', expira_em: '2026-11-23T20:00:00.000Z', token_acesso: 'vazou' }, 200, 'macuxierp_config=tok; Path=/');
     expect(await entrar(entrada)).toEqual({ tipo: 'indisponivel' });
   });
-  it('401 e 403: neutro; 429 com o prazo (limite por IP, não é bloqueio); 423 conta bloqueada; 400 com campos; 5xx e rede: indisponível', async () => {
+  it('401 e 403: neutro (403 EMPRESA_SUSPENSA vira suspensa); 429 com o prazo (limite por IP, não é bloqueio); 423 conta bloqueada; 400 com campos; 5xx e rede: indisponível', async () => {
     const entrar = await carregar();
     resposta = () => json({ codigo: 'NAO_AUTENTICADO' }, 401);
     expect(await entrar(entrada)).toEqual({ tipo: 'credencial' });
+    resposta = () => json({ codigo: CODIGO_EMPRESA_SUSPENSA, mensagem: MENSAGEM_EMPRESA_SUSPENSA }, 403);
+    expect(await entrar(entrada)).toEqual({ tipo: 'suspensa' });
     resposta = () => json({ codigo: 'PERFIL_SEM_PERMISSAO' }, 403);
     expect(await entrar(entrada)).toEqual({ tipo: 'credencial' });
     resposta = () => json({ codigo: 'MUITAS_TENTATIVAS', mensagem: 'x', detalhes: { retry_after_s: 420 } }, 429);
@@ -95,11 +98,5 @@ describe('login único (SDK): POST /v1/auth/login, destino pela API', () => {
     expect(await entrar(entrada)).toEqual({ tipo: 'indisponivel' });
     expect(log).toHaveBeenCalledTimes(2);
     log.mockRestore();
-  });
-  it('o web não compara o código com nenhum valor reservado', async () => {
-    const { readFileSync } = await import('node:fs');
-    for (const f of ['./login-unico.ts', './login-regras.ts', '../app/login/entrar.ts', '../app/login/formulario.tsx']) {
-      expect(readFileSync(new URL(f, import.meta.url), 'utf8')).not.toMatch(/MACUXI\b|CODIGO_SUPERADMIN_LOGIN/);
-    }
   });
 });

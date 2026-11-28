@@ -23,17 +23,18 @@ describe('aba Dados (T-0058, T-0086)', () => {
     expect(h.indexOf('data-resultado-acao')).toBeGreaterThan(fim);
     expect(h.slice(0, h.indexOf('<table'))).not.toMatch(/faixa-aviso|class="erro"/);
   });
-  it('uma tabela só: uma linha por cadastro com situação, última carga (data, hora, registros), origem e Importar à vista (o Modelo vai ao menu "Ações")', () => {
+  it('uma tabela só: uma linha por cadastro com situação, última carga (data, hora, registros) e Importar à vista (o Modelo vai ao menu "Ações")', () => {
     const h = aba();
     expect(h.match(/<tr[^>]*data-/g) ?? h.match(/<tbody>[\s\S]*<\/tbody>/)).toBeTruthy();
-    for (const t of ['Cadastro', 'Situação', 'Última carga', 'Registros', 'Com erro', 'Origem', 'Ações', 'Importar']) expect(h).toContain(`>${t}<`);
+    for (const t of ['Cadastro', 'Situação', 'Última carga', 'Registros', 'Com erro', 'Ações', 'Importar']) expect(h).toContain(`>${t}<`);
+    expect(h).not.toContain('>Origem<'); // a Origem saiu das colunas, sem esconder por CSS
     expect(h).not.toContain('>Modelo<'); // o Modelo vai para o menu "Ações" (T-0099)
     expect(h).toContain('>Filiais<');
     expect(h).toMatch(/color:var\(--mx-cor-verde-sucesso\)[^"]*"[^>]*>Carregado<\/span>/);
     expect(h).toMatch(/color:var\(--mx-cor-aviso-texto\)[^"]*"[^>]*>2 com erro<\/span>/);
     expect(h).toMatch(/color:var\(--mx-cor-texto-secundario\)[^"]*"[^>]*>Não carregado<\/span>/);
     expect(h).toContain('23/11/2026 14:39 · 1 registro');
-    expect(h).toContain('>Planilha<');
+    expect(h).not.toContain('>Planilha<'); // sem a coluna Origem
     expect(h).not.toContain('>CSV<');
     expect(h.match(/>Importar<\/button>/g)).toHaveLength(CADASTROS_CARGA_PORTAL.length);
     expect(h.match(/aria-haspopup="menu"/g)).toHaveLength(CADASTROS_CARGA_PORTAL.length);
@@ -44,7 +45,7 @@ describe('aba Dados (T-0058, T-0086)', () => {
   it('sai da tela: Zerar dados, lista de cargas antiga e "Cargas" no título', () => {
     const h = aba();
     expect(h).not.toContain('>Dados<');
-    expect(h).toContain('>Ações<');
+    expect(h).toContain('aria-label="Ações de '); // o gatilho da linha, com ou sem a seta ▾
     expect(h).not.toContain('Zerar');
     expect(h).not.toContain('lista-cargas');
     expect(h).not.toContain('>Cargas<');
@@ -56,23 +57,24 @@ describe('aba Dados (T-0058, T-0086)', () => {
     expect(h).toContain('Unidades (opcional)');
     expect(h).not.toContain('(opcional).');
   });
-  it('v0.3.24: seção "Sistema do cliente → ERP" com a legenda "Cadastros recebidos"; Registros e Com erro do último lote; sem integração, sem a seção de envio', () => {
+  it('v0.3.24: tabela da ligação "Sistema do cliente → ERP" com a legenda "Cadastros recebidos"; Registros e Com erro do último lote; sem integração, sem a seção de envio', () => {
     const h = aba();
-    expect(h).toMatch(/<h2 id="h-dados-entrada">Sistema do cliente <span class="seta" aria-hidden="true">→<\/span><span class="sr-only"> para o <\/span> ERP<\/h2>/);
+    expect(h).not.toContain('<h2'); // o título da ligação é do cartão (ligacao.tsx), não da tabela
     expect(h).toMatch(new RegExp(`<caption[^>]*>${LEGENDA_RECEBIDOS}</caption>`));
     expect(h).not.toContain('Cargas por cadastro');
     expect(h).not.toContain('h-dados-saida');
     const lote = { lote_id: EMP, entidade: 'produto', modo: 'delta', status: 'concluido_com_erros', recebidos: 40, com_erro: 2, recebido_em: '2026-11-27T14:00:00.000Z', concluido_em: null };
     const com = renderToStaticMarkup(<AbaDados empresaId={EMP} dados={dados} fuso="America/Manaus" entrada={{ credenciais: [], ultimo_sinal: null, lotes: [lote] } as never} />);
     const produtos = com.slice(com.indexOf('>Produtos<'), com.indexOf('</tr>', com.indexOf('>Produtos<')));
-    expect(produtos).toMatch(/>40<[\s\S]*>2<[\s\S]*>Automática</);
+    expect(produtos).toMatch(/>40<[\s\S]*>2</);
+    expect(produtos).not.toContain('Automática');
   });
   it('sem dados da API: erro com o link "Recarregar" para a aba Dados (RD-2317)', () => {
     const h = aba(null);
     expect(h).toContain('Não foi possível carregar os dados');
     expect(h).toContain('>Recarregar</a>');
     expect(h).not.toContain('Tentar de novo');
-    expect(h).toContain('?aba=dados');
+    expect(h).toContain('?aba=integracao');
   });
 });
 
@@ -187,14 +189,14 @@ describe('endereços inativados (T-0070)', () => {
 
 
 describe('v0.3.23: aba Dados no celular (390) esconde as colunas certas', () => {
-  it('#840: a regra por posição esconde Última carga, Registros, Com erro e Origem (a última carga sobe para sob o nome), na ordem real das colunas', async () => {
+  it('#840: a regra por posição esconde Última carga, Registros e Com erro (a última carga sobe para sob o nome), na ordem real das colunas', async () => {
     const { readFileSync } = await import('node:fs');
     const { join } = await import('node:path');
     const css = readFileSync(join(__dirname, '../../../../globals.css'), 'utf8');
     const regra = /\.tabela-dados th:nth-child\(\d\)[^{]*\{ display: none; \}/.exec(css)?.[0] ?? '';
     const ocultas = [...new Set([...regra.matchAll(/nth-child\((\d)\)/g)].map((m) => Number(m[1])))];
     const cabecalho = [...aba().matchAll(/<th[^>]*>([\s\S]*?)<\/th>/g)].map((m) => m[1]!.replace(/<[^>]+>/g, '').trim());
-    expect(ocultas.map((n) => cabecalho[n - 1])).toEqual(['Última carga', 'Registros', 'Com erro', 'Origem']);
+    expect(ocultas.map((n) => cabecalho[n - 1])).toEqual(['Última carga', 'Registros', 'Com erro']);
     expect(cabecalho.slice(0, 3)).toEqual(['Cadastro', 'Situação', 'Última carga']);
     expect(aba()).toContain('<span class="carga-sob-nome">Última carga: ');
     expect(css).toMatch(/\.envio-sob-nome, \.carga-sob-nome \{ display: none; \}/);

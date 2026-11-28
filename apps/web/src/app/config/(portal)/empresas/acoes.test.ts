@@ -12,11 +12,10 @@ vi.mock('next/navigation', () => ({
 }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
-import { mostrarEmailAcao, criarAdminAcao, criarEmpresaAcao, redefinirSenhaAcao, situacaoAcao, alterarModulosAcao, maisEmpresasAcao } from './acoes';
+import { criarEmpresaAcao, situacaoAcao, alterarModulosAcao, maisEmpresasAcao } from './acoes';
 import { FALHA } from '@/lib/textos';
 
 const ID = '11111111-1111-4111-8111-111111111111';
-const SENHA = 'Zq7-secreta-XYZ99';
 const chamadas: { url: string; metodo: string; corpo: string; h: Record<string, string> }[] = [];
 let resposta: () => Response;
 const json = (c: unknown, s = 200) => new Response(JSON.stringify(c), { status: s, headers: { 'content-type': 'application/json' } });
@@ -46,38 +45,6 @@ describe('ações do portal', () => {
     expect(r).toMatchObject({ ok: false, campos: { motivo: 'Informe o motivo (3 a 200 caracteres).' } });
     expect(chamadas).toHaveLength(0);
   });
-  it('redefinir a senha: a senha vai só no valor da resposta, com a chave, e nunca a log', async () => {
-    const log = vi.spyOn(console, 'log');
-    const erro = vi.spyOn(console, 'error');
-    resposta = () => json({ usuario_id: ID, senha_provisoria: SENHA });
-    const r = await redefinirSenhaAcao(ID, 'chave-senha');
-    expect(r).toEqual({ ok: true, valor: { senha: SENHA } });
-    expect(chamadas[0]?.h['idempotency-key']).toBe('chave-senha');
-    expect(chamadas[0]?.url).toMatch(/\/primeiro-admin\/senha$/);
-    expect(JSON.stringify([log.mock.calls, erro.mock.calls])).not.toContain(SENHA);
-  });
-  it('mostrar e-mail: POST com x-macuxierp-config, sem Idempotency-Key, e o e-mail só no valor', async () => {
-    const log = vi.spyOn(console, 'log');
-    const erro = vi.spyOn(console, 'error');
-    resposta = () => json({ email: 'admin@exemplo.com.br' });
-    const r = await mostrarEmailAcao(ID);
-    expect(r).toEqual({ ok: true, valor: { email: 'admin@exemplo.com.br' } });
-    expect(chamadas[0]).toMatchObject({ metodo: 'POST' });
-    expect(chamadas[0]?.url).toMatch(/\/primeiro-admin\/email$/);
-    expect(chamadas[0]?.h['x-macuxierp-config']).toBe('1');
-    expect(chamadas[0]?.h['idempotency-key']).toBeUndefined();
-    expect(JSON.stringify([log.mock.calls, erro.mock.calls])).not.toContain('admin@exemplo');
-  });
-  it('mostrar e-mail: erro da API vira mensagem fixa, sem corpo', async () => {
-    resposta = () => json({ mensagem: 'admin@exemplo.com.br' }, 503);
-    const r = await mostrarEmailAcao(ID);
-    expect(r).toMatchObject({ ok: false, erro: FALHA });
-    expect(JSON.stringify(r)).not.toContain('admin@');
-  });
-  it('criar administrador: e-mail inválido fica junto do campo, antes da API', async () => {
-    expect(await criarAdminAcao(ID, { email: 'sem-arroba', nome: 'Administrador' }, 'k')).toMatchObject({ ok: false, campos: { email: 'E-mail inválido. Confira o endereço.' } });
-    expect(chamadas).toHaveLength(0);
-  });
   it('criar empresa: sem código e código fora do padrão ficam junto do campo; nome vazio também; com código vai à API em maiúsculas', async () => {
     const base = { codigo: '', nome: 'Acme', fuso: 'America/Manaus' };
     const msg = 'Código fora do padrão. Veja a regra acima.';
@@ -105,11 +72,11 @@ describe('ações do portal', () => {
   });
   it('401 apaga o cookie do /config e volta ao login; sem cookie, vai direto ao login', async () => {
     resposta = () => json({}, 401);
-    await expect(situacaoAcao(ID, 'ativo', 'volta', 'k')).rejects.toThrow('REDIRECT /#codigo=MACUXI');
+    await expect(situacaoAcao(ID, 'ativo', 'volta', 'k')).rejects.toThrow('REDIRECT /');
     expect(estado.apagados).toEqual([{ name: 'mx_config', path: '/config' }]);
     estado.cookie = undefined;
     chamadas.length = 0;
-    await expect(redefinirSenhaAcao(ID, 'k')).rejects.toThrow('REDIRECT /#codigo=MACUXI');
+    await expect(situacaoAcao(ID, 'ativo', 'volta', 'k')).rejects.toThrow('REDIRECT /');
     expect(chamadas).toHaveLength(0);
   });
   it('403 e 5xx viram mensagem fixa, sem corpo da API', async () => {

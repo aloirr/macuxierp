@@ -16,7 +16,7 @@ import {
 const ID = '3f1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c70';
 const FILIAL = '8a2b4c6d-1e3f-4a5b-9c7d-0e1f2a3b4c5d';
 const usuario = (extra: Record<string, unknown> = {}) => ({
-  id: ID, nome: 'Maria Souza', email: 'maria@exemplo.com.br', perfil: 'faturista', filial_ids: [FILIAL], ativo: true, external_id: null, ultimo_acesso_em: '2026-11-24T14:05:00.000Z', updated_at: '2026-11-24T12:00:00.000Z', ...extra,
+  id: ID, nome: 'Maria Souza', email: 'maria@exemplo.com.br', perfil: 'faturista', filial_ids: [FILIAL], ativo: true, situacao: 'ativo', external_id: null, ultimo_acesso_em: '2026-11-24T14:05:00.000Z', updated_at: '2026-11-24T12:00:00.000Z', ...extra,
 });
 const ids = (as: readonly AcaoVista[]) => as.map((a) => a.id);
 const MODULOS = [{ id: 'core' as const, menus: ['Empresa', 'Usuários e perfis'] }];
@@ -55,8 +55,10 @@ describe('usuários: colunas, filtros e CSV', () => {
     const l = LISTA_USUARIOS as TelaLista;
     expect(l.colunas('administrador', 'America/Manaus').map((c) => c.rotulo)).toEqual(['Nome', 'E-mail', 'Perfil', 'Situação', 'Último acesso']);
     expect(l.linha(usuario(), 'America/Manaus')).toMatchObject({ nome: 'Maria Souza', perfil: 'Faturista', ultimo_acesso_em: '24/11/2026 10:05' });
-    expect(l.selos?.(usuario(), 'America/Manaus').ativo?.[0]).toEqual({ texto: 'Ativo', tom: 'ok' });
-    expect(l.selos?.(usuario({ ativo: false }), 'America/Manaus').ativo?.[0]).toEqual({ texto: 'Inativo', tom: 'neutro' });
+    expect(l.selos?.(usuario(), 'America/Manaus').situacao?.[0]).toEqual({ texto: 'Ativo', tom: 'ok' });
+    expect(l.selos?.(usuario({ ativo: false, situacao: 'inativo' }), 'America/Manaus').situacao?.[0]).toEqual({ texto: 'Inativo', tom: 'neutro' });
+    expect(l.selos?.(usuario({ situacao: 'bloqueado' }), 'America/Manaus').situacao?.[0]).toEqual({ texto: 'Bloqueado', tom: 'aviso' });
+    expect(l.colunas('administrador', 'America/Manaus').find((c) => c.rotulo === 'Situação')).toMatchObject({ id: 'situacao', tipo: 'status' });
   });
   it('a lista aceita busca e o filtro de inativos (só ativos por padrão); as três listas têm CSV', () => {
     expect(LISTA_USUARIOS.pagina.busca).toBe(true);
@@ -66,21 +68,24 @@ describe('usuários: colunas, filtros e CSV', () => {
 });
 
 describe('usuários: ações por linha (RN-CORE-10)', () => {
-  it('ativo: editar, redefinir senha e inativar, nas rotas existentes; a senha provisória é segredo de uso único', () => {
+  it('ativo: editar, redefinir senha, inativar e excluir (no fim, em perigo), cada um na sua rota; a senha provisória é segredo de uso único', () => {
     const as = acoesDoUsuario(usuario(), 'administrador');
-    expect(ids(as)).toEqual(['editar', 'redefinir-senha', 'inativar']);
+    expect(ids(as)).toEqual(['editar', 'redefinir-senha', 'inativar', 'excluir']);
     expect(as.map((a) => [a.metodo, a.caminho])).toEqual([
-      ['PATCH', `/v1/core/usuarios/${ID}`], ['POST', `/v1/core/usuarios/${ID}/redefinir-senha`], ['DELETE', `/v1/core/usuarios/${ID}`],
+      ['PATCH', `/v1/core/usuarios/${ID}`], ['POST', `/v1/core/usuarios/${ID}/redefinir-senha`], ['POST', `/v1/core/usuarios/${ID}/inativar`], ['POST', `/v1/core/usuarios/${ID}/excluir`],
     ]);
+    expect(as.map((a) => Boolean(a.destrutivo))).toEqual([false, false, false, true]);
     for (const a of as) expect(escritaDeclarada(a.metodo, a.caminho), a.id).toBe(true);
     expect(segredoDeclarado('POST', `/v1/core/usuarios/${ID}/redefinir-senha`)).toBe('senha_provisoria');
     expect(segredoDeclarado('PATCH', `/v1/core/usuarios/${ID}`)).toBeUndefined();
     expect(as[1]?.avisoSegredo).toBe('Anote esta senha agora: ela aparece uma única vez. A pessoa troca no primeiro acesso.');
   });
-  it('inativo: reativar (PATCH ativo=true com o token) e editar; sem inativar nem redefinir', () => {
-    const as = acoesDoUsuario(usuario({ ativo: false }), 'administrador');
-    expect(ids(as)).toEqual(['reativar', 'editar']);
-    expect(validarAcaoUsuario(as[0] as AcaoVista, { texto: '' })).toEqual({ ok: true, corpo: { ativo: true, updated_at: '2026-11-24T12:00:00.000Z' } });
+  it('inativo: reativar (POST /reativar), editar e excluir; sem inativar nem redefinir; o DELETE antigo não é mais usado', () => {
+    const as = acoesDoUsuario(usuario({ ativo: false, situacao: 'inativo' }), 'administrador');
+    expect(ids(as)).toEqual(['reativar', 'editar', 'excluir']);
+    expect(as[0]).toMatchObject({ metodo: 'POST', caminho: `/v1/core/usuarios/${ID}/reativar` });
+    expect(validarAcaoUsuario(as[0] as AcaoVista, { texto: '' })).toEqual({ ok: true });
+    expect(escritaDeclarada('DELETE', `/v1/core/usuarios/${ID}`)).toBe(false);
   });
   it('editar: manda só o que mudou e o token updated_at; sem mudança recusa; nome curto recusa em português', () => {
     const editar = acoesDoUsuario(usuario(), 'administrador')[0] as AcaoVista;
@@ -91,11 +96,12 @@ describe('usuários: ações por linha (RN-CORE-10)', () => {
     expect(validarAcaoUsuario(editar, { texto: '', campos: { nome: '  Maria S.  ', perfil: 'faturista' } })).toEqual({ ok: true, corpo: { nome: 'Maria S.', updated_at: '2026-11-24T12:00:00.000Z' } });
     expect(validarAcaoUsuario(editar, { texto: '', campos: { nome: 'M', perfil: 'faturista' } })).toEqual({ ok: false, erro: 'Informe o nome, de 2 a 80 caracteres.' });
   });
-  it('inativar e redefinir senha confirmam sem corpo', () => {
-    const [, redefinir, inativar] = acoesDoUsuario(usuario(), 'administrador') as [AcaoVista, AcaoVista, AcaoVista];
+  it('inativar, excluir e redefinir senha confirmam sem corpo; só o excluir é destrutivo', () => {
+    const [, redefinir, inativar, excluir] = acoesDoUsuario(usuario(), 'administrador') as [AcaoVista, AcaoVista, AcaoVista, AcaoVista];
     expect(validarAcaoUsuario(redefinir, { texto: '' })).toEqual({ ok: true });
     expect(validarAcaoUsuario(inativar, { texto: '' })).toEqual({ ok: true });
-    expect(inativar.destrutivo).toBe(true);
+    expect(validarAcaoUsuario(excluir, { texto: '' })).toEqual({ ok: true });
+    expect([Boolean(inativar.destrutivo), excluir.destrutivo]).toEqual([false, true]);
   });
   it('só as escritas declaradas passam: nada de PUT nem de outras rotas do core', () => {
     expect(escritaDeclarada('PUT', `/v1/core/usuarios/${ID}`)).toBe(false);

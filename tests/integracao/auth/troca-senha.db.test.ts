@@ -61,8 +61,8 @@ describe.skipIf(!PG_DISPONIVEL)('T-0052 (RN-CORE-10): troca obrigatória e regra
   let usuario = '';
   let provisoria = '';
 
-  const entrar = (senha: string, o: { slug?: string; email?: string } = {}): Promise<RespostaPortal> =>
-    app.inject({ method: 'POST', url: '/v1/auth/login', remoteAddress: novoIp(), payload: { empresa: o.slug ?? SLUG, email: o.email ?? EMAIL_ADM, senha } });
+  const entrar = (senha: string, o: { email?: string } = {}): Promise<RespostaPortal> =>
+    app.inject({ method: 'POST', url: '/v1/auth/login', remoteAddress: novoIp(), payload: { email: o.email ?? EMAIL_ADM, senha } });
   const acesso = (r: RespostaPortal) => r.json<{ token_acesso: string }>().token_acesso;
   const refreshDe = (r: RespostaPortal) => r.cookies.find((c) => c.name === COOKIE_REFRESH)!.value;
   const get = (token: string, url: string): Promise<RespostaPortal> => app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${token}` } });
@@ -290,7 +290,7 @@ describe.skipIf(!PG_DISPONIVEL)('T-0052 (RN-CORE-10): troca obrigatória e regra
       expect(rows).toHaveLength(1);
       expect(rows[0].deve_trocar_senha).toBe(true);
 
-      const login = await entrar(senha, { slug: SLUG_OP, email: EMAIL_OP });
+      const login = await entrar(senha, { email: EMAIL_OP });
       expect(login.statusCode).toBe(200);
       bloqueada(await get(acesso(login), ROTA_MODULO));
       expect((await trocar(acesso(login), { senha_atual: senha, senha_nova: OITO }, refreshDe(login))).statusCode).toBe(204);

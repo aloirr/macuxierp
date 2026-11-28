@@ -27,6 +27,13 @@ import {
   type TrocarSenhaEntrada,
 } from '@macuxierp/platform-sdk';
 import {
+  ListaUsuariosConfig,
+  ROTAS_USUARIOS_CONFIG,
+  UsuarioConfig,
+  UsuarioConfigComSenha,
+  UsuarioExcluido,
+  type UsuarioConfigCriar,
+  type UsuarioConfigEditar,
   ContatoRevelado,
   FichaReceitaPlanaMascarada,
   PreviaReceita,
@@ -245,4 +252,41 @@ export async function reprocessarFdv(token: string, id: string, entidade: string
 /** Log do cadastro (T-0086): só códigos, campos e contagens (ADR 0013); sem dado de negócio. */
 export async function lerLogFdv(token: string, id: string, entidade: string): Promise<LogCadastroFdvPlataforma> {
   return validado(await chamar('GET', rotaFdv(CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.log, id, entidade), { token }), LogCadastroFdvPlataforma);
+}
+
+/**
+ * Usuários da empresa (v0.3.29, `ROTAS_USUARIOS_CONFIG`, no-store): a tela não recalcula regra, usa `acoes` e `ultimo_admin_ativo` de cada linha.
+ * Criar e Redefinir senha trazem a senha provisória, que só passa pela resposta: quem chama a mostra uma vez, sem guardar nem logar.
+ */
+const caminhoUsuario = (modelo: string, id: string, usuario?: string): string => {
+  if (usuario !== undefined && !PADRAO_UUID.test(usuario)) throw new ErroPlataforma(404, 'NAO_ENCONTRADO');
+  return modelo.replace('/v1/plataforma', '').replace(':id', idEmpresa(id)).replace(':usuario', usuario ?? '');
+};
+
+export async function listarUsuarios(token: string, id: string): Promise<ListaUsuariosConfig> {
+  return validado(await chamar('GET', `/empresas/${idEmpresa(id)}/usuarios`, { token }), ListaUsuariosConfig);
+}
+
+export async function criarUsuario(token: string, id: string, corpo: UsuarioConfigCriar, chave: string): Promise<UsuarioConfigComSenha> {
+  return validado(await chamar('POST', caminhoUsuario(ROTAS_USUARIOS_CONFIG.criar.caminho, id), { token, corpo, chave }), UsuarioConfigComSenha);
+}
+
+export async function editarUsuario(token: string, id: string, usuario: string, corpo: UsuarioConfigEditar): Promise<UsuarioConfig> {
+  return validado(await chamar('PATCH', caminhoUsuario(ROTAS_USUARIOS_CONFIG.editar.caminho, id, usuario), { token, corpo }), UsuarioConfig);
+}
+
+export async function redefinirSenhaUsuario(token: string, id: string, usuario: string, chave: string): Promise<UsuarioConfigComSenha> {
+  return validado(await chamar('POST', caminhoUsuario(ROTAS_USUARIOS_CONFIG.redefinirSenha.caminho, id, usuario), { token, chave }), UsuarioConfigComSenha);
+}
+
+export async function inativarUsuario(token: string, id: string, usuario: string): Promise<UsuarioConfig> {
+  return validado(await chamar('POST', caminhoUsuario(ROTAS_USUARIOS_CONFIG.inativar.caminho, id, usuario), { token }), UsuarioConfig);
+}
+
+export async function reativarUsuario(token: string, id: string, usuario: string): Promise<UsuarioConfig> {
+  return validado(await chamar('POST', caminhoUsuario(ROTAS_USUARIOS_CONFIG.reativar.caminho, id, usuario), { token }), UsuarioConfig);
+}
+
+export async function excluirUsuario(token: string, id: string, usuario: string): Promise<UsuarioExcluido> {
+  return validado(await chamar('POST', caminhoUsuario(ROTAS_USUARIOS_CONFIG.excluir.caminho, id, usuario), { token }), UsuarioExcluido);
 }

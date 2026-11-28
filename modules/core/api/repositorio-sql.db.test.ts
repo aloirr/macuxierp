@@ -5,9 +5,10 @@
  * Local: `bash db/scripts/pg-local.sh`.
  */
 import { randomUUID } from 'node:crypto';
-import type { Transacao } from '@macuxierp/platform-sdk';
+import { erros, type Transacao } from '@macuxierp/platform-sdk';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { MENSAGEM_ULTIMO_ADMIN } from '../contracts';
 import { alterarUsuarioComTrava } from './alterar-usuario';
 import { RepositorioCoreSql } from './repositorio-sql';
 
@@ -50,6 +51,12 @@ class Sessao implements Transacao {
     this.c.release();
   }
 }
+
+/** O corpo do 409 do SDK (`erros.emailEmUso()`), sem repetir o texto. */
+const corpoEmailEmUso = (): object => {
+  const e = erros.emailEmUso();
+  return { status: e.status, codigo: e.codigo, message: e.message, campos: e.campos, detalhes: e.detalhes };
+};
 
 const pausa = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 /** 'travada' se a promessa não terminar em `ms` (a transação espera a trava do banco). */
@@ -138,7 +145,7 @@ describe.skipIf(!PG_DISPONIVEL)('concorrência do adaptador SQL do core (Postgre
     expect(await alterarUsuarioComTrava(repo, t1, U2, { ativo: false }, agora)).toMatchObject({ tipo: 'ok' });
     await t1.confirmar();
 
-    expect(await segundo).toEqual({ tipo: 'recusado', mensagem: 'A empresa precisa de ao menos um administrador ativo' });
+    expect(await segundo).toEqual({ tipo: 'recusado', mensagem: MENSAGEM_ULTIMO_ADMIN });
     await t2.confirmar();
     const leitura = await abrir();
     expect(await repo.contarAdministradoresAtivos(leitura, randomUUID())).toBe(1);
@@ -193,6 +200,40 @@ describe.skipIf(!PG_DISPONIVEL)('concorrência do adaptador SQL do core (Postgre
     expect((await repo.licencas(outro)).map((l) => l.modulo)).toEqual(['pedido']);
     expect((await repo.auditoria(outro, { limite: 50 })).map((a) => a.usuario_id)).toEqual([V1]);
     await outro.confirmar();
+  });
+
+  it('RN-CORE-17 (0078): inativar não grava deleted_at; excluir grava, some das leituras e libera o e-mail no app', async () => {
+    const id = randomUUID();
+    const novo = { email: 'reuso@piloto.test', nome: 'Pessoa Reuso', senha_hash: '$argon2id$y', perfil: 'faturista', filial_ids: [], ativo: true, external_id: null };
+    const t1 = await abrir();
+    await repo.criarUsuario(t1, { id, ...novo } as never);
+    const agora = new Date('2026-11-27T23:00:00Z');
+    await repo.atualizarUsuario(t1, id, { ativo: false }, agora);
+    await t1.confirmar();
+    const linha = async (x: string) => (await b.admin.query('SELECT ativo, deleted_at FROM plataforma.usuario WHERE id = $1', [x])).rows[0] as { ativo: boolean; deleted_at: Date | null };
+    expect(await linha(id)).toEqual({ ativo: false, deleted_at: null });
+    const t2 = await abrir();
+    expect(await repo.usuarioPorEmail(t2, novo.email)).toMatchObject({ id, ativo: false });
+    expect(await repo.excluirUsuario(t2, id, agora)).toMatchObject({ id, ativo: false });
+    expect(await repo.excluirUsuario(t2, id, agora)).toBeNull();
+    expect(await repo.usuarioPorId(t2, id)).toBeNull();
+    expect(await repo.usuarioPorEmail(t2, novo.email)).toBeNull();
+    expect((await repo.listarUsuarios(t2, { limite: 50, inativos: true })).map((u) => u.id)).not.toContain(id);
+    // O índice parcial da 0078 aceita o mesmo e-mail num usuário novo.
+    await repo.criarUsuario(t2, { id: randomUUID(), ...novo } as never);
+    await t2.confirmar();
+    expect((await linha(id)).deleted_at).not.toBeNull();
+  });
+
+  it('RN-CORE-18 (0079): o mesmo e-mail em outra empresa no INSERT do BKO é recusado com 409 email_em_uso (não 500)', async () => {
+    const novo = { email: 'dupla@piloto.test', nome: 'Pessoa Dupla', senha_hash: '$argon2id$y', perfil: 'faturista', filial_ids: [], ativo: true, external_id: null };
+    const t1 = await abrir();
+    await repo.criarUsuario(t1, { id: randomUUID(), ...novo } as never);
+    await t1.confirmar();
+    const t2 = await abrir(T2);
+    const e = await repo.criarUsuario(t2, { id: randomUUID(), ...novo } as never).catch((x: unknown) => x);
+    expect(e).toMatchObject(corpoEmailEmUso());
+    await t2.descartar();
   });
 
   it('T-0052: criar usuário e redefinir senha exigem a troca da senha provisória', async () => {

@@ -2,7 +2,8 @@
 import { LIMITE_REGISTROS_LOTE_FDV, type EntidadeEnvioFdv, type IntegracaoFdvPlataforma } from '@macuxierp/platform-sdk';
 import { DialogoMotivo, MenuAcoes, ResultadoAcao, TabelaDensa, useResultado, type ColunaTabela, type Resultado as ResultadoUi } from '@macuxierp/ui';
 import { useRouter } from 'next/navigation';
-import { useRef, useState, useTransition } from 'react';
+import { useId, useRef, useState, useTransition } from 'react';
+import { createPortal } from 'react-dom';
 import { LIMITE_INICIAL_FDV, habilitadasApos, validarLimiteLote, acoesDaLinhaFdv, menuDaLinha, linhasCadastros, avisoLigar, type LinhaCadastroFdv } from '@/lib/config/integracao-fdv';
 import { ChavesIdempotencia } from '@/lib/config/chaves';
 import { colunasStatusFdv } from '@/lib/integracao-fdv';
@@ -11,9 +12,7 @@ import type { Resultado } from '@/lib/config/executar';
 import { resultadoErro, resultadoSucesso } from '@/lib/resultado-acao';
 import { configurarFdvAcao, reprocessarFdvAcao, retomarFdvAcao } from '@/lib/acoes-cliente';
 import { RETORNOS_FDV, ROTULOS_FDV, textoDaFalha, textoReprocessarOk } from '@/lib/config/operacao-fdv';
-import { LIGACAO_SAIDA } from '@/lib/config/ligacoes';
 import { textoPedidosZerados } from '@/lib/config/pedidos-zerar';
-import { TituloLigacao } from './ligacao';
 import { LogCadastro } from './log-cadastro';
 import { ZerarCadastro } from './zerar-cadastro';
 import { ZerarPedidos } from './zerar-pedidos';
@@ -27,7 +26,8 @@ const LEGENDA_ENVIADOS = 'Cadastros enviados';
  * Registros por lote, a tabela "Cadastros enviados" com o menu Ações (T-0099) e "Zerar pedidos não faturados". Os retornos seguem a
  * 36 A: cada um logo abaixo do seu botão.
  */
-export function SecaoEnvioFdv({ empresaId, dados, fuso }: { empresaId: string; dados: IntegracaoFdvPlataforma; fuso: string }) {
+export function SecaoEnvioFdv({ empresaId, dados, fuso, barra }: { empresaId: string; dados: IntegracaoFdvPlataforma; fuso: string; /** A barra única do cartão da ligação (regra 12): o Salvar e o Zerar pedidos entram nela. */ barra?: HTMLElement | null }) {
+  const idLimite = useId();
   const router = useRouter();
   const [pendente, iniciar] = useTransition();
   const [rLimite, kLimite, mostrarLimite] = useResultado();
@@ -95,27 +95,32 @@ export function SecaoEnvioFdv({ empresaId, dados, fuso }: { empresaId: string; d
     return <MenuAcoes rotuloLinha={l.rotulo} {...menuDaLinha(a, fazer)} />;
   };
 
+  /** Uma barra só (regra 12): o Salvar dos registros por lote e, à direita e em vermelho, o Zerar pedidos. */
+  const botoesDoBloco = (
+    <>
+      <button className="mx-botao-secundario" type="submit" form={idLimite} disabled={bloqueado || semCredencial}>Salvar</button>
+      <button type="button" className="mx-botao-secundario botao-perigo-contorno botao-direita" disabled={bloqueado} onClick={() => setZerarPedidos(true)}>Zerar pedidos…</button>
+    </>
+  );
+
   const colunas: ColunaTabela<LinhaCadastroFdv>[] = [...colunasStatusFdv<LinhaCadastroFdv>({ falhaSobreNome: true, envioSobreNome: true }), { id: 'acoes', titulo: 'Ações', celula: acoesDaLinha }];
 
   return (
-    <section className="bloco direcao" aria-labelledby="h-dados-saida">
-      <TituloLigacao ligacao={LIGACAO_SAIDA} id="h-dados-saida" />
-      <form className="form-lote" noValidate aria-label="Registros por lote" onSubmit={(ev) => { ev.preventDefault(); salvarLimite(ev.currentTarget); }}>
-        <div className="campo-com-botao">
-          <label className="campo">
-            <span>Registros por lote</span>
-            <input name="limite_registros_lote" type="number" inputMode="numeric" min={1} max={LIMITE_REGISTROS_LOTE_FDV} step={1} defaultValue={dados.limite_registros_lote ?? LIMITE_INICIAL_FDV} aria-invalid={campos.limite_registros_lote ? true : undefined} aria-describedby={campos.limite_registros_lote ? 'erro-limite-lote' : undefined} />
-          </label>
-          <button className="mx-botao-secundario" type="submit" disabled={bloqueado || semCredencial}>Salvar</button>
-        </div>
+    <div className="envio-fdv">
+      <form id={idLimite} className="formulario" noValidate aria-label="Registros por lote" onSubmit={(ev) => { ev.preventDefault(); salvarLimite(ev.currentTarget); }}>
+        <label className="campo campo-curto">
+          <span>Registros por lote</span>
+          <input name="limite_registros_lote" type="number" inputMode="numeric" min={1} max={LIMITE_REGISTROS_LOTE_FDV} step={1} defaultValue={dados.limite_registros_lote ?? LIMITE_INICIAL_FDV} aria-invalid={campos.limite_registros_lote ? true : undefined} aria-describedby={campos.limite_registros_lote ? 'erro-limite-lote' : undefined} />
+        </label>
         {campos.limite_registros_lote && <p id="erro-limite-lote" className="erro-campo" role="alert">{campos.limite_registros_lote}</p>}
-        <ResultadoAcao resultado={rLimite} chave={kLimite} />
       </form>
+      <ResultadoAcao resultado={rLimite} chave={kLimite} />
       <div className="tabela-rolavel com-sinal-rolagem tabela-fdv tabela-fdv-config legenda-so-leitor">
         <TabelaDensa colunas={colunas} linhas={linhas} chaveLinha={(l) => l.entidade} textoVazio="Nenhum cadastro." legenda={LEGENDA_ENVIADOS} />
       </div>
       <ResultadoAcao resultado={rLinha} chave={kLinha} />
-      <div className="barra-acoes"><button type="button" className="mx-botao-secundario" disabled={bloqueado} onClick={() => setZerarPedidos(true)}>Zerar pedidos não faturados</button></div>
+      {/* sem `barra` (uso solto) a barra é própria; com ela, os botões entram na do cartão (null = ainda montando) */}
+      {barra === undefined ? <div className="barra-acoes barra-bloco">{botoesDoBloco}</div> : barra && createPortal(botoesDoBloco, barra)}
       <ResultadoAcao resultado={rZerarPedidos} chave={kZerarPedidos} />
       {log && <LogCadastro empresaId={empresaId} entidade={log.entidade} rotulo={log.rotulo} fuso={fuso} aoFechar={() => setLog(null)} />}
       {zerar && (
@@ -153,6 +158,6 @@ export function SecaoEnvioFdv({ empresaId, dados, fuso }: { empresaId: string; d
           aoCancelar={() => setPedido(null)}
         />
       )}
-    </section>
+    </div>
   );
 }

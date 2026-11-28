@@ -46,7 +46,7 @@ a { color: var(--mx-cor-azul-noite); }
 .conteudo h1 { font-size: var(--mx-tamanho-h1); font-weight: var(--mx-peso-titulo); color: var(--mx-cor-azul-noite); margin: 0 0 4px; } /* MC-0216: azul-noite (não herda o grafite do body) e 4 px sob o título, nunca os 13,4 px do navegador */
 .conteudo h1 + :not(p) { margin-top: 16px; }
 .conteudo h1 + p { margin-top: 0; } /* MC-0216: o h1 fica a 4 px da saudação (o p logo abaixo não soma a margem do navegador) */
-.conteudo h2 { font-size: var(--mx-tamanho-titulo-cartao); font-weight: var(--mx-peso-titulo); color: var(--mx-cor-rotulo-destaque); }
+.conteudo h2 { margin-top: 24px; /* espaco.xl: respiro acima do título de seção (marca) */ font-size: var(--mx-tamanho-titulo-cartao); font-weight: var(--mx-peso-titulo); color: var(--mx-cor-rotulo-destaque); }
 table { border-collapse: collapse; width: 100%; background: var(--mx-cor-branco); }
 th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--mx-cor-linha-suave); }
 /* Decisões 40 e 44 A (MC-0201/0202): cabeçalho na névoa, 12/700 em caixa-alta azul-noite com linha de 2 px; linha par na linhaAlternada. */
@@ -79,11 +79,16 @@ tbody tr:nth-child(even) { background: var(--mx-cor-linha-alternada); }
 .itens-parcial td, .itens-parcial th { padding: 6px 8px; }
 /* Coluna "Item" de largura fixa no diálogo da parcial. */
 .itens-parcial thead th:first-child, .itens-parcial tbody th { width: 28ch; }
-/* MC-0205 (regra 11): grade de 12 colunas; cada campo ocupa 2 e "Filtrar"/"Limpar" ficam juntos em 2; no celular, 2 por linha (span 6). */
+/* MC-0205 (regra 11): grade de 12 colunas; cada campo ocupa 2; no celular, 2 por linha (span 6). */
 .filtros { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 8px 16px; align-items: end; margin-bottom: 16px; }
 .filtros .campo { grid-column: span 2; margin: 0; min-width: 0; }
-.filtros-acoes { grid-column: span 2; display: flex; gap: 8px; align-items: end; white-space: nowrap; }
-@media (max-width: 640px) { .filtros .campo, .filtros-acoes { grid-column: span 6; } }
+/* RD-2382: sem "Filtrar" com JS (aplica ao mudar); sem JS o botão aparece. "Limpar filtros" é link ao lado dos filtros. */
+.filtros-enviar { display: none; }
+/* O "x" nativo da busca sai: o link "Limpar filtros" já cobre isso. */
+.filtros input[type="search"]::-webkit-search-cancel-button { display: none; }
+@media (scripting: none) { .filtros-enviar { display: inline-flex; grid-column: span 1; justify-self: start; } }
+.filtros-limpar { grid-column: span 2; align-self: end; padding-bottom: 8px; white-space: nowrap; color: inherit; }
+@media (max-width: 640px) { .filtros .campo, .filtros-limpar { grid-column: span 6; } }
 /* O U+00A0 do "R$ 1.234,56" não quebra, mas a célula estreita sim: dinheiro e número ficam numa linha só. */
 .sem-quebra { white-space: nowrap; }
 .total-pedido { margin: 12px 0 0; text-align: right; font-weight: var(--mx-peso-titulo); font-variant-numeric: var(--mx-fonte-numeros); white-space: nowrap; }
@@ -109,17 +114,11 @@ tbody tr:nth-child(even) { background: var(--mx-cor-linha-alternada); }
 .ficha dd { margin: 0; }
 
 /* Aba Integração do /config (v0.3.24, docs/design/integracao-duas-ligacoes): duas ligações lado a lado; uma embaixo da outra só no celular (R-20261127-110345). */
-.ligacoes, .grade-cartoes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
-@media (max-width: 767px) { .ligacoes, .grade-cartoes { grid-template-columns: minmax(0, 1fr); } }
+.ligacoes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+@media (max-width: 767px) { .ligacoes { grid-template-columns: minmax(0, 1fr); } }
 .ligacao .ficha { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
 .ligacao h2 .seta, .direcao h2 .seta { color: var(--mx-cor-texto-secundario); font-weight: 400; }
 .apoio-situacao { display: block; margin-top: 4px; }
-.cabeca-ligacoes { display: flex; justify-content: flex-end; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
-.campo-com-botao { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
-.campo-com-botao .campo { margin-bottom: 0; }
-/* O Salvar com a altura do campo ao lado (mesmo padding vertical e borda) e 16 px até a tabela. */
-.campo-com-botao > button { padding-block: 10px; line-height: inherit; }
-.form-lote { margin-bottom: 16px; }
 fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: ela rola dentro do .tabela-rolavel */ margin: 0 0 16px; border: 1px solid var(--mx-cor-borda-cinza); border-radius: 6px; padding: 8px 12px; }
 .grupo-campos label { display: inline-flex; align-items: center; gap: 6px; margin: 0 16px 6px 0; }
 .grupo-campos input[type="checkbox"] { width: auto; }
@@ -136,7 +135,6 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 .downloads { display: flex; gap: 8px 16px; flex-wrap: wrap; margin: 12px 0; align-items: baseline; }
 .dado-linha-inteira { grid-column: 1 / -1; }
 .selos { display: inline-flex; gap: 4px; flex-wrap: wrap; }
-.campos-linha { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .dados dd { overflow-wrap: anywhere; min-width: 0; }
 
 /* Portal /config (T-0050): topo em grafite (identidade de plataforma), só tokens. */
@@ -144,10 +142,14 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 .topo-plataforma { background: var(--mx-cor-grafite); }
 .topo-plataforma a { color: var(--mx-cor-branco); }
 .topo-plataforma form { margin: 0; }
-.titulo-linha { display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 16px; }
-.busca-slug { display: flex; gap: 8px; align-items: end; margin-bottom: 16px; }
-.busca-slug .campo { margin: 0; width: 280px; }
-.titulo-linha .busca-slug { margin: 0; } /* a busca vai para a linha do título (MC-0206) */
+/* Lista de Empresas (124 A, RD-2363): h1 com a contagem nas colunas 1 a 8 e a busca única nas 9 a 12; até 767 px, uma embaixo da outra. */
+.titulo-lista { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 8px 16px; align-items: center; margin: 0 0 12px; }
+.titulo-lista h1 { grid-column: span 8; margin: 0; }
+.link-nome { font-weight: var(--mx-peso-titulo); } /* o nome-link da linha em negrito, como o nome nas outras tabelas */
+.titulo-lista .contagem { font-size: var(--mx-tamanho-texto); font-weight: var(--mx-peso-normal); color: var(--mx-cor-texto-secundario); }
+.titulo-lista .busca-lista { grid-column: span 4; margin: 0; }
+@media (max-width: 767px) { .titulo-lista h1, .titulo-lista .busca-lista { grid-column: 1 / -1; } }
+.rodape-lista { justify-content: flex-end; margin: 12px 0 0; }
 .codigo, .senha-provisoria { font-family: var(--mx-fonte-codigo); }
 /* Frase de confirmação digitada (MC-0101-2): selo em linha, quebra nos espaços, repete borda e recuo em cada linha. */
 .frase-confirmar { font-family: var(--mx-fonte-codigo); font-size: var(--mx-tamanho-base); font-weight: var(--mx-peso-rotulo-campo); color: var(--mx-cor-grafite); background: var(--mx-cor-nevoa); border: 1px solid var(--mx-cor-borda-tabela); border-radius: 4px; padding: 1px 6px; overflow-wrap: break-word; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
@@ -160,7 +162,9 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 .cabecalho-ficha p { margin: 0; }
 @media (max-width: 640px) { .cabecalho-ficha .mx-botao-secundario { min-height: 44px } }
 .lista-modulos, .lista-cnae { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }
-.lista-modulos label { display: inline-flex; gap: 8px; align-items: center; }
+.lista-modulos label { display: inline-flex; gap: 8px; align-items: center; white-space: nowrap; font-size: var(--mx-tamanho-texto); }
+/* MC-1: o .formulario input (largura 100%, padding e canto) não alcança o checkbox dos Módulos, que fica no tamanho do packages/ui. */
+.formulario .lista-modulos input.mx-checkbox { flex: none; width: 16px; height: 16px; padding: 0; border-radius: 3px; }
 /* Formulários na grade de 12 colunas, a dos filtros (regra 11, T-0121): campo curto 2, médio 4, longo 6, largo 12; até 1100 px 3/6/12; até 640 px tudo em coluna. */
 .formulario { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; align-items: start; margin: 0 0 16px; }
 .formulario > * { grid-column: 1 / -1; min-width: 0; margin-top: 0; margin-bottom: 0; }
@@ -168,11 +172,13 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 .formulario > .campo.campo-curto { grid-column: span 2; }
 .formulario > .campo.campo-medio { grid-column: span 4; }
 .formulario > .campo.campo-largo { grid-column: 1 / -1; }
-@media (max-width: 1100px) { .formulario > .campo { grid-column: 1 / -1; } .formulario > .campo.campo-curto { grid-column: span 3; } .formulario > .campo.campo-medio { grid-column: span 6; } }
-@media (max-width: 640px) { .formulario > .campo, .formulario > .campo.campo-curto, .formulario > .campo.campo-medio { grid-column: 1 / -1; } }
+.formulario > .campo.campo-8 { grid-column: span 8; }
+.formulario > .campo.campo-3 { grid-column: span 3; }
+.formulario > .campo.campo-curto.campo-inicio-linha { grid-column: 1 / span 2; }
+@media (max-width: 1100px) { .formulario > .campo { grid-column: 1 / -1; } .formulario > .campo.campo-curto, .formulario > .campo.campo-curto.campo-inicio-linha { grid-column: span 3; } .formulario > .campo.campo-medio, .formulario > .campo.campo-3 { grid-column: span 6; } .formulario > .campo.campo-8 { grid-column: 1 / -1; } }
+@media (max-width: 640px) { .formulario > .campo, .formulario > .campo.campo-curto.campo-inicio-linha, .formulario > .campo.campo-curto, .formulario > .campo.campo-medio, .formulario > .campo.campo-3, .formulario > .campo.campo-8 { grid-column: 1 / -1; } }
 /* Texto corrido: no máximo 72 caracteres por linha, só nos blocos de texto (nunca no contêiner). */
 .apoio, p.erro, .aviso-sucesso, .faixa-aviso { max-width: 72ch; }
-.painel-senha { margin-top: 16px; padding: 12px 16px; border: 1px solid var(--mx-cor-borda-tabela); border-radius: 6px; background: var(--mx-cor-perola); }
 .senha-provisoria { display: block; font-size: var(--mx-tamanho-grande); font-weight: 600; padding: 8px 0; word-break: break-all; user-select: all; }
 
 /* Troca de senha (T-0052): lista de regras e aviso de sucesso; só tokens do @macuxierp/ui. */
@@ -265,7 +271,7 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
   .corpo-log .selo { padding-inline: 6px; }
   /* Aba Dados no celular (#840): ficam Cadastro (com a última carga sob o nome), Situação e Ações, com Importar e "Ações" um sobre o outro;
      a posição está presa à ordem das colunas por aba-dados.test.tsx. */
-  .tabela-dados th:nth-child(3), .tabela-dados td:nth-child(3), .tabela-dados th:nth-child(4), .tabela-dados td:nth-child(4), .tabela-dados th:nth-child(5), .tabela-dados td:nth-child(5), .tabela-dados th:nth-child(6), .tabela-dados td:nth-child(6) { display: none; }
+  .tabela-dados th:nth-child(3), .tabela-dados td:nth-child(3), .tabela-dados th:nth-child(4), .tabela-dados td:nth-child(4), .tabela-dados th:nth-child(5), .tabela-dados td:nth-child(5) { display: none; }
   .tabela-dados th, .tabela-dados td { padding: 6px 4px !important; }
   .corpo-log .selo, .corpo-log td span { white-space: normal; }
 }
@@ -346,18 +352,9 @@ button.link { background: none; border: 0; padding: 0; color: inherit; font: inh
 
 /* Telas horizontais e destaque nos cabeçalhos (docs/design/telas-horizontais, R-20261127-110345; v0.3.24: aba Empresa e aba Integração do /config).
    Grade de blocos: 1 coluna no celular (até 767), 2 a partir de 768, 3 a partir de 1280 e 4 a partir de 1440; só tokens. */
-.grade-blocos { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); align-items: start; margin: 0 0 16px; }
-@media (min-width: 768px) { .grade-blocos { grid-template-columns: repeat(2, minmax(var(--mx-grade-cartao-minimo), 1fr)); } }
-@media (min-width: 1280px) { .grade-blocos { grid-template-columns: repeat(3, minmax(var(--mx-grade-cartao-minimo), 1fr)); } }
-@media (min-width: 1440px) { .grade-blocos { grid-template-columns: repeat(4, minmax(var(--mx-grade-cartao-minimo), 1fr)); } }
-.grade-blocos > .bloco, .blocos-laterais > .bloco { margin: 0; min-width: 0; }
-@media (min-width: 768px) { .grade-blocos > .bloco-largo { grid-column: span 2; } }
 /* Aba Empresa (§3): a Ficha é o bloco largo; Módulos, 1º administrador e Situação vão numa coluna lateral própria (sem buraco
    ao lado da Ficha, que é alta). 768: Ficha na linha toda e os 3 blocos 2 a 2 embaixo; 1280: Ficha em 2 colunas e a lateral
    em 1; 1440: Ficha em 2 e a lateral em 2 colunas. */
-.blocos-laterais { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); align-items: start; align-content: start; min-width: 0; }
-@media (min-width: 768px) and (max-width: 1279px) { .grade-empresa > .bloco-largo, .grade-empresa > .blocos-laterais { grid-column: 1 / -1; } .blocos-laterais { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (min-width: 1440px) { .grade-empresa > .blocos-laterais { grid-column: span 2; grid-template-columns: repeat(2, minmax(0, 1fr)); } .blocos-laterais > .bloco:nth-child(3) { grid-column: 2; } }
 /* Rótulo de dado em destaque (§2), na ficha das ligações: caixa-alta pequena na cor de destaque; o valor em texto normal. */
 .ligacao .ficha dt { font-size: var(--mx-tamanho-rotulo-dado); font-weight: var(--mx-peso-rotulo-dado); color: var(--mx-cor-rotulo-destaque); text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 2px; }
 .ligacao .ficha dd { font-size: var(--mx-tamanho-base); font-weight: var(--mx-peso-normal); color: var(--mx-cor-grafite); }
@@ -367,42 +364,107 @@ button.link { background: none; border: 0; padding: 0; color: inherit; font: inh
 /* Ficha da Receita editável (RN-CORE-16): cartões de campos 2 a 2 a partir de 768 (a grade do .ligacoes); campo curto divide a linha com outro. */
 .ficha-editavel .cabecalho-ficha h2 { margin: 0; flex: 1 1 auto; color: var(--mx-cor-rotulo-destaque); }
 .ficha-editavel .cabecalho-ficha { padding-bottom: 8px; border-bottom: 1px solid var(--mx-cor-borda-tabela); }
-.cartao-campos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; align-content: start; border: 1px solid var(--mx-cor-borda-tabela); border-radius: 8px; padding: 12px 16px 4px; margin: 0; min-width: 0; }
-.cartao-campos .titulo-cartao { grid-column: 1 / -1; font-size: var(--mx-tamanho-medio); font-weight: var(--mx-peso-titulo); color: var(--mx-cor-rotulo-destaque); margin: 0 0 12px; }
-.campo-ficha { grid-column: 1 / -1; margin-bottom: 12px; min-width: 0; }
-.campo-ficha.campo-curto { grid-column: auto; }
-@media (max-width: 389px) { .campo-ficha.campo-curto { grid-column: 1 / -1; } }
-.campo-ficha input, .campo-ficha select, .campo-ficha textarea { width: 100%; border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; font: inherit; font-size: var(--mx-tamanho-texto); background: var(--mx-cor-branco); color: var(--mx-cor-grafite); }
-.campo-ficha input, .campo-ficha select { padding: 0 12px; height: var(--mx-medida-altura-campo); }
-.campo-ficha textarea { padding: 8px; }
-.campo-ficha [aria-invalid="true"] { border-color: var(--mx-cor-erro-texto); }
-.campo-ficha .dica-campo, .campo-ficha .marca-receita { display: block; font-size: var(--mx-tamanho-micro); color: var(--mx-cor-texto-apoio); margin-top: 4px; }
-.campo-ficha .marca-receita { color: var(--mx-cor-rotulo-destaque); font-weight: var(--mx-peso-rotulo-pequeno); }
-.campo-ficha .lista-cnae { margin: 4px 0 0; gap: 2px; }
 .veio-da-receita input, .veio-da-receita select, .veio-da-receita textarea { border-color: var(--mx-cor-rotulo-destaque); background: var(--mx-cor-nevoa); }
 .campo-cnpj .valor-cnpj { margin: 0; font-family: var(--mx-fonte-codigo); color: var(--mx-cor-grafite); }
 .campo-cnpj .motivo-bloqueio { margin: 4px 0 0; }
-.campo-cnpj .mx-botao-secundario { margin-top: 6px; }
 .ficha-editavel .rodape-cartao { justify-content: flex-end; }
-/* Cartão largo da Ficha (PO, #853): Identificação e Situação na Receita nas duas colunas, com 4 colunas de campos a partir de 768;
-   razão social e natureza jurídica na linha toda, sem cortar o texto. */
-@media (min-width: 768px) {
-  .cartao-largo { grid-column: 1 / -1; grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .cartao-largo .campo-ficha { grid-column: span 2; }
-  .cartao-largo .campo-ficha.campo-curto { grid-column: span 1; }
-  .cartao-largo .campo-ficha.campo-largo { grid-column: 1 / -1; }
-}
-.campo-ficha .dica-salvo { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .ligacao .campo > span { color: var(--mx-cor-rotulo-destaque); }
 
 /* Parecer da marca (v0.3.28): MC-0205 filtros em 3 colunas com o menu aberto; MC-0206 cartão da tabela. */
 @media (min-width: 801px) and (max-width: 1100px) { .filtros .campo { grid-column: span 3; } }
 .cartao-tabela { background: var(--mx-cor-branco); border: 1px solid var(--mx-cor-borda-tabela); border-radius: 8px; margin: 0 0 16px; }
-.cartao-tabela > .tabela-rolavel { border-radius: 8px 8px 0 0; }
-.cartao-tabela > .barra-acoes { margin: 0; padding: 12px 16px; border-top: 1px solid var(--mx-cor-borda-tabela); }
+.cartao-tabela > .tabela-rolavel { border-radius: 8px; }
+/* RD-2381: a barra da lista é a do rodapé da página, com a paginação junta, à direita. */
+.barra-rodape-lista { align-items: center; margin: 0; }
+.barra-rodape-lista > .paginacao { margin: 0 0 0 auto; }
 /* Topo: em 801-1023 px o nome do usuário sai para o topo caber numa linha. */
 @media (max-width: 1023px) { .casca > .topo .nome-usuario { display: none; } }
 /* /config em 390 px: o topo fica numa linha como o do BKO (assinatura, selo, Empresas, Sair); o nome do superadmin sai. */
 @media (max-width: 480px) { .topo-plataforma { flex-wrap: nowrap; gap: 12px; } .topo-plataforma .nome-usuario { display: none; } .topo-plataforma form { margin-left: auto; } }
 /* Sem JS o botão Menu não funciona: o menu fica sempre à mostra. */
 @media (scripting: none) { .casca > .lateral { display: block; } .botao-menu { display: none; } }
+
+/* Início do BKO (decisões 58 e 59): atalhos em uma linha que distribui o espaço; em 390 px, um por linha. */
+.atalhos { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 768px) { .atalhos-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .atalhos-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.atalho { display: flex; align-items: center; gap: 12px; min-height: 72px; background: var(--mx-cor-branco); border: 1px solid var(--mx-cor-borda-tabela); border-radius: var(--mx-medida-canto-cartao); padding: 16px; color: var(--mx-cor-grafite); text-decoration: none; }
+.atalho:hover { border-color: var(--mx-cor-azul-noite); }
+.atalho b { display: block; font-size: var(--mx-tamanho-medio); color: var(--mx-cor-azul-noite); }
+.atalho span { font-size: var(--mx-tamanho-texto); color: var(--mx-cor-texto-secundario); }
+.atalho .seta { margin-left: auto; font-size: var(--mx-tamanho-grande); color: var(--mx-cor-azul-noite); }
+
+/* Config v4 (v0.3.29): Usuários na largura toda e o rodapé fixo da página (regra 12). */
+.cabecalho-bloco { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin: 0 0 12px; }
+.cabecalho-bloco h2 { margin: 0; border: 0; padding: 0; }
+.casca-plataforma .bloco > .cabecalho-bloco { padding-bottom: 8px; border-bottom: 1px solid var(--mx-cor-borda-tabela); }
+.cabecalho-bloco .contagem { font-weight: var(--mx-peso-normal); color: var(--mx-cor-texto-secundario); }
+.bloco-usuarios > .cabecalho-bloco { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); }
+.bloco-usuarios > .cabecalho-bloco h2 { grid-column: span 8; }
+.bloco-usuarios > .cabecalho-bloco .busca-usuarios { grid-column: span 4; }
+@media (max-width: 767px) { .bloco-usuarios > .cabecalho-bloco h2, .bloco-usuarios > .cabecalho-bloco .busca-usuarios { grid-column: 1 / -1; } }
+/* Busca única das listas que filtram ao digitar (Empresas e Usuários): uma regra só. */
+.busca-lista input, .busca-usuarios { height: var(--mx-medida-altura-campo); width: 100%; padding: 0 12px; border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; font: inherit; font-size: var(--mx-tamanho-texto); background: var(--mx-cor-branco); color: var(--mx-cor-grafite); box-sizing: border-box; }
+.etiqueta-ultimo-admin { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: var(--mx-cor-nevoa); color: var(--mx-cor-texto-secundario); font-size: var(--mx-tamanho-micro); white-space: nowrap; }
+.rodape-pagina { position: sticky; bottom: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 8px; margin: 16px 0 0; padding: 12px 0; background: var(--mx-cor-perola); border-top: 1px solid var(--mx-cor-borda-tabela); }
+.rodape-alvo { display: contents; }
+.rodape-estado { margin: 0 0 0 8px; }
+/* Botões embaixo e juntos (regra 12): os da ficha à esquerda, o Suspender (vermelho) sozinho à direita. */
+.rodape-pagina .rodape-suspender { margin-left: auto; }
+.rodape-retorno { order: -1; flex-basis: 100%; }
+@media (max-width: 640px) { .rodape-pagina { position: static; } }
+
+/* Config v4, passo 2 (v0.3.29): /config na grade de 12 como a simulação aprovada 445e459 (regras 11 e 12). Cartões em span de 12; campo curto 2, médio 4, largo 12. */
+.grade-empresa { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin: 0 0 16px; }
+.ficha-editavel .cabecalho-ficha h2 { margin: 0; flex: 1 1 auto; color: var(--mx-cor-rotulo-destaque); }
+.ficha-editavel .cabecalho-ficha { padding-bottom: 8px; border-bottom: 1px solid var(--mx-cor-borda-tabela); }
+.ficha-editavel .formulario { margin: 0; }
+.formulario > .cartao-ficha { margin: 0; padding: 12px 16px 16px; border: 1px solid var(--mx-cor-borda-tabela); border-radius: 8px; background: var(--mx-cor-branco); }
+.cartao-ficha > .titulo-cartao { font-size: var(--mx-tamanho-pequeno); font-weight: var(--mx-peso-titulo); color: var(--mx-cor-rotulo-destaque); text-transform: uppercase; letter-spacing: 0.04em; margin: 0; }
+.cartao-ficha > .bloco, .cartao-ficha .bloco > h2 { margin: 0; }
+.cartao-ficha .bloco > h2 { border: 0; padding: 0; font-size: var(--mx-tamanho-pequeno); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 12px; }
+@media (min-width: 1101px) {
+  .formulario > .cartao-3 { grid-column: span 3; }
+  .formulario > .cartao-4 { grid-column: span 4; }
+  .formulario > .cartao-5 { grid-column: span 5; }
+}
+.ficha-editavel .campo { margin: 0; }
+.ficha-editavel .campo > .rotulo-campo { margin-bottom: 4px; }
+.ficha-editavel .campo input, .ficha-editavel .campo select { height: var(--mx-medida-altura-campo); padding: 0 12px; font-size: var(--mx-tamanho-texto); }
+.ficha-editavel .campo textarea { font-size: var(--mx-tamanho-texto); }
+.ficha-editavel .campo [aria-invalid="true"] { border-color: var(--mx-cor-erro-texto); }
+.ficha-editavel .campo .dica-campo, .ficha-editavel .campo .marca-receita { display: block; font-weight: var(--mx-peso-normal); font-size: var(--mx-tamanho-micro); color: var(--mx-cor-texto-apoio); margin: 4px 0 0; }
+.ficha-editavel .campo .marca-receita { color: var(--mx-cor-rotulo-destaque); font-weight: var(--mx-peso-rotulo-pequeno); }
+.ficha-editavel .campo .lista-cnae { margin: 4px 0 0; gap: 2px; }
+.ficha-editavel .campo .dica-salvo { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.ficha-editavel .campo-cnpj { display: flex; flex-direction: column; justify-content: flex-start; }
+/* Aba Integrações: dois cartões em 6 colunas cada (um embaixo do outro até 767 px); o selo da situação fica à direita do título; UMA barra por cartão, destrutivos à direita. */
+.integracoes { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.cabeca-ligacao { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; margin: 0 0 8px; min-height: var(--mx-medida-altura-campo); }
+.cabeca-ligacao h2, .envios-recentes > h2 { margin: 0; border: 0; padding: 0; font-size: var(--mx-tamanho-pequeno); text-transform: uppercase; letter-spacing: 0.04em; color: var(--mx-cor-rotulo-destaque); }
+.casca-plataforma .bloco.ligacao > .cabeca-ligacao, .casca-plataforma .bloco.envios-recentes > h2 { border: 0; padding-bottom: 0; }
+.envios-recentes > h2 { margin-bottom: 8px; min-height: var(--mx-medida-altura-campo); display: flex; align-items: center; }
+.cartao-ligacao { background: var(--mx-cor-branco); border: 1px solid var(--mx-cor-borda-tabela); border-radius: 8px; padding: 16px; display: grid; gap: 12px; align-content: start; min-width: 0; }
+.cartao-ligacao > * { margin: 0; min-width: 0; }
+.cartao-ligacao .ficha { margin: 0; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); }
+.cartao-ligacao .formulario { margin: 0; }
+.cartao-ligacao .formulario > .campo { grid-column: span 6; }
+.cartao-ligacao .formulario > .campo.campo-curto { grid-column: span 3; }
+.cartao-ligacao .formulario > .campo.campo-largo { grid-column: 1 / -1; }
+.cartao-ligacao input, .cartao-ligacao select { height: var(--mx-medida-altura-campo); padding: 0 12px; }
+@media (max-width: 480px) { .cartao-ligacao .formulario > .campo.campo-curto { grid-column: 1 / -1; } }
+.barra-bloco { margin: 0; align-items: center; border-top: 1px solid var(--mx-cor-borda-tabela); padding-top: 12px; }
+.barra-bloco .barra-destino { display: contents; }
+.barra-bloco .botao-direita { margin-left: auto; }
+.erro-numero { color: var(--mx-cor-erro-texto); }
+.formulario-dialogo > .campo { grid-column: span 6; }
+:root { --web-espaco-secao: 24px; } /* até o packages/ui ter o token de espaçamento (pedido ao designer-ux) */
+.secao-espacada { margin-top: var(--web-espaco-secao); }
+/* Dentro do cartão da ligação a tabela cabe na metade da largura: sem largura mínima e com a falha quebrando linha. */
+.cartao-ligacao .tabela-fdv table { min-width: 0; }
+.cartao-ligacao .tabela-fdv th:nth-child(4), .cartao-ligacao .tabela-fdv td:nth-child(4), .cartao-ligacao .tabela-fdv th:nth-child(5), .cartao-ligacao .tabela-fdv td:nth-child(5) { min-width: 0; }
+.cartao-ficha > .bloco { border: 0; padding: 0; background: none; }
+/* Cartão da ligação de entrada: a última carga sobe para sob o nome; Registros, Com erro e Ações ficam (a Origem saiu das colunas). O cartão é um só (sem borda dupla). */
+.cartao-ligacao .tabela-dados th:nth-child(3), .cartao-ligacao .tabela-dados td:nth-child(3) { display: none; }
+.cartao-ligacao .tabela-dados .carga-sob-nome { display: block; font-size: var(--mx-tamanho-micro); color: var(--mx-cor-texto-secundario); font-weight: var(--mx-peso-normal); margin-top: 2px; }
+.cartao-ligacao .tabela-dados table { min-width: 0; }
+.casca-plataforma .bloco.ligacao, .casca-plataforma .bloco.envios-recentes { border: 0; padding: 0; background: none; }

@@ -1,4 +1,4 @@
-import { CodigoEmpresaLogin } from '@macuxierp/platform-sdk';
+import { MENSAGEM_EMPRESA_SUSPENSA, MENSAGEM_LOGIN_INVALIDO } from '@macuxierp/platform-sdk';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const set = vi.hoisted(() => vi.fn());
@@ -13,17 +13,17 @@ vi.mock('@/lib/config/api', () => ({ euPlataforma }));
 import { entrarAction } from './entrar';
 
 const form = (v: Record<string, string>) => { const f = new FormData(); for (const [k, x] of Object.entries(v)) f.set(k, x); return f; };
-const ok = { empresa: ' am2808 ', email: 'A@B.co', senha: 'Segredo#1' };
+const ok = { email: 'A@B.co', senha: 'Segredo#1' };
 const bko = { destino: 'bko' as const, acesso: 'a', refresh: 'macuxierp_refresh=r' };
 const config = { destino: 'config' as const, token: 'tok', expira_em: '2026-11-23T20:00:00.000Z' };
 
 describe('login único: navegação pelo destino que a API devolve', () => {
   beforeEach(() => { set.mockClear(); loginUnico.mockReset(); buscarEu.mockReset(); euPlataforma.mockReset(); buscarEu.mockResolvedValue({ usuario: {} }); euPlataforma.mockResolvedValue({ deve_trocar_senha: false }); });
 
-  it('manda código normalizado e e-mail em minúsculas; destino bko vai à raiz e grava os cookies do BKO', async () => {
+  it('manda só e-mail em minúsculas e senha (sem empresa); destino bko vai à raiz e grava os cookies do BKO', async () => {
     loginUnico.mockResolvedValue({ tipo: 'ok', sessao: bko });
     await expect(entrarAction(form(ok))).resolves.toEqual({ entrou: { destino: 'bko', para: '/' } });
-    expect(loginUnico).toHaveBeenCalledWith({ empresa: 'AM2808', email: 'a@b.co', senha: 'Segredo#1' });
+    expect(loginUnico).toHaveBeenCalledWith({ email: 'a@b.co', senha: 'Segredo#1' });
     expect(set.mock.calls.map((c) => c[0])).toEqual(['mx_acesso', 'mx_refresh']);
   });
   it('destino config vai a /config e grava só o cookie do superadmin', async () => {
@@ -56,13 +56,19 @@ describe('login único: navegação pelo destino que a API devolve', () => {
   });
   it('401 neutro, sem dizer qual campo', async () => {
     loginUnico.mockResolvedValue({ tipo: 'credencial' });
-    expect(await entrarAction(form(ok))).toEqual({ erro: 'Empresa, e-mail ou senha incorretos.' });
+    expect(await entrarAction(form(ok))).toEqual({ erro: MENSAGEM_LOGIN_INVALIDO });
+    expect(set).not.toHaveBeenCalled();
+  });
+  it('403 EMPRESA_SUSPENSA (ADR 0021): o texto do SDK, sem sessão e sem cookie', async () => {
+    loginUnico.mockResolvedValue({ tipo: 'suspensa' });
+    expect(await entrarAction(form(ok))).toEqual({ erro: MENSAGEM_EMPRESA_SUSPENSA });
+    expect(MENSAGEM_EMPRESA_SUSPENSA).toBe('Sua empresa está suspensa. Fale com o administrador da Macuxi.');
     expect(set).not.toHaveBeenCalled();
   });
   it('423 (CONTA_BLOQUEADA): conta bloqueada, sem texto de erro (T-0111), também para o superadmin', async () => {
     loginUnico.mockResolvedValue({ tipo: 'bloqueada' });
     expect(await entrarAction(form(ok))).toEqual({ bloqueada: true });
-    const sa = form({ ...ok, empresa: 'MACUXI' });
+    const sa = form({ ...ok, email: 'root@macuxi.com.br' });
     expect(await entrarAction(sa)).toEqual({ bloqueada: true });
     expect(set).not.toHaveBeenCalled();
   });
@@ -85,11 +91,10 @@ describe('login único: navegação pelo destino que a API devolve', () => {
     expect(await entrarAction(form(ok))).toEqual({ campos: { email: 'E-mail inválido' } });
   });
   it('campos vazios ou inválidos voltam por campo, sem chamar a API', async () => {
-    expect(await entrarAction(form({ empresa: '', email: '', senha: '' }))).toEqual({
-      campos: { empresa: 'Informe o código da empresa.', email: 'Informe o e-mail.', senha: 'Informe a senha.' },
+    expect(await entrarAction(form({ email: '', senha: '' }))).toEqual({
+      campos: { email: 'Informe o e-mail.', senha: 'Informe a senha.' },
     });
-    const r = await entrarAction(form({ empresa: 'a!', email: 'x', senha: 'y' }));
-    expect(r.campos?.empresa).toBe(CodigoEmpresaLogin.safeParse('a!').error?.issues[0]?.message);
+    const r = await entrarAction(form({ email: 'x', senha: 'y' }));
     expect(r.campos?.email).toBe('E-mail inválido. Confira o endereço.');
     expect(loginUnico).not.toHaveBeenCalled();
   });

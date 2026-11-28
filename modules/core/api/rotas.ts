@@ -41,10 +41,12 @@ import {
   type Empresa,
   type Exportacao,
   type Usuario,
+  type UsuarioExcluido,
+  MENSAGEM_EMAIL_EM_USO_NA_EMPRESA,
 } from '../contracts';
 import { ORIGEM_CERTIFICADO_PADRAO } from '@macuxierp/platform-sdk/certificado-origem';
-import { alertaVencimento, avaliarCertificado, avaliarTrocaAmbienteTenant, diasParaVencer, gerarSenhaProvisoria } from '../domain';
-import { alterarUsuarioComTrava, type OpcoesAlterarUsuario } from './alterar-usuario';
+import { alertaVencimento, avaliarCertificado, normalizarEmailUsuario, avaliarTrocaAmbienteTenant, diasParaVencer, gerarSenhaProvisoria, situacaoDoUsuario } from '../domain';
+import { alterarUsuarioComTrava, excluirUsuarioComTrava, type OpcoesAlterarUsuario } from './alterar-usuario';
 import { cifrarColunasA1 } from './colunas-a1';
 import { sqlstate } from './erro-pg';
 import {
@@ -76,7 +78,8 @@ function empresaDto(e: LinhaEmpresa): Empresa {
   return { id: e.id, razao_social: e.razao_social, nome_fantasia: e.nome_fantasia, cnpj: e.cnpj, ie: e.ie, fuso: e.fuso, updated_at: e.updated_at.toISOString() };
 }
 
-function usuarioDto(u: LinhaUsuario): Usuario {
+/** `agora` decide a situação (trava vigente = bloqueado, RN-CORE-17). */
+function usuarioDto(u: LinhaUsuario, agora: Date): Usuario {
   return {
     id: u.id,
     nome: u.nome,
@@ -84,6 +87,7 @@ function usuarioDto(u: LinhaUsuario): Usuario {
     perfil: u.perfil,
     filial_ids: u.filial_ids,
     ativo: u.ativo,
+    situacao: situacaoDoUsuario({ ativo: u.ativo, bloqueado_ate: u.bloqueado_ate ?? null }, agora),
     external_id: u.external_id,
     ultimo_acesso_em: iso(u.ultimo_acesso_em),
     updated_at: u.updated_at.toISOString(),
@@ -222,7 +226,7 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
       consulta: paginaUsuarios.consulta,
       async executar(c, { consulta }) {
         const linhas = await repo.listarUsuarios(c.tx, { ...consulta, inativos: consulta.inativos ?? false, cursor: undefined, limite: MAXIMO_LINHAS_CSV });
-        return csvDaLista(paginaUsuarios, c.sessao.perfil, linhas.map(usuarioDto), c.fuso);
+        return csvDaLista(paginaUsuarios, c.sessao.perfil, linhas.map((u) => usuarioDto(u, c.agora)), c.fuso);
       },
     }),
     definirRota({
@@ -233,7 +237,7 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
       async executar(c, { consulta }) {
         const linhas = await repo.listarUsuarios(c.tx, { ...consulta, inativos: consulta.inativos ?? false, limite: consulta.limite + 1 });
         const p = paginar(linhas, consulta.limite);
-        return { corpo: { itens: p.itens.map(usuarioDto), proximo_cursor: p.proximo_cursor } };
+        return { corpo: { itens: p.itens.map((u) => usuarioDto(u, c.agora)), proximo_cursor: p.proximo_cursor } };
       },
     }),
     definirRota({
@@ -242,13 +246,14 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
       acao: 'core.usuario.gerir',
       corpo: UsuarioCriar,
       async executar(c, { corpo }) {
-        const email = corpo.email;
+        const email = normalizarEmailUsuario(corpo.email);
         // RN-CORE-05: o reenvio com o mesmo external_id devolve o usuário já criado, sem senha nova.
         if (corpo.external_id) {
           const repetido = await repo.usuarioPorExternalId(c.tx, corpo.external_id);
-          if (repetido) return { status: 200, corpo: usuarioDto(repetido) };
+          if (repetido) return { status: 200, corpo: usuarioDto(repetido, c.agora) };
         }
-        if (await repo.usuarioPorEmail(c.tx, email)) throw erros.conflito('Já existe usuário com este e-mail');
+        if (await repo.usuarioPorEmail(c.tx, email)) throw erros.conflito(MENSAGEM_EMAIL_EM_USO_NA_EMPRESA);
+        // RN-CORE-18: o e-mail de outra empresa a RLS esconde daqui; quem barra é o índice global (0079), traduzido no repositório.
         const senha = gerarSenhaProvisoria(aleatorios(256));
         const criado = await repo.criarUsuario(
           c.tx,
@@ -258,7 +263,7 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
         await c.auditar({ acao: 'core.usuario.criado', entidade: 'usuario', entidade_id: criado.id, depois: usuarioSemPii(criado) });
         await publicar(c, EVENTO_USUARIO, criado.id, usuarioSemPii(criado));
         // A resposta carrega a senha provisória (exibida uma única vez): nunca pode ir a cache de proxy ou navegador.
-        return { status: 201, corpo: { ...usuarioDto(criado), senha_provisoria: senha }, cabecalhos: { ...CABECALHOS_SENHA_PROVISORIA } };
+        return { status: 201, corpo: { ...usuarioDto(criado, c.agora), senha_provisoria: senha }, cabecalhos: { ...CABECALHOS_SENHA_PROVISORIA } };
       },
     }),
     definirRota({
@@ -267,7 +272,7 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
       acao: 'core.usuario.gerir',
       async executar(c, { params }) {
         const u = await usuarioOuErro(c, params);
-        return { corpo: usuarioDto(u), cabecalhos: { ETag: u.updated_at.toISOString() } };
+        return { corpo: usuarioDto(u, c.agora), cabecalhos: { ETag: u.updated_at.toISOString() } };
       },
     }),
     definirRota({
@@ -278,9 +283,10 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
       async executar(c, { corpo, params }) {
         const { updated_at: token, ...patch } = corpo;
         const novo = (await mudarUsuario(c, params, patch, 'core.usuario.alterado', { token: converterToken(token) })) as LinhaUsuario;
-        return { corpo: usuarioDto(novo), cabecalhos: { ETag: novo.updated_at.toISOString() } };
+        return { corpo: usuarioDto(novo, c.agora), cabecalhos: { ETag: novo.updated_at.toISOString() } };
       },
     }),
+    // RN-CORE-17: o DELETE é o Inativar (reversível) mantido por compatibilidade; a tela usa POST .../inativar.
     definirRota({
       metodo: 'DELETE',
       caminho: '/usuarios/:id',
@@ -288,6 +294,41 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
       async executar(c, { params }) {
         await mudarUsuario(c, params, { ativo: false }, 'core.usuario.inativado', { somenteSeAtivo: true });
         return { status: 204 };
+      },
+    }),
+    definirRota({
+      metodo: 'POST',
+      caminho: '/usuarios/:id/inativar',
+      acao: 'core.usuario.gerir',
+      async executar(c, { params }) {
+        const novo = await mudarUsuario(c, params, { ativo: false }, 'core.usuario.inativado', { somenteSeAtivo: true });
+        return { corpo: usuarioDto(novo ?? (await usuarioOuErro(c, params)), c.agora) };
+      },
+    }),
+    definirRota({
+      metodo: 'POST',
+      caminho: '/usuarios/:id/reativar',
+      acao: 'core.usuario.gerir',
+      async executar(c, { params }) {
+        const atual = await usuarioOuErro(c, params);
+        if (atual.ativo) return { corpo: usuarioDto(atual, c.agora) };
+        const novo = (await mudarUsuario(c, params, { ativo: true }, 'core.usuario.reativado')) ?? atual;
+        return { corpo: usuarioDto(novo, c.agora) };
+      },
+    }),
+    // RN-CORE-17: exclusão lógica (deleted_at); some da lista, libera o e-mail e mantém auditoria e guarda. RN-CORE-01 trava o último admin.
+    definirRota({
+      metodo: 'POST',
+      caminho: '/usuarios/:id/excluir',
+      acao: 'core.usuario.gerir',
+      async executar(c, { params }) {
+        const r = await excluirUsuarioComTrava(repo, c.tx, idDoParam(params, 'id'), c.agora);
+        if (r.tipo === 'nao_encontrado') throw erros.naoEncontrado('Usuário');
+        if (r.tipo === 'recusado') throw erros.regra('RN-CORE-01', r.mensagem);
+        await c.auditar({ acao: 'core.usuario.excluido', entidade: 'usuario', entidade_id: r.depois.id, antes: usuarioSemPii(r.antes), depois: usuarioSemPii(r.depois) });
+        await publicar(c, EVENTO_USUARIO, r.depois.id, usuarioSemPii(r.depois));
+        const excluido: UsuarioExcluido = { id: r.depois.id, situacao: 'excluido' };
+        return { corpo: excluido };
       },
     }),
     definirRota({

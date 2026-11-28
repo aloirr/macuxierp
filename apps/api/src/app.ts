@@ -1,10 +1,11 @@
 /**
  * API do Macuxi ERP (Fastify, monólito modular; desenho T-0002, seção 2).
  * - `/v1/saude` (pública), `/v1/auth/*` (login, refresh rotativo em cookie httpOnly, sair, eu, troca da senha);
- * - tela única de login (T-0076): `POST /v1/auth/login` com o código da empresa; o código reservado MACUXI desvia por
- *   dentro para o login do superadmin (cookie do `/config`, com o `CABECALHO_CSRF_CONFIG`) e a resposta diz o `destino`; o 401 é o mesmo nos dois lados
- *   e o limite por IP também. "Esqueci a senha": `POST /v1/auth/esqueci` (MACUXI = superadmin) e
- *   `GET /v1/auth/esqueci/situacao` (`auth/esqueci.ts`);
+ * - tela única de login (T-0076; ADR 0021): `POST /v1/auth/login` só com e-mail e senha; a conta sai do e-mail (usuário
+ *   de empresa primeiro) e o e-mail só de superadmin desvia por dentro para o login dele (cookie do `/config`, com o
+ *   `CABECALHO_CSRF_CONFIG`); a resposta diz o `destino`; o 401 é o mesmo nos dois lados e o limite por IP também.
+ *   "Esqueci a senha": `POST /v1/auth/esqueci` (a conta também sai do e-mail) e `GET /v1/auth/esqueci/situacao`
+ *   (`auth/esqueci.ts`);
  * - senha provisória (T-0052): com `deve_trocar_senha` no JWT, toda rota do tenant é 403 `TROCAR_SENHA`, menos
  *   `GET /v1/auth/eu`, `POST /v1/auth/sair` e `POST /v1/auth/senha` (`auth/troca-senha.ts`);
  * - cada módulo em `/v1/<modulo>`, montado pelas rotas declaradas no plugin (`definirPlugin` do SDK), com a ordem
@@ -23,7 +24,6 @@ import {
   chaveDoPedido,
   CABECALHO_CSRF_CONFIG,
   CAMINHOS_ESQUECI_SENHA,
-  destinoDoCodigo,
   LoginEntrada,
   type LoginResposta,
   PedirSenhaTemporariaEntrada,
@@ -63,7 +63,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import { ZodError } from 'zod';
 import { lerTokenAcesso, type SessaoAcesso } from './auth/jwt';
 import type { RepositorioAuth } from './auth/portas';
-import { FALHA_LOGIN, ServicoAuth, type ConfigAuth, type ResultadoLogin } from './auth/servico';
+import { DESVIO_SUPERADMIN, ServicoAuth, type ConfigAuth, type ResultadoLogin } from './auth/servico';
 import { opcoesCookieSessao } from './auth/apoio-login';
 import { envioAposResposta, erroMuitasTentativas, limitarEsqueciPorIp, type EsqueciMontado } from './auth/esqueci';
 import { registrarSemEnvio } from './auth/esqueci-log';
@@ -110,7 +110,7 @@ export interface DependenciasApp {
    * Ausente = o prefixo não é montado (404). Produção: `montarDependenciasProducao`.
    */
   plataforma?: DependenciasPlataformaApi;
-  /** Limite por IP das falhas do `POST /v1/auth/login` (tenant e MACUXI). Padrão: `LIMITE_LOGIN_IP_PADRAO` (ADR 0012 §6). */
+  /** Limite por IP das falhas do `POST /v1/auth/login` (tenant e superadmin). Padrão: `LIMITE_LOGIN_IP_PADRAO` (ADR 0012 §6). */
   limiteLogin?: LimitePorChave;
   /**
    * "Esqueci a senha" (T-0076): ausente = sem e-mail (`emailDisponivel(config.email)` falso). Ordem e regras: auth/esqueci.ts.
@@ -225,7 +225,7 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
   });
 
   // Portal /config (ADR 0012): fora do /v1/<modulo>, sem ContextoRota de tenant e sem licença. Montado antes do login
-  // porque a tela única (MACUXI) usa o mesmo serviço do superadmin.
+  // porque a tela única usa o mesmo serviço quando o e-mail é só de superadmin (ADR 0021).
   const esqueci: EsqueciMontado = { envio: d.esqueci?.envio ?? null, limites: d.esqueci?.limites ?? novosLimitesEsqueci() };
   const plataforma = d.plataforma
     ? montarPlataforma(app, d.plataforma, { auth: d.auth, relogio: d.relogio, cookieSeguro: d.cookieSeguro, ...(d.cronometro ? { cronometro: d.cronometro } : {}), esqueci, cookieRefreshBko: COOKIE_REFRESH })
@@ -233,24 +233,31 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
   const segredoBff = d.plataforma?.segredoBff ?? null;
   const limiteLogin = d.limiteLogin ?? new LimitePorChave();
 
-  // Tela única (T-0076, ADR 0018): limite por IP → corpo → `destinoDoCodigo`: 'config' (MACUXI) = superadmin (cookie do
-  // /config) ou 'bko' = tenant pelo código da empresa. O 'config' exige o `CABECALHO_CSRF_CONFIG` como o /config/entrar;
-  // sem ele, o mesmo 401 neutro (ADR 0018 §6), com o custo de argon2 de uma conferência e sem tocar o banco. O 401 do
-  // superadmin sai com o mesmo corpo do tenant. O limite por IP conta as falhas (401 e 423) dos dois lados juntos;
-  // estourado, só a senha temporária válida entra (hotfix v0.3.16.1, RN-CORE-15): o resto é o 429 do limite.
+  // Tela única (T-0076, ADR 0018 e 0021): limite por IP → corpo → conta pelo e-mail: usuário de empresa = BKO; só
+  // superadmin = cookie do /config. O 'config' exige o `CABECALHO_CSRF_CONFIG` como o /config/entrar; sem ele, o mesmo 401
+  // neutro (ADR 0018 §6), com o custo de argon2 de uma conferência. O 401 do superadmin sai com o mesmo corpo do tenant.
+  // O limite por IP conta as falhas (401 e 423) dos dois lados juntos; estourado, só a senha temporária válida entra
+  // (hotfix v0.3.16.1, RN-CORE-15): o resto é o 429 do limite. O campo `empresa` é ignorado (ADR 0021 §6): só conta no log.
   app.post('/v1/auth/login', async (req, reply) => {
     const ip = ipDoCliente(req, segredoBff);
     const agoraMs = d.relogio.agora().getTime();
     const porIp = limiteLogin.excedido(ip, agoraMs);
     const limite = porIp.permitido ? undefined : () => erroMuitasTentativas(porIp.retry_after_s);
     const entrada = LoginEntrada.parse(req.body);
+    let tenantDoLogin: string | undefined;
     try {
-      if (destinoDoCodigo(entrada.empresa) === 'bko') return respostaLogin(reply, await servico.entrar(entrada, limite));
+      const r = await servico.entrar(entrada, limite);
+      if (r !== DESVIO_SUPERADMIN) {
+        tenantDoLogin = r.tenant_id;
+        return respostaLogin(reply, r);
+      }
       return await entrarComoSuperadmin(reply, plataforma, entrada, { cookieSeguro: d.cookieSeguro, csrf: req.headers[CABECALHO_CSRF_CONFIG] === '1', limite });
     } catch (e) {
       // 401 e 423 (RN-CORE-15) contam no limite por IP; o login certo, inclusive com a temporária, não
       if (e instanceof ErroApi && (e.status === 401 || e.status === 423)) limiteLogin.registrar(ip, agoraMs);
       throw e;
+    } finally {
+      if (entrada.empresa !== undefined) contarCampoEmpresa(req, tenantDoLogin);
     }
   });
 
@@ -263,18 +270,11 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
   app.post(CAMINHOS_ESQUECI_SENHA.tenant, apos.opcoes, async (req, reply) => {
     const agoraMs = d.relogio.agora().getTime();
     limitarEsqueciPorIp(esqueci.limites, ipDoCliente(req, segredoBff), agoraMs);
-    const { empresa, email } = PedirSenhaTemporariaEntrada.parse(req.body);
-    const doSuperadmin = destinoDoCodigo(empresa) === 'config';
+    const entrada = PedirSenhaTemporariaEntrada.parse(req.body);
+    if (entrada.empresa !== undefined) contarCampoEmpresa(req, undefined);
     if (!d.esqueci) return apos.responder(req, reply, await servico.esqueciSemEnvio(req.log));
-    if (doSuperadmin) {
-      if (!plataforma) {
-        registrarSemEnvio(req.log, 'plataforma_indisponivel');
-        return apos.responder(req, reply, null);
-      }
-      return apos.responder(req, reply, await traduzido(() => plataforma.esqueci(email, req.log)));
-    }
     const mensagem = await servico.esqueci(
-      { empresa, email },
+      { email: entrada.email },
       d.esqueci.repoCore,
       async (tx, conta) => {
         const ctx = { ...conta, request_id: req.id };
@@ -282,7 +282,13 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
       },
       req.log,
     );
-    return apos.responder(req, reply, mensagem);
+    if (mensagem !== DESVIO_SUPERADMIN) return apos.responder(req, reply, mensagem);
+    // ADR 0021 §5: e-mail só de superadmin = o pedido do `/config`, com o mesmo 202
+    if (!plataforma) {
+      registrarSemEnvio(req.log, 'plataforma_indisponivel');
+      return apos.responder(req, reply, null);
+    }
+    return apos.responder(req, reply, await traduzido(() => plataforma.esqueci(entrada.email, req.log)));
   });
 
   app.post('/v1/auth/refresh', async (req, reply) => respostaLogin(reply, await servico.renovar(req.cookies[COOKIE_REFRESH])));
@@ -357,10 +363,23 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
 }
 
 /**
- * MACUXI na tela única (T-0076, ADR 0018): o login do superadmin com o cookie do `/config` e 200 `LoginResposta` do
- * destino 'config' (`{ destino, expira_em }`, sem token no corpo), também com a senha temporária. Sem o
- * `CABECALHO_CSRF_CONFIG` (`csrf` falso), o 401 neutro com o custo de uma conferência, antes do banco. O 401 sai com o
- * mesmo corpo do tenant (`FALHA_LOGIN`), para a tela não revelar o lado.
+ * ADR 0021 §6: o campo `empresa` do login e do "esqueci" fica opcional e ignorado na v0.3.30. Uma linha de log por pedido
+ * que ainda o manda, para contar (`evento`), com `modulo`, `request_id` (do pino) e o `tenant_id` só quando o login abriu a
+ * sessão do BKO. Sem e-mail nem o código digitado (LGPD).
+ */
+function contarCampoEmpresa(req: FastifyRequest, tenantId: string | undefined): void {
+  try {
+    req.log.info({ evento: 'auth.campo_empresa_ignorado', modulo: 'core', ...(tenantId ? { tenant_id: tenantId } : {}) }, 'pedido com o campo empresa (ignorado)');
+  } catch {
+    // o log nunca derruba o pedido
+  }
+}
+
+/**
+ * Superadmin na tela única (T-0076, ADR 0018; ADR 0021 §5: o e-mail é só de superadmin): o login com o cookie do
+ * `/config` e 200 `LoginResposta` do destino 'config' (`{ destino, expira_em }`, sem token no corpo), também com a senha
+ * temporária. Sem o `CABECALHO_CSRF_CONFIG` (`csrf` falso), o 401 neutro com o custo de uma conferência, antes do
+ * banco. O 401 sai com o mesmo corpo do tenant (`erros.loginInvalido`), para a tela não revelar o lado.
  */
 async function entrarComoSuperadmin(
   reply: FastifyReply,
@@ -369,13 +388,13 @@ async function entrarComoSuperadmin(
   o: { cookieSeguro: boolean; csrf: boolean; limite?: (() => ErroApi) | undefined },
 ) {
   try {
-    if (!plataforma) throw o.limite ? o.limite() : erros.naoAutenticado(FALHA_LOGIN);
+    if (!plataforma) throw o.limite ? o.limite() : erros.loginInvalido();
     if (!o.csrf) return await plataforma.recusarComCustoIgual(entrada.senha);
     const r = await traduzido(() => plataforma.entrar(entrada.email.trim().toLowerCase(), entrada.senha, o.limite));
     reply.log = reply.request.log = reply.request.log.child({ superadmin_id: r.superadmin_id });
     return responderLoginPlataforma(reply, r, o.cookieSeguro, { destino: 'config' satisfies DestinoLogin });
   } catch (e) {
-    if (e instanceof ErroApi && e.status === 401) throw erros.naoAutenticado(FALHA_LOGIN);
+    if (e instanceof ErroApi && e.status === 401) throw erros.loginInvalido();
     throw e;
   }
 }

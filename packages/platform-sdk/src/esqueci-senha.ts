@@ -14,22 +14,24 @@
 import { z } from 'zod';
 import { CODIGO_CONTA_BLOQUEADA, MENSAGEM_CONTA_BLOQUEADA, RECUPERAR_CONTA_BLOQUEADA } from './erros';
 import { CODIGO_TROCAR_SENHA, MOTIVOS_TROCA_SENHA } from './eu';
-import { CodigoEmpresaLogin, DestinoLogin } from './login';
+import { DestinoLogin } from './login';
 import { EmailUsuario, Instante } from './portal-config';
 import { MODELO_HTML_SENHA_TEMPORARIA } from './email-senha-temporaria-html';
 import { plural } from './texto';
 
-/** Pedido da senha temporária do usuário do tenant (RN-CORE-13): um pedido novo substitui a temporária anterior. */
-export const PedirSenhaTemporariaEntrada = z.object({ empresa: CodigoEmpresaLogin, email: EmailUsuario });
+/**
+ * Pedido da senha temporária pela tela de login (RN-CORE-13): um pedido novo substitui a temporária anterior. A conta é
+ * achada pelo e-mail (ADR 0021): usuário de empresa ou, sem ele, superadmin. `empresa`: opcional e ignorado (§6).
+ */
+export const PedirSenhaTemporariaEntrada = z.object({ empresa: z.unknown().optional(), email: EmailUsuario });
 export type PedirSenhaTemporariaEntrada = z.infer<typeof PedirSenhaTemporariaEntrada>;
 
 /** Pedido da senha temporária do superadmin (RN-CORE-13): um pedido novo substitui a temporária anterior. */
 export const PedirSenhaTemporariaPlataformaEntrada = z.object({ email: EmailUsuario });
 export type PedirSenhaTemporariaPlataformaEntrada = z.infer<typeof PedirSenhaTemporariaPlataformaEntrada>;
 
-/** Confirmação neutra do BKO e do `/config` (literal aprovado no #466, docs/design/login-unico/README.md). */
-export const MENSAGEM_ESQUECI_NEUTRA =
-  'Se o e-mail estiver cadastrado nesta empresa, você vai receber uma senha temporária em alguns minutos. Ela vale por 72 horas.';
+/** Confirmação neutra do BKO e do `/config` (ADR 0021, seção "Textos": travada pelo PO em 28/11/2026, exatamente assim). */
+export const MENSAGEM_ESQUECI_NEUTRA = 'Se o e-mail estiver cadastrado, enviamos as instruções.';
 
 /** Corpo do 202 das duas rotas do "esqueci" (RN-CORE-13): igual exista ou não a conta. */
 export const PedidoSenhaTemporariaResposta = z.object({ mensagem: z.literal(MENSAGEM_ESQUECI_NEUTRA) });
@@ -109,28 +111,26 @@ export const RODAPE_EMAIL_MACUXI_ERP = `Equipe Macuxi ERP · Boa Vista, RR · ${
 export const ROTA_TELA_LOGIN = '/';
 
 /**
- * Link do botão "Abrir o Macuxi ERP" (44 B): a tela de login com o código da empresa e o e-mail preenchidos, no
- * fragmento (`#codigo=…&email=…`). LGPD: o fragmento não vai ao servidor, nem ao log da Cloudflare, nem ao Referer.
- * A senha nunca entra no link. Função pura.
+ * Link do botão "Abrir o Macuxi ERP" (44 B): a tela de login com o e-mail preenchido, no fragmento (`#email=…`). Desde
+ * a ADR 0021 (§6) o login não pede a empresa, e o link não leva código nem token. LGPD: o fragmento não vai ao
+ * servidor, nem ao log da Cloudflare, nem ao Referer. A senha nunca entra no link. Função pura.
  */
-export function urlEntrarPreenchida(codigo_empresa: string, email: string): string {
-  return `${URL_MACUXI_ERP}${ROTA_TELA_LOGIN}#${new URLSearchParams({ codigo: codigo_empresa, email }).toString()}`;
+export function urlEntrarPreenchida(email: string): string {
+  return `${URL_MACUXI_ERP}${ROTA_TELA_LOGIN}#${new URLSearchParams({ email }).toString()}`;
 }
 
-/** O que a tela de login preenche a partir do fragmento (o código e o e-mail já normalizados como no login). */
-export const PreenchimentoLogin = z.object({ codigo: CodigoEmpresaLogin.optional(), email: EmailUsuario.optional() });
+/** O que a tela de login preenche a partir do fragmento: só o e-mail, normalizado como no login (ADR 0021 §6). */
+export const PreenchimentoLogin = z.object({ email: EmailUsuario.optional() });
 export type PreenchimentoLogin = z.infer<typeof PreenchimentoLogin>;
 
 /**
- * Lê o fragmento do link (`location.hash`, com ou sem o `#`): só `codigo` e `email`, cada um só se válido (o inválido
- * fica de fora, sem erro); o resto é ignorado. A tela limpa o fragmento depois de ler (`history.replaceState`), para o
- * e-mail não ficar no histórico. Função pura.
+ * Lê o fragmento do link (`location.hash`, com ou sem o `#`): só o `email`, se válido (o inválido fica de fora, sem
+ * erro); o `codigo` de link antigo e o resto são ignorados. A tela limpa o fragmento depois de ler
+ * (`history.replaceState`), para o e-mail não ficar no histórico. Função pura.
  */
 export function lerPreenchimentoLogin(hash: string): PreenchimentoLogin {
-  const p = new URLSearchParams(hash.replace(/^#/, ''));
-  const codigo = CodigoEmpresaLogin.safeParse(p.get('codigo') ?? '');
-  const email = EmailUsuario.safeParse(p.get('email') ?? '');
-  return { ...(codigo.success ? { codigo: codigo.data } : {}), ...(email.success ? { email: email.data } : {}) };
+  const email = EmailUsuario.safeParse(new URLSearchParams(hash.replace(/^#/, '')).get('email') ?? '');
+  return email.success ? { email: email.data } : {};
 }
 
 export interface EmailSenhaTemporaria {
@@ -145,25 +145,32 @@ export interface EmailSenhaTemporaria {
 const escaparHtml = (v: string): string => v.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
 /**
- * E-mail da senha temporária (RN-CORE-13; T-0111): fonte única, com os textos exatos do design
- * (`docs/design/emails/redefinir-senha/`, #705), em texto e HTML (multipart). Leva o código da empresa, o e-mail da conta
- * (o próprio destinatário) e a senha; diz que ela também desbloqueia a conta (RN-CORE-15). Sem nome do destinatário. Função pura.
+ * As duas linhas do cartão de dados com o código da empresa no `MODELO_HTML_SENHA_TEMPORARIA` (rótulo e valor), que
+ * saem sempre do HTML (ADR 0021 §6, RD-2403). A cópia do design (`docs/design/emails/redefinir-senha/email.html`) muda
+ * com o designer-ux; então este recorte deixa de achar nada e sai (o teste do SDK avisa).
  */
-export function emailSenhaTemporaria(e: { senha: string; validade_horas: number; codigo_empresa: string; email: string }): EmailSenhaTemporaria {
+const LINHAS_CODIGO_EMPRESA_HTML =
+  /\n {4}<tr><td class="mx-rotulo"[^\n]*>Código da empresa<\/td><\/tr>\n {4}<tr><td class="mx-valor"[^\n]*>\{\{codigo_empresa\}\}<\/td><\/tr>/;
+
+/**
+ * E-mail da senha temporária (RN-CORE-13; T-0111): fonte única, com os textos exatos do design
+ * (`docs/design/emails/redefinir-senha/`, #705), em texto e HTML (multipart). Leva o e-mail da conta (o próprio
+ * destinatário), a senha e o botão; diz que ela também desbloqueia a conta (RN-CORE-15). Sem nome do destinatário e,
+ * desde a ADR 0021 (§6), sem o código da empresa. Função pura.
+ */
+export function emailSenhaTemporaria(e: { senha: string; validade_horas: number; email: string }): EmailSenhaTemporaria {
   if (e.senha.trim() === '' || /[\r\n]/.test(e.senha)) throw new RangeError('emailSenhaTemporaria: senha vazia ou com quebra de linha');
   if (!Number.isInteger(e.validade_horas) || e.validade_horas < 1) throw new RangeError('emailSenhaTemporaria: validade_horas precisa ser inteiro ≥ 1');
-  if (e.codigo_empresa.trim() === '' || e.email.trim() === '') throw new RangeError('emailSenhaTemporaria: código da empresa e e-mail são obrigatórios');
+  if (e.email.trim() === '') throw new RangeError('emailSenhaTemporaria: o e-mail é obrigatório');
   const assunto = 'Sua senha temporária do Macuxi ERP';
-  const codigo = e.codigo_empresa.trim();
   const email = e.email.trim();
-  const campos = { codigo_empresa: codigo, email, senha_temporaria: e.senha, url_entrar: urlEntrarPreenchida(codigo, email) };
+  const campos = { email, senha_temporaria: e.senha, url_entrar: urlEntrarPreenchida(email) };
   const aviso = `Vale por ${e.validade_horas} horas e serve para entrar uma vez só. Ela também desbloqueia a conta.`;
   const texto = [
     'Sua senha temporária',
     '',
     'Recebemos um pedido de senha temporária para entrar no Macuxi ERP. Se não foi você, ignore este e-mail.',
     '',
-    `Código da empresa: ${campos.codigo_empresa}`,
     `E-mail: ${campos.email}`,
     `Senha temporária: ${campos.senha_temporaria}`,
     '',
@@ -176,7 +183,8 @@ export function emailSenhaTemporaria(e: { senha: string; validade_horas: number;
   ].join('\n');
   // Troca simples de texto, só depois do escape; nenhum outro campo entra no modelo (README do design).
   const valores: Record<string, string> = { assunto, ...campos };
-  const html = MODELO_HTML_SENHA_TEMPORARIA.replace(/\{\{(assunto|codigo_empresa|email|senha_temporaria|url_entrar)\}\}/g, (_m, k: string) => escaparHtml(valores[k]!))
+  const html = MODELO_HTML_SENHA_TEMPORARIA.replace(LINHAS_CODIGO_EMPRESA_HTML, '')
+    .replace(/\{\{(assunto|email|senha_temporaria|url_entrar)\}\}/g, (_m, k: string) => escaparHtml(valores[k]!))
     .replace('Vale por 72 horas e serve para entrar uma vez só. Ela também desbloqueia a conta.', escaparHtml(aviso))
     .replace('Vale por 72 horas.', `Vale por ${e.validade_horas} horas.`);
   return { assunto, texto, html };

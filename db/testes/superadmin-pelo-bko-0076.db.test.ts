@@ -39,7 +39,8 @@ const A = novoTenant('sa-0076-a');
 const B = novoTenant('sa-0076-b');
 const S = novoTenant('sa-0076-s'); // suspenso
 
-// Superadmins: aptos (OK1..OK3) e um por motivo de recusa.
+// Superadmins: aptos (OK1..OK6) e um por motivo de recusa. Desde a 0079 o e-mail de usuário é único no sistema
+// todo, então cada usuário do B e do S tem o seu superadmin apto (ok4..ok6).
 const SA = {
   ok1: '5a000000-0000-4000-8000-000000000761',
   ok2: '5a000000-0000-4000-8000-000000000762',
@@ -48,6 +49,9 @@ const SA = {
   inativo: '5a000000-0000-4000-8000-000000000765',
   excluido: '5a000000-0000-4000-8000-000000000766',
   troca: '5a000000-0000-4000-8000-000000000767',
+  ok4: '5a000000-0000-4000-8000-000000000768',
+  ok5: '5a000000-0000-4000-8000-000000000769',
+  ok6: '5a000000-0000-4000-8000-00000000076a',
 } as const;
 const email = (k: string): string => `${k}@sa0076.teste`;
 
@@ -120,7 +124,10 @@ INSERT INTO plataforma.superadmin (id, email, nome, senha_hash, deve_trocar_senh
      now() + interval '15 minutes', NULL),
   ('${SA.inativo}', '${email('inativo')}', 'Superadmin Inativo', '${HASH}', false, false, 0, NULL, NULL),
   ('${SA.excluido}', '${email('excluido')}', 'Superadmin Excluido', '${HASH}', false, true, 0, NULL, now()),
-  ('${SA.troca}', '${email('troca')}', 'Superadmin Troca', '${HASH}', true, true, 0, NULL, NULL);
+  ('${SA.troca}', '${email('troca')}', 'Superadmin Troca', '${HASH}', true, true, 0, NULL, NULL),
+  ('${SA.ok4}', '${email('ok4')}', 'Superadmin Quatro', '${HASH}', false, true, 0, NULL, NULL),
+  ('${SA.ok5}', '${email('ok5')}', 'Superadmin Cinco', '${HASH}', false, true, 0, NULL, NULL),
+  ('${SA.ok6}', '${email('ok6')}', 'Superadmin Seis', '${HASH}', false, true, 0, NULL, NULL);
 INSERT INTO plataforma.usuario (id, tenant_id, email, nome, senha_hash, perfil, ativo, deve_trocar_senha, deleted_at)
 VALUES
   ('${U.ok}', '${A.id}', '${email('ok1')}', 'Usuario Ok', '${HASH}', 'administrador', true, false, NULL),
@@ -132,10 +139,10 @@ VALUES
   ('${U.saTroca}', '${A.id}', '${email('troca')}', 'Usuario Sa Troca', '${HASH}', 'gerente', true, false, NULL),
   ('${U.sem}', '${A.id}', 'sem@sa0076.teste', 'Usuario Sem', '${HASH}', 'gerente', true, false, NULL),
   ('${U.deve}', '${A.id}', '${email('ok2')}', 'Usuario Deve', '${HASH}', 'gerente', true, true, NULL),
-  ('${U.inativo}', '${B.id}', '${email('ok1')}', 'Usuario Inativo', '${HASH}', 'gerente', false, false, NULL),
+  ('${U.inativo}', '${B.id}', '${email('ok4')}', 'Usuario Inativo', '${HASH}', 'gerente', false, false, NULL),
   ('${U.excluido}', '${B.id}', '${email('ok2')}', 'Usuario Excluido', '${HASH}', 'gerente', true, false, now()),
-  ('${U.reuso}', '${B.id}', '${email('ok3')}', 'Usuario Reuso', '${HASH}', 'gerente', true, false, NULL),
-  ('${U.suspenso}', '${S.id}', '${email('ok1')}', 'Usuario Suspenso', '${HASH}', 'gerente', true, false, NULL);
+  ('${U.reuso}', '${B.id}', '${email('ok6')}', 'Usuario Reuso', '${HASH}', 'gerente', true, false, NULL),
+  ('${U.suspenso}', '${S.id}', '${email('ok5')}', 'Usuario Suspenso', '${HASH}', 'gerente', true, false, NULL);
 INSERT INTO plataforma.sessao (tenant_id, usuario_id, familia, refresh_hash, expira_em, revogada_em, deleted_at) VALUES
   ('${A.id}', '${U.ok}', gen_random_uuid(), ${hashSql('r-ok')}, now() + interval '30 days', NULL, NULL),
   ('${A.id}', '${U.ok}', gen_random_uuid(), ${hashSql('r-vencida')}, now() - interval '1 second', NULL, NULL),
@@ -170,7 +177,8 @@ INSERT INTO plataforma.sessao (tenant_id, usuario_id, familia, refresh_hash, exp
     for (const r of ['r-suspenso', 'r-inativo', 'r-excluido']) {
       expect({ r, linhas: abrir(r) }).toEqual({ r, linhas: [] });
     }
-    expect(sessoesConfig(SA.ok1) + sessoesConfig(SA.ok2)).toBe(0);
+    const aptos = [SA.ok1, SA.ok2, SA.ok4, SA.ok5];
+    expect(aptos.reduce((n, sa) => n + sessoesConfig(sa), 0)).toBe(0);
   });
 
   it('(c) usuário com troca de senha pendente: MXS11, mesmo com superadmin apto no e-mail', () => {
@@ -263,7 +271,7 @@ INSERT INTO plataforma.sessao (tenant_id, usuario_id, familia, refresh_hash, exp
       consultar<{ t: string }>(
         banco.conexao,
         `SELECT token_hash AS t FROM plataforma.sessao_superadmin
-         WHERE superadmin_id = '${SA.ok3}' AND origem_sessao_bko IS NOT NULL AND revogada_em IS NULL
+         WHERE superadmin_id = '${SA.ok6}' AND origem_sessao_bko IS NOT NULL AND revogada_em IS NULL
            AND origem_sessao_bko IN (SELECT id FROM plataforma.sessao WHERE familia = '${FAMILIA_REUSO}')`,
       ).map((l) => l.t);
     const hash = (t: string): string => um<{ h: string }>(`SELECT ${hashSql(t)} AS h`).h;

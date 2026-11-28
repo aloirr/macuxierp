@@ -1,26 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import { CODIGO_SUPERADMIN_LOGIN, urlEntrarPreenchida } from '@macuxierp/platform-sdk';
-import { ROTA_LOGIN_SUPERADMIN } from './rota-login';
+import { urlEntrarPreenchida } from '@macuxierp/platform-sdk';
+import { ROTA_LOGIN } from './rota-login';
 import { valoresIniciaisLogin } from './login-preenchimento';
 
-const ini = (fragmento: string, salvo?: string) => valoresIniciaisLogin({ salvo, fragmento });
+const ini = (fragmento: string) => valoresIniciaisLogin({ fragmento });
 
-describe('login na raiz: valores iniciais', () => {
-  it('sem fragmento, segue o código salvo do BKO', () => {
-    expect(ini('', 'AM2808')).toEqual({ empresa: 'AM2808', email: '' });
-    expect(ini('', undefined)).toEqual({ empresa: '', email: '' });
+describe('login na raiz: valor inicial (ADR 0021, só o e-mail)', () => {
+  it('sem fragmento, nada vem preenchido', () => {
+    expect(ini('')).toEqual({ email: '' });
   });
-  it('o /config sem sessão volta à raiz com o código da plataforma, vencendo o código salvo do BKO', () => {
-    expect(ROTA_LOGIN_SUPERADMIN.startsWith('/#')).toBe(true);
-    expect(ini(new URL(ROTA_LOGIN_SUPERADMIN, 'http://x').hash, 'AM2808')).toEqual({ empresa: CODIGO_SUPERADMIN_LOGIN, email: '' });
+  it('o /config sem sessão volta à raiz sem fragmento (sem código da empresa)', () => {
+    expect(ROTA_LOGIN).toBe('/');
+    expect(ini(new URL(ROTA_LOGIN, 'http://x').hash)).toEqual({ email: '' });
   });
-});
-
-describe('v0.3.20 C2 (44 B): link do e-mail preenche código e e-mail pelo fragmento', () => {
-  it('lê o link do SDK (urlEntrarPreenchida); a validação do fragmento é testada no SDK', () => {
-    expect(ini(new URL(urlEntrarPreenchida('AM2808', 'ana@exemplo.com.br')).hash)).toEqual({ empresa: 'AM2808', email: 'ana@exemplo.com.br' });
+  it('lê o link do SDK sem código (urlEntrarPreenchida); a validação do fragmento é testada no SDK', () => {
+    expect(ini(new URL(urlEntrarPreenchida('ana@exemplo.com.br')).hash)).toEqual({ email: 'ana@exemplo.com.br' });
   });
-  it('o fragmento vence o código salvo', () => {
-    expect(ini('#codigo=AM2808&email=a%40b.co', 'OUTRA')).toEqual({ empresa: 'AM2808', email: 'a@b.co' });
+  it('um link antigo com #codigo=… ainda preenche o e-mail e ignora o código', () => {
+    const r = ini('#codigo=AM2808&email=a%40b.co');
+    expect(r).toEqual({ email: 'a@b.co' });
+    expect(r).not.toHaveProperty('empresa');
   });
 });

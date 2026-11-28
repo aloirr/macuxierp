@@ -8,10 +8,8 @@ import { ChavesIdempotencia } from '@/lib/config/chaves';
 import { salvarCsv } from '@/lib/baixar-csv';
 import { acoesDaCarga, avisoCarga, estadoCargaCompleta, menuDaLinha } from '@/lib/config/integracao-fdv';
 import { cargaCompletaFdvAcao } from '@/lib/acoes-cliente';
-import { LIGACAO_ENTRADA, origemDaCarga, ultimoLoteDoCadastro } from '@/lib/config/ligacoes';
+import { ultimoLoteDoCadastro } from '@/lib/config/ligacoes';
 import { AUSENTE } from '@/lib/config/empresa';
-import { TituloLigacao } from './ligacao';
-import { SecaoEnvioFdv } from './envio-fdv';
 import {
   AVISO_LIMITE_FDV, ROTULO_MODO, TEXTO_SUBSTITUIR, caixasDaConferencia, conferirArquivoEscolhido, enderecoModelo, linhasCargas, pedirConferencia, pedirErros, pedirGravacao,
   podeGravar, rotuloAdicionar, rotuloLinhaErro, textoEfeito, textoGravado, textoErrosOmitidos, textoLinhaErro, tituloImportar, type LinhaCarga, type Retorno,
@@ -24,7 +22,7 @@ import {
 /**
  * Aba "Dados" da ficha da empresa (era "Cargas", T-0058; T-0086 v0.3.12; v0.3.24: dividida pelos dois sentidos das ligações,
  * "Sistema do cliente → ERP" com os cadastros recebidos e "ERP → Força de vendas" com os enviados, `SecaoEnvioFdv`): cargas recentes e importação numa tabela só, uma linha por
- * cadastro, com situação, última carga (data, hora, registros e origem), Modelo, Importar e Carga completa (reenvia tudo ao FDV, com
+ * cadastro, com situação, última carga (data, hora e registros), Modelo, Importar e Carga completa (reenvia tudo ao FDV, com
  * confirmação; decisão do PO em 24/11: a carga completa fica aqui, não na aba Integração). "Importar" abre a conferência
  * automática (sem botão Validar), "Adicionar" acrescenta e atualiza, "Substituir tudo" pede uma frase. O "Zerar" saiu daqui: é por
  * cadastro, na aba Integração. Tudo passa pelos route handlers do portal (`/config/empresas/:id/cargas/...`, cookie mx_config). O
@@ -54,7 +52,7 @@ export function AbaDados({ empresaId, dados, fuso, integracao = null, entrada = 
     return (
       <>
         <p className="erro" role="alert">Não foi possível carregar os dados.</p>
-        <a className="mx-botao-secundario" href={`/config/empresas/${encodeURIComponent(empresaId)}?aba=dados`}>Recarregar</a>
+        <a className="mx-botao-secundario" href={`/config/empresas/${encodeURIComponent(empresaId)}?aba=integracao`}>Recarregar</a>
       </>
     );
   }
@@ -80,7 +78,6 @@ export function AbaDados({ empresaId, dados, fuso, integracao = null, entrada = 
     // "Registros" e "Com erro" são do último lote recebido pela ligação do sistema do cliente (a tabela "Lotes recebidos" saiu, RD-1103).
     { id: 'registros', titulo: 'Registros', tipo: 'numero', celula: (l) => lotes.get(l.cadastro)?.recebidos ?? '—' },
     { id: 'comErro', titulo: 'Com erro', tipo: 'numero', celula: (l) => lotes.get(l.cadastro)?.com_erro ?? '—' },
-    { id: 'origem', titulo: 'Origem', celula: (l) => origemDaCarga(l.ultimaEm, lotes.get(l.cadastro) ?? null) ?? '—' },
     { id: 'acoes', titulo: 'Ações', celula: (l) => {
       const c = estadoCargaCompleta(l.cadastro, integracao);
       // Botão "Ações" (T-0099): Importar à vista; o Modelo (baixa o CSV) e a Carga completa ficam no menu.
@@ -90,9 +87,7 @@ export function AbaDados({ empresaId, dados, fuso, integracao = null, entrada = 
     } },
   ];
   return (
-    <>
-    <section className="bloco direcao" aria-labelledby="h-dados-entrada">
-      <TituloLigacao ligacao={LIGACAO_ENTRADA} id="h-dados-entrada" />
+    <div className="dados-entrada">
       <div className="tabela-rolavel com-sinal-rolagem tabela-dados legenda-so-leitor">
         <TabelaDensa colunas={colunas} linhas={linhas} chaveLinha={(l) => l.cadastro} textoVazio="Nenhum cadastro." legenda={LEGENDA_RECEBIDOS} />
       </div>
@@ -119,9 +114,7 @@ export function AbaDados({ empresaId, dados, fuso, integracao = null, entrada = 
           }}
         />
       )}
-    </section>
-    {integracao && <SecaoEnvioFdv empresaId={empresaId} dados={integracao} fuso={fuso} />}
-    </>
+    </div>
   );
 }
 
