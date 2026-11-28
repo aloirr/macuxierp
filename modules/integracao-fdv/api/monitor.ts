@@ -144,14 +144,14 @@ export async function lerMonitor(tx: Transacao, tenantId: string): Promise<Monit
 
 // ---- lotes ----
 
-type LinhaLote = {
+export type LinhaLote = {
   id: string; entidade: EntidadeHub; modo: ModoLote; geracao: number; estado: EstadoLote; repetido: boolean; tentativas: number;
   ultimo_erro_codigo: string | null; enviado_em: Date | null; concluido_em: Date | null; contagens: Record<string, unknown>;
 };
 
 const numero = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
-function loteResumo(l: LinhaLote): LoteEnvioResumo {
+export function loteResumo(l: LinhaLote): LoteEnvioResumo {
   const hub = (l.contagens.hub ?? {}) as Record<string, unknown>;
   const recebidas = numero(hub.recebidas);
   const comErro = numero(hub.com_erro);

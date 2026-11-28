@@ -203,6 +203,57 @@ describe.skipIf(!PG_DISPONIVEL)('rotas /v1/integracao-fdv no PostgreSQL real', (
     });
   });
 
+  describe('GET /ligacoes (T-0131, RN-INF-13)', () => {
+    it('RN-INF-13: sem credencial nem lote, zeros e Contato desativado', async () => {
+      const r = await chamar(B, 'GET', '/ligacoes', { perfil: 'leitura' });
+      expect(r.status).toBe(200);
+      expect(r.corpo).toEqual({ saida: { contato: { conector_id: null, ambiente: null, chave_prefixo: null, situacao: 'desativado', ultimo_contato_em: null }, contadores: { enviados: 0, aceitos: 0 }, envios: [], envios_cortados: false } });
+    });
+
+    it('RN-INF-13: Enviados soma os registros dos lotes mandados ao Hub, Aceitos soma os aceitos, o repetido e os não enviados ficam de fora; só o próprio tenant', async () => {
+      const t = await criarTenant(efemero.admin, 'rotas-lig', ['integracao-fdv']);
+      const cred = await criarCredencial(efemero.admin, t);
+      await adm('UPDATE integracao_fdv.credencial SET entidades_habilitadas = $2::integracao_fdv.entidade_hub[] WHERE id = $1', [cred, ['produto']]);
+      await adm("INSERT INTO integracao_fdv.sinal (tenant_id, ultimo_envio_em, ultimo_aceito_em, ultimo_http) VALUES ($1, $2, $2, 200)", [t, AGORA]);
+      const lotes: [string, boolean, object][] = [
+        ['concluido', false, { registros: 100, hub: { recebidas: 100, com_erro: 0 } }],
+        ['concluido_com_erros', false, { registros: 50, hub: { recebidas: 50, com_erro: 5 } }],
+        ['enviando', false, { registros: 20 }],
+        ['aceito', false, { registros: 10, hub: { recebidas: 10 } }],
+        ['concluido', true, { registros: 100, hub: { recebidas: 100, com_erro: 0 } }],
+        ['falhou', false, { registros: 99 }],
+        ['montado', false, { registros: 7 }],
+        ['recusado', false, { registros: 5 }],
+      ];
+      for (const [i, [estado, repetido, contagens]] of lotes.entries()) {
+        await adm(
+          `INSERT INTO integracao_fdv.lote_envio (tenant_id, entidade, credencial_id, modo, chave_idempotencia, estado, repetido, enviado_em, contagens, created_at, corpo, hub_lote_id, concluido_em, ultimo_erro_codigo)
+           VALUES ($1, $13, $2, 'delta', $3, $4, $5, $6, $7::jsonb, $8, $9::jsonb, $10, $11, $12)`,
+          [
+            t, cred, String(i).repeat(64), estado, repetido, AGORA, JSON.stringify(contagens), new Date(AGORA.getTime() + i * 1000),
+            ['montado', 'enviando', 'aceito'].includes(estado) ? '{}' : null, ['aceito', 'concluido', 'concluido_com_erros'].includes(estado) ? U() : null,
+            ['montado', 'enviando', 'aceito'].includes(estado) ? null : AGORA, ['falhou', 'recusado'].includes(estado) ? 'rede' : null,
+            // só um lote em voo por cadastro (`lote_envio_um_em_voo`)
+            ({ enviando: 'cliente', aceito: 'filial', montado: 'vendedor' } as Record<string, string>)[estado] ?? 'produto',
+          ],
+        );
+      }
+      const r = await chamar(t, 'GET', '/ligacoes', { perfil: 'leitura' });
+      expect(r.status).toBe(200);
+      expect(r.corpo.saida.contadores).toEqual({ enviados: 180, aceitos: 155 });
+      expect(r.corpo.saida.envios.map((e: { estado: string }) => e.estado)).toEqual(['aceito', 'enviando', 'concluido_com_erros', 'concluido']);
+      expect(r.corpo.saida.envios[2]).toMatchObject({ entidade: 'produto', registros: 50, aceitos: 45, com_erro: 5 });
+      expect(r.corpo.saida.envios_cortados).toBe(false);
+      expect(r.corpo.saida.contato).toMatchObject({ conector_id: 'erp-teste', ambiente: 'teste', chave_prefixo: 'chave-se', situacao: 'em_dia', ultimo_contato_em: AGORA.toISOString() });
+      expect(JSON.stringify(r.corpo)).not.toContain('chave_cifrada');
+      expect((await chamar(B, 'GET', '/ligacoes')).corpo.saida.contadores).toEqual({ enviados: 0, aceitos: 0 });
+    });
+
+    it('RN-CORE-02: sem a licença do módulo, 403 MODULO_INATIVO', async () => {
+      expect(await chamar(C, 'GET', '/ligacoes')).toMatchObject({ status: 403, corpo: { codigo: 'MODULO_INATIVO' } });
+    });
+  });
+
   describe('GET /lotes e /lotes/:id/erros', () => {
     it('RF-INF-04: lista do mais novo ao mais antigo, com filtros na URL, cursor, mensagem do catálogo e CSV com as colunas da página', async () => {
       const t = await criarTenant(efemero.admin, 'rotas-l', ['integracao-fdv']);
