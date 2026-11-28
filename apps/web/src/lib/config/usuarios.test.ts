@@ -2,7 +2,7 @@ import { MENSAGEM_ULTIMO_ADMIN, type FilialConfig, type UsuarioConfig } from '@m
 import { CODIGO_EMAIL_EM_USO, MENSAGEM_EMAIL_EM_USO } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { ErroPlataforma, SENHA_JA_EXIBIDA, USUARIO_CONFLITO, USUARIO_NAO_ENCONTRADO, mensagemDoErro } from './erros';
-import { alternarFilial, etiquetaUltimoAdmin, filiaisIniciais, filtrarUsuarios, mesmasFiliais, itensDoMenuUsuario, seloDoUsuario, textoUltimoAcesso } from './usuarios';
+import { MENSAGEM_ESCOLHA_FILIAL, alternarFilial, montarEnvioUsuario, etiquetaUltimoAdmin, filiaisIniciais, filtrarUsuarios, mesmasFiliais, itensDoMenuUsuario, seloDoUsuario, textoUltimoAcesso } from './usuarios';
 
 const ID = '3f1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c70';
 const u = (extra: Partial<UsuarioConfig> = {}): UsuarioConfig => ({
@@ -83,5 +83,30 @@ describe('Filiais do usuário (T-0130)', () => {
   it('mesmasFiliais ignora a ordem', () => {
     expect(mesmasFiliais([A, B], [B, A])).toBe(true);
     expect(mesmasFiliais([A], [A, B])).toBe(false);
+  });
+});
+
+describe('Ao menos uma filial (T-0130)', () => {
+  const A = '11111111-1111-4111-8111-111111111111';
+  const B = '22222222-2222-4222-8222-222222222222';
+  const filiais: FilialConfig[] = [{ id: A, nome: 'Matriz', padrao: true }, { id: B, nome: 'Filial Norte', padrao: false }];
+  const dados = { nome: 'Diego Exemplo', email: 'diego@exemplo.com', perfil: 'leitura' };
+  const edicao = { nome: 'Diego Exemplo', perfil: 'leitura' as const, filial_ids: [B] };
+  it('criar sem nenhuma filial marcada: recusa com o texto exato e não envia', () => {
+    expect(MENSAGEM_ESCOLHA_FILIAL).toBe('Escolha ao menos uma filial.');
+    expect(montarEnvioUsuario({ ...dados, marcadas: [] }, filiais, null)).toEqual({ tipo: 'recusado', campos: { filial_ids: 'Escolha ao menos uma filial.' } });
+  });
+  it('criar com uma filial: envia a escolha', () => {
+    expect(montarEnvioUsuario({ ...dados, marcadas: [A] }, filiais, null)).toEqual({ tipo: 'criar', corpo: { ...dados, filial_ids: [A] } });
+  });
+  it('editar desmarcando todas: recusa com o texto exato e não envia', () => {
+    expect(montarEnvioUsuario({ ...dados, marcadas: [] }, filiais, edicao)).toEqual({ tipo: 'recusado', campos: { filial_ids: 'Escolha ao menos uma filial.' } });
+  });
+  it('editar trocando de filial: envia só o que mudou', () => {
+    expect(montarEnvioUsuario({ ...dados, marcadas: [A] }, filiais, edicao)).toEqual({ tipo: 'editar', corpo: { filial_ids: [A] } });
+  });
+  it('sem lista de filiais (falha ou empresa sem filial) a regra não barra', () => {
+    expect(montarEnvioUsuario({ ...dados, marcadas: [] }, null, null).tipo).toBe('criar');
+    expect(montarEnvioUsuario({ ...dados, marcadas: [] }, [], null).tipo).toBe('criar');
   });
 });

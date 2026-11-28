@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useRef, useState, useTransition } from 'react';
 import { criarUsuarioAcao, editarUsuarioAcao, excluirUsuarioAcao, inativarUsuarioAcao, reativarUsuarioAcao, redefinirSenhaUsuarioAcao } from '@/lib/acoes-cliente';
 import { ChavesIdempotencia } from '@/lib/config/chaves';
-import { alternarFilial, etiquetaUltimoAdmin, filiaisIniciais, filtrarUsuarios, itensDoMenuUsuario, mesmasFiliais, rotuloPerfil, seloDoUsuario, textoUltimoAcesso } from '@/lib/config/usuarios';
+import { alternarFilial, etiquetaUltimoAdmin, filiaisIniciais, filtrarUsuarios, itensDoMenuUsuario, montarEnvioUsuario, rotuloPerfil, seloDoUsuario, textoUltimoAcesso } from '@/lib/config/usuarios';
 import { resultadoErro, resultadoSucesso } from '@/lib/resultado-acao';
 
 /**
@@ -201,15 +201,17 @@ export function FormularioUsuario({ empresaId, filiais, formulario, primeiro, ch
     iniciar(async () => {
       setErro('');
       setCampos({});
-      if (edicao) {
-        const mudou = { ...(nome.trim() !== edicao.nome ? { nome } : {}), ...(perfil !== edicao.perfil ? { perfil } : {}), ...(filiais && !mesmasFiliais(marcadas, filiaisIniciais(filiais, edicao.filial_ids)) ? { filial_ids: marcadas } : {}) };
-        if (Object.keys(mudou).length === 0) return setErro('Nada foi alterado.');
-        const r = await editarUsuarioAcao(empresaId, edicao.id, mudou);
+      const envio = montarEnvioUsuario({ nome, email, perfil, marcadas }, filiais, edicao);
+      if (envio.tipo === 'recusado') return setCampos(envio.campos);
+      if (envio.tipo === 'editar' && edicao) {
+        if (Object.keys(envio.corpo).length === 0) return setErro('Nada foi alterado.');
+        const r = await editarUsuarioAcao(empresaId, edicao.id, envio.corpo);
         if (r.ok) return aoSalvar('Usuário salvo.');
         setCampos(r.campos);
         return setErro(r.erro);
       }
-      const r = await criarUsuarioAcao(empresaId, { nome, email, perfil, ...(filiais ? { filial_ids: marcadas } : {}) }, chaves.de('criar'));
+      if (envio.tipo !== 'criar') return;
+      const r = await criarUsuarioAcao(empresaId, envio.corpo, chaves.de('criar'));
       chaves.aposResposta('criar', r);
       if (r.ok) return aoSalvar('Usuário criado.', { nome: r.valor.usuario.nome, senha: r.valor.senha_provisoria });
       setCampos(r.campos);

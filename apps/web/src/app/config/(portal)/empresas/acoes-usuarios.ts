@@ -19,7 +19,7 @@ const MSG: Readonly<Record<string, string>> = {
   nome: 'Informe o nome, de 2 a 80 caracteres.',
   email: 'E-mail inválido. Confira o endereço.',
   perfil: 'Escolha o perfil.',
-  filial_ids: 'Escolha a filial.',
+  filial_ids: 'Escolha ao menos uma filial.',
 };
 const camposDe = (erro: { issues: readonly { path: readonly (string | number)[] }[] }): Record<string, string> =>
   Object.fromEntries(erro.issues.map((i) => [String(i.path[0] ?? 'nome'), MSG[String(i.path[0])] ?? 'Confira este campo.']));
