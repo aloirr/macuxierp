@@ -188,6 +188,14 @@ describe('endereços inativados (T-0070)', () => {
 });
 
 
+describe('T-0135: sem carga, sem a linha "Última carga: —"', () => {
+  it('só os cadastros com carga levam a linha sob o nome', () => {
+    const h = aba();
+    expect(h).not.toContain('Última carga: —');
+    expect(h.match(/carga-sob-nome/g)).toHaveLength(2); // filial e produto; os outros cadastros não têm carga
+  });
+});
+
 describe('v0.3.23: aba Dados no celular (390) esconde as colunas certas', () => {
   it('#840: a regra por posição esconde Última carga, Registros e Com erro (a última carga sobe para sob o nome), na ordem real das colunas', async () => {
     const { readFileSync } = await import('node:fs');
