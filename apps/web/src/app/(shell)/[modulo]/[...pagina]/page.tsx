@@ -18,9 +18,11 @@ import { ROTA_ITENS_PRECO, rotaDosItens } from '@/lib/telas/cadastros-outros/ite
 import { ROTA_TABELA_PRECO } from '@macuxierp/cadastros/web';
 import { TelaItensPreco } from '@/components/cadastros-outros/itens-preco';
 import { TelaAmbienteFiscal, TelaBandeira, TelaEmpresa, TelaPerfis } from './telas-quadro';
+import { QualRegraVale, TelaRegraDetalhe, TelaRegraNova } from './tela-fiscal';
+import { ROTA_REGRAS_FISCAIS, ROTA_REGRA, ROTA_REGRA_NOVA } from '@/lib/telas/fiscal';
 
 /** Páginas que têm componente próprio (não passam pelo renderizador genérico nem mostram "Disponível em breve"). */
-const QUADROS: ReadonlySet<string> = new Set([ROTA_PERFIS, ROTA_EMPRESA, ROTA_AMBIENTE_FISCAL, ROTA_BANDEIRA, ROTA_ITENS_PRECO]);
+const QUADROS: ReadonlySet<string> = new Set([ROTA_PERFIS, ROTA_EMPRESA, ROTA_AMBIENTE_FISCAL, ROTA_BANDEIRA, ROTA_ITENS_PRECO, ROTA_REGRA_NOVA, ROTA_REGRA]);
 
 /** Título da aba do navegador: o mesmo da página (e do botão da seção), não o nome do item de menu. */
 export async function generateMetadata({ params }: { params: Promise<{ modulo: string; pagina: string[] }> }): Promise<Metadata> {
@@ -77,6 +79,10 @@ export default async function PaginaDoModulo({ params, searchParams }: { params:
       {/* Itens de preço (T-0123, lote C): a barra do rodapé da tabela leva à grade (a ação fica junto das demais da página). */}
       {declarada?.rota === ROTA_TABELA_PRECO && resolvida.params?.id && <div className="barra-acoes"><Link className="mx-botao-secundario" href={rotaDosItens(resolvida.params.id)}>Itens de preço</Link></div>}
       {declarada?.rota === ROTA_BANDEIRA && <TelaBandeira acesso={acesso} perfil={perfil} rota={rota} rotaDaPagina={declarada.rota} />}
+      {/* Fiscal (T-0127): "qual regra vale" abaixo da lista; nova regra e regra aberta têm formulário próprio, com a barra única no rodapé. */}
+      {declarada?.rota === ROTA_REGRAS_FISCAIS && <QualRegraVale acesso={acesso} rota={rota} busca={busca} />}
+      {declarada?.rota === ROTA_REGRA_NOVA && <TelaRegraNova perfil={perfil} />}
+      {declarada?.rota === ROTA_REGRA && <TelaRegraDetalhe acesso={acesso} perfil={perfil} id={resolvida.params?.id ?? ''} />}
       {outrasSecoes.length > 0 && tela?.tipo !== 'lista' && <div className="barra-acoes">{outrasSecoes.map((p) => <Link key={p.rota} className="mx-botao-secundario" href={p.rota}>{p.titulo}</Link>)}</div>}
       {!tela && !declarada?.aviso && declarada?.rota !== monitor?.rota && !QUADROS.has(declarada?.rota ?? '') && <p className="apoio">Disponível em breve.</p>}
     </>

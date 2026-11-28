@@ -201,13 +201,14 @@ fieldset.campo-filiais { border: 0; padding: 0; margin: 0; min-width: 0; }
 .formulario > .campo.campo-col-2 { grid-column: span 2; }
 .formulario > .campo.campo-col-3 { grid-column: span 3; }
 .formulario > .campo.campo-col-4 { grid-column: span 4; }
+.formulario > .campo.campo-col-5 { grid-column: span 5; }
 .formulario > .campo.campo-col-6 { grid-column: span 6; }
 .formulario > .campo.campo-col-8 { grid-column: span 8; }
 .formulario > .campo.campo-col-12 { grid-column: span 12; }
 @media (min-width: 1101px) { .formulario > .campo.campo-inicio-linha { grid-column-start: 1; } .formulario > .campo.campo-inicio-linha.campo-col-1 { grid-column: 1 / span 1; } .formulario > .campo.campo-inicio-linha.campo-col-2 { grid-column: 1 / span 2; } .formulario > .campo.campo-inicio-linha.campo-col-3 { grid-column: 1 / span 3; } .formulario > .campo.campo-inicio-linha.campo-col-4 { grid-column: 1 / span 4; } .formulario > .campo.campo-inicio-linha.campo-col-6 { grid-column: 1 / span 6; } .formulario > .campo.campo-inicio-linha.campo-col-8 { grid-column: 1 / span 8; } .formulario > .campo.campo-inicio-linha.campo-col-12 { grid-column: 1 / span 12; } .formulario > .campo.campo-inicio-linha.campo-medio { grid-column: 1 / span 4; } .formulario > .campo.campo-inicio-linha.campo-3 { grid-column: 1 / span 3; } .formulario > .campo.campo-inicio-linha.campo-8 { grid-column: 1 / span 8; } }
 @media (max-width: 1100px) { .formulario > .campo { grid-column: 1 / -1; } .formulario > .campo.campo-curto, .formulario > .campo.campo-curto.campo-inicio-linha { grid-column: span 3; } .formulario > .campo.campo-medio, .formulario > .campo.campo-3 { grid-column: span 6; } .formulario > .campo.campo-8 { grid-column: 1 / -1; } }
 @media (max-width: 640px) { .formulario > .campo, .formulario > .campo.campo-curto.campo-inicio-linha, .formulario > .campo.campo-curto, .formulario > .campo.campo-medio, .formulario > .campo.campo-3, .formulario > .campo.campo-8 { grid-column: 1 / -1; } }
-@media (max-width: 1100px) { .formulario > .campo.campo-col-1, .formulario > .campo.campo-col-2, .formulario > .campo.campo-col-3 { grid-column: span 3; } .formulario > .campo.campo-col-4, .formulario > .campo.campo-col-6 { grid-column: span 6; } .formulario > .campo.campo-col-8, .formulario > .campo.campo-col-12 { grid-column: 1 / -1; } }
+@media (max-width: 1100px) { .formulario > .campo.campo-col-1, .formulario > .campo.campo-col-2, .formulario > .campo.campo-col-3 { grid-column: span 3; } .formulario > .campo.campo-col-4, .formulario > .campo.campo-col-5, .formulario > .campo.campo-col-6 { grid-column: span 6; } .formulario > .campo.campo-col-8, .formulario > .campo.campo-col-12 { grid-column: 1 / -1; } }
 @media (max-width: 640px) { .formulario > .campo[class*='campo-col-'] { grid-column: 1 / -1; } }
 /* Texto corrido: no máximo 72 caracteres por linha, só nos blocos de texto (nunca no contêiner). */
 .apoio, p.erro, .aviso-sucesso, .faixa-aviso { max-width: 72ch; }
@@ -506,6 +507,12 @@ button.link { background: none; border: 0; padding: 0; color: inherit; font: inh
 .cartao-ligacao .tabela-dados .carga-sob-nome { display: block; font-size: var(--mx-tamanho-micro); color: var(--mx-cor-texto-secundario); font-weight: var(--mx-peso-normal); margin-top: 2px; }
 .cartao-ligacao .tabela-dados table { min-width: 0; }
 .casca-plataforma .bloco.ligacao, .casca-plataforma .bloco.envios-recentes { border: 0; padding: 0; background: none; }
+
+/* Regras fiscais (T-0127): cartões da consulta "Qual regra vale" abaixo da lista; o espaço entre rótulo e campo é o do `.campo span` (o mesmo dos filtros). */
+.cartao-consulta { margin: 16px 0 0; padding: 12px 16px 16px; border: 1px solid var(--mx-cor-borda-tabela); border-radius: 8px; background: var(--mx-cor-branco); }
+.cartao-consulta > .apoio { margin: 8px 0 12px; }
+.cartao-consulta .formulario { margin: 0; }
+.cartao-consulta > .tabela-rolavel { margin-top: 8px; }
 
 /* T-0139: botão do usuário no topo, à direita; o menu abre para baixo, alinhado à direita (cores do topo, tokens do ui). */
 .menu-usuario { position: relative; }

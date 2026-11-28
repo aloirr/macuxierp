@@ -84,7 +84,7 @@ export async function ListaGenerica({ tela, rota, rotaDaPagina, busca, perfil, a
       </FiltrosLista>
       <div className="cartao-tabela">
       <TabelaVista
-        colunas={colunas.map((c) => ({ id: c.id, rotulo: c.rotulo, ...(c.tipo ? { tipo: c.tipo } : {}) }))}
+        colunas={colunas.map((c) => ({ id: c.id, rotulo: c.rotulo, ...(c.tipo ? { tipo: c.tipo } : {}), ...(c.largura ? { largura: c.largura } : {}) }))}
         vazio={textoVazio}
         acoes={tela.acaoDaLinha ? { rota, rotaDaPagina } : undefined}
         linhas={pagina.itens.map((l, i) => {
