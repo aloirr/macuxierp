@@ -225,6 +225,8 @@ export const CAMINHOS_INTEGRACAO_FDV_TENANT = Object.freeze({
   clientesRecebidos: '/integracao-fdv/clientes-recebidos',
   /** O CSV completo dos recebidos (decisão 21 A; RD-2346: a tela monta o link por aqui). */
   clientesRecebidosCsv: '/integracao-fdv/clientes-recebidos/exportar',
+  /** T-0131 (RN-INF-13): contadores, histórico de envios e Contato da ligação ERP → Macuxi FDV (`LigacoesResposta` do integracao-fdv). */
+  ligacoes: '/integracao-fdv/ligacoes',
 });
 
 // ---- Zerar por cadastro na aba Integração (R-20261124-170915-alexandre) ----

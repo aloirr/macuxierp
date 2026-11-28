@@ -148,6 +148,11 @@ export interface RotaModulo<TC = unknown, TQ = unknown> {
   /** Relativo a `/v1/<modulo>`, começando com `/` (ex.: `/clientes/:id`). */
   caminho: string;
   acao: Acao;
+  /**
+   * Mensagem do 403 `PERFIL_SEM_PERMISSAO` quando o perfil não tem a `acao` (T-0129), escrita pelo módulo para o
+   * usuário: frase completa, sem rótulo na frente (ex.: "Seu perfil só consulta clientes."). Ausente = a genérica.
+   */
+  semPermissao?: string;
   corpo?: z.ZodType<TC, z.ZodTypeDef, unknown>;
   consulta?: z.ZodType<TQ, z.ZodTypeDef, unknown>;
   /** Rota `multipart/form-data` (POST, PUT ou PATCH): os campos de texto passam pelo `corpo`; os arquivos, por aqui. */
@@ -233,7 +238,13 @@ function validarExtras(modulo: string, id: string, r: RotaModulo): void {
     throw new PluginInvalido(`${modulo}: Idempotency-Key só em POST, PUT ou PATCH (${id})`);
   }
   validarTempoMaximoDaRota(modulo, id, r);
+  if (r.semPermissao !== undefined && !textoDeMensagem(r.semPermissao)) {
+    throw new PluginInvalido(`${modulo}: semPermissao vazio, com espaço nas pontas ou acima de ${MENSAGEM_MAXIMA} caracteres (${id})`);
+  }
 }
+
+const MENSAGEM_MAXIMA = 200;
+const textoDeMensagem = (s: string) => s.length > 0 && s.length <= MENSAGEM_MAXIMA && s.trim() === s;
 
 /**
  * Valida o plugin no carregamento: caminho com `/`, ação do próprio módulo, multipart, idempotência e tempo coerentes

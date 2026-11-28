@@ -25,6 +25,11 @@ export interface CampoEdicao {
   ajuda?: string;
   /** Largura na grade de 12 colunas; ausente = a heurística do shell. */
   colunas?: ColunasEdicao;
+  /**
+   * Largura que depende do que foi digitado (campo vizinho condicional some e este ocupa o espaço, sem buraco na linha);
+   * o shell chama a cada digitação. Sem ela vale `colunas`, que é também o valor de quem ainda não lê `colunasSe`.
+   */
+  colunasSe?: (v: Valores) => ColunasEdicao;
   /** Abre linha nova na grade (útil depois de campo condicional, que muda o reflow); o shell repassa. */
   inicioLinha?: boolean;
   /** Só aparece (e só vai no corpo) para quem tem a ação; a API devolve 403 sem ela. */

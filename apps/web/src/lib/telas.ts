@@ -3,12 +3,13 @@ import type { AcaoVista, ExecutorDeAcoes, Leitura, TelaDescrita, TelaDetalhe, Te
 import { UUID_PADRAO } from './uuid';
 import { TELAS_BANDEIRA } from './telas/bandeira';
 import { TELAS_CADASTROS } from './telas/cadastros';
+import { TELAS_CADASTROS_OUTROS } from './telas/cadastros-outros';
 import { TELAS_CORE } from './telas/core';
 import { TELAS_FATURAMENTO } from './telas/faturamento';
 import { TELAS_INTEGRACAO_FDV } from './telas/integracao-fdv';
 import { TELAS_PEDIDO } from './telas/pedido';
 
-const TELAS: Readonly<Record<string, TelaDescrita>> = { ...TELAS_CORE, ...TELAS_CADASTROS, ...TELAS_BANDEIRA, ...TELAS_PEDIDO, ...TELAS_INTEGRACAO_FDV, ...TELAS_FATURAMENTO };
+const TELAS: Readonly<Record<string, TelaDescrita>> = { ...TELAS_CORE, ...TELAS_CADASTROS, ...TELAS_CADASTROS_OUTROS, ...TELAS_BANDEIRA, ...TELAS_PEDIDO, ...TELAS_INTEGRACAO_FDV, ...TELAS_FATURAMENTO };
 
 export function telaDaRota(rotaDaPagina: string): TelaDescrita | undefined {
   return TELAS[rotaDaPagina];
@@ -47,7 +48,7 @@ const padraoDe = (caminho: string) => new RegExp(`^${caminho.split(/:[a-z_]*id\b
 /** A escrita (método e caminho) é a que algum descritor declarou: API do formulário ou caminho das ações do detalhe. */
 export function escritaDeclarada(metodo: AcaoVista['metodo'] | string, caminho: string, telas: readonly TelaDescrita[] = Object.values(TELAS)): boolean {
   return telas.some((t) => {
-    if (t.tipo === 'formulario') return (metodo === 'POST' && t.api === caminho) || (metodo === 'PATCH' && t.edicao !== undefined && padraoDe(`${t.api}/:id`).test(caminho));
+    if (t.tipo === 'formulario') return (metodo === 'POST' && t.api === caminho) || (t.edicao !== undefined && metodo === (t.edicao.metodo ?? 'PATCH') && padraoDe(`${t.api}/:id`).test(caminho));
     return executoresDa(t).flatMap((e) => e.escritas ?? []).some((e) => e.metodo === metodo && padraoDe(e.caminho).test(caminho));
   });
 }

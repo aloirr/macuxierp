@@ -10,6 +10,12 @@ export {
 export {
   CAMPOS_PRODUTO, ROTA_PRODUTO, ROTA_PRODUTO_NOVO, ROTA_PRODUTOS, API_PRODUTOS, camposDoProduto, corpoAlterarProduto, corpoCriarProduto, paginaProdutos, validarProduto, valoresDoProduto, type ProdutoResumo,
 } from './produtos';
+export {
+  AGRUPAR_CONDICOES_POR, API_CONDICOES, API_ESTOQUE, API_MOVIMENTOS_ESTOQUE, API_OFICIAIS, API_TRANSFERIR_CARTEIRA, API_VENDEDORES, CAMPOS_CONDICAO, CAMPOS_ITEM_PRECO, CAMPOS_MOVIMENTO_ESTOQUE, CAMPOS_TRANSFERENCIA, CAMPOS_VENDEDOR,
+  ROTA_CONDICOES, ROTA_EQUIPE, ROTA_ESTOQUE, ROTA_OFICIAIS, apiItensPreco, camposDaCondicao, camposDaTransferencia, camposDoItemPreco, camposDoMovimentoEstoque, camposDoVendedor, corpoAlterarCondicao, corpoAlterarVendedor,
+  corpoCriarCondicao, corpoCriarVendedor, corpoItemPreco, corpoLotePreco, corpoMovimentoEstoque, corpoTransferencia, paginaCondicoes, paginaCest, paginaCfop, paginaEquipe, paginaEstoque, paginaIbge, paginaNcm, paginasOficiais,
+  pontosBaseDoTexto, validarCondicao, validarItemPreco, validarMovimentoEstoque, validarTransferencia, validarVendedor, valoresDoVendedor, type TabelaOficial,
+} from './auxiliares';
 export { camposVisiveis, centavosDoTexto, errosDaApi, novaChaveDeEdicao, soOQueMudou, type CampoEdicao, type Corpo, type Erros, type Modo, type Valores } from './edicao';
 export {
   CAMPOS_FILIAL, ROTA_FILIAL, ROTA_FILIAL_NOVA, ROTA_FILIAIS, ROTULO_CRT, ROTULO_REGIME_PIS_COFINS, API_FILIAIS, camposDaFilial, corpoAlterarFilial, corpoCriarFilial, paginaFiliais, validarFilialTela, valoresDaFilial, type FilialResumo,

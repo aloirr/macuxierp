@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { CatalogoMotivos, Pedido } from '@macuxierp/pedido/contracts';
 import { telaDaRota, telaFormulario } from '../telas';
 import { semEspacoDuro } from '@macuxierp/platform-sdk/testes';
-import { LISTA_PEDIDOS, NOVO_PEDIDO, vistaDoPedido } from './pedido';
+import { EDITAR_PEDIDO, LISTA_PEDIDOS, NOVO_PEDIDO, vistaDoPedido } from './pedido';
+import { escritaDeclarada } from '../telas';
 
 
 const FUSO = 'America/Manaus';
@@ -40,9 +41,9 @@ describe('adaptador do pedido', () => {
     expect(LISTA_PEDIDOS.rotaDaLinha?.({ id: ID })).toBe(`/pedido/pedidos/${ID}`);
   });
 
-  it('detalhe: gerente vê aprovar com justificativa (pendência aceitável), recusar, revalidar; documento nulo some (LGPD)', () => {
+  it('detalhe: gerente vê aprovar com justificativa (pendência aceitável), recusar, revalidar, editar; documento nulo some (LGPD)', () => {
     const v = vistaDoPedido(pedido('em_analise', 'bko', [{ bloqueante: false }]), 'gerente', FUSO, catalogo);
-    expect(v.acoes.map((a) => a.id)).toEqual(['aprovar', 'recusar', 'revalidar']);
+    expect(v.acoes.map((a) => a.id)).toEqual(['aprovar', 'recusar', 'revalidar', 'editar']);
     expect(v.acoes[0]).toMatchObject({ entrada: 'justificativa', justificativaObrigatoria: true, caminho: `/v1/pedido/pedidos/${ID}/aprovar` });
     expect(v.cabecalho.map((c) => c.rotulo)).not.toContain('Documento');
     expect(v.pendencias[0]).toMatchObject({ bloqueante: false });
@@ -103,5 +104,39 @@ describe('adaptador do pedido', () => {
     expect(it.calcularTotal(enorme)).toBe(0);
     expect(it.erroItem?.(enorme)).not.toBeNull();
     expect(it.erroItem?.({ ...ruim, precoUnitarioCentavos: 100 })).toBeNull();
+  });
+  it('Editar (T-0126): botão no detalhe e link na linha só para pedido bko em análise e perfil que lança (RN-PED-02)', () => {
+    const rota = `/pedido/pedidos/${ID}/editar`;
+    expect(vistaDoPedido(pedido('em_analise', 'bko'), 'gerente', FUSO, catalogo).acoes.find((a) => a.id === 'editar')).toMatchObject({ rota, entrada: 'nenhum' });
+    for (const [s, o, perfil] of [['aprovado', 'bko', 'gerente'], ['em_analise', 'fdv', 'gerente'], ['em_analise', 'bko', 'vendedor']] as const) {
+      expect(vistaDoPedido(pedido(s, o), perfil, FUSO, catalogo).acoes.find((a) => a.id === 'editar')).toBeUndefined();
+    }
+    const acao = LISTA_PEDIDOS.acaoDaLinha!.acao;
+    expect(acao({ id: ID, status: 'em_analise', origem: 'bko' }, 'faturista')).toMatchObject({ rota });
+    expect(acao({ id: ID, status: 'faturado', origem: 'bko' }, 'faturista')).toBeNull();
+  });
+
+  it('Editar: abre com o pedido, itens preenchidos e a versão do If-Match; PUT declarado só para a edição', () => {
+    const e = EDITAR_PEDIDO.edicao!;
+    const base = pedido('em_analise', 'bko');
+    const item = { ...base.itens[0], produto_id: P, produto_retrato: { codigo: 'P1', descricao: 'Água', unidade_comercial: 'UN', ean: null, ncm: '22021000', origem: '0' }, unidade_venda: null, preco_tabela_centavos: null, desconto_maximo_bp: null, total_informado_centavos: null, aplicacao: null };
+    const retrato = { tipo_pessoa: 'PJ', documento: null, razao_social: 'Bar do Zé', nome_fantasia: null, ie: null, ind_ie_dest: '9', endereco: { logradouro: 'Rua A', numero: '1', complemento: null, bairro: 'Centro', municipio_ibge: '1302603', uf: 'AM', cep: '69000000', pais_bacen: '1058' } };
+    const p = { ...base, filial_id: F, cliente_id: C, condicao_pagamento_id: null, tabela_preco_id: null, endereco_entrega: null, frete: null, pedido_uuid: null, external_id: null, vendedor_id: null, total_informado_centavos: null, aprovado_origem_em: null, cliente_retrato: retrato, itens: [item], updated_at: '2026-11-28T10:00:00.000Z' };
+    const aberto = e.abrir(p);
+    expect(aberto).toMatchObject({ versao: '2026-11-28T10:00:00.000Z', valores: { filial_id: F, cliente_id: C } });
+    const linha = EDITAR_PEDIDO.itens!.daTexto!(aberto.itens![0]!, 'item-1');
+    expect(linha).toMatchObject({ chave: 'item-1', produtoId: P, quantidade: 2, precoUnitarioCentavos: 500, descontoCentavos: 0 });
+    expect(EDITAR_PEDIDO.itens!.paraTexto(linha)).toMatchObject({ produto_id: P, quantidade: '2' });
+    expect(escritaDeclarada('PUT', `/v1/pedido/pedidos/${ID}`)).toBe(true);
+    expect(escritaDeclarada('PATCH', `/v1/pedido/pedidos/${ID}`)).toBe(false);
+  });
+
+  it('Editar: 412 e 409 pedem recarregar; 422 RN-PED-02 também; outro erro mostra a mensagem da API', () => {
+    const f = EDITAR_PEDIDO.edicao!.falha!;
+    expect(f({ status: 412, codigo: 'PRECONDICAO', mensagem: 'x' })).toMatchObject({ recarregar: true });
+    expect(f({ status: 409, codigo: 'CONFLITO', mensagem: 'x' })).toMatchObject({ recarregar: true });
+    expect(f({ desatualizado: true, mensagem: 'x' })).toMatchObject({ recarregar: true });
+    expect(f({ status: 422, codigo: 'RN-PED-02', mensagem: 'x' })).toMatchObject({ recarregar: true });
+    expect(f({ status: 400, codigo: 'ENTRADA', mensagem: 'Preço inválido.' })).toEqual({ mensagem: 'Preço inválido.', recarregar: false });
   });
 });

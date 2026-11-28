@@ -34,8 +34,21 @@ export class NaoAutenticado extends Error {
 export function ehFalhaDeSessao(e: unknown): boolean {
   return e instanceof NaoAutenticado || e instanceof TrocarSenhaPendente;
 }
+/** 403 de perfil. `message` é a mensagem que a rota declarou (`semPermissao`, T-0129), quando a API a devolve; vazia, a tela usa o texto padrão. */
 export class SemPermissao extends Error {
   override readonly name = 'SemPermissao' as const;
+}
+
+/** Texto do 403 para a tela: a mensagem da rota (curta, sem dado do registro) ou o padrão. */
+export function textoSemPermissao(e: unknown, padrao: string): string {
+  return e instanceof SemPermissao && e.message.trim() ? e.message.trim() : padrao;
+}
+
+/** Lê a `mensagem` do corpo do 403; só texto curto, o resto cai no padrão. */
+async function semPermissaoDe(r: Response): Promise<SemPermissao> {
+  const j = (await r.clone().json().catch(() => null)) as { mensagem?: unknown } | null;
+  const m = typeof j?.mensagem === 'string' ? j.mensagem.trim() : '';
+  return new SemPermissao(m.length > 0 && m.length <= 200 ? m : undefined);
 }
 
 /** Lança TrocarSenhaPendente se a resposta for o 403 `TROCAR_SENHA`; outros 403 (sem permissão) seguem como antes. */
@@ -147,7 +160,7 @@ export async function getValidado<S extends z.ZodTypeAny>(
 ): Promise<z.infer<S>> {
   const r = await chamarAutenticado(caminho, { headers: { authorization: `Bearer ${acesso}` } });
   if (r.status === 401) throw new NaoAutenticado();
-  if (statusDistintos && r.status === 403) throw new SemPermissao();
+  if (statusDistintos && r.status === 403) throw await semPermissaoDe(r);
   if (statusDistintos && r.status === 400) throw new DadosInvalidos(`${rotulo}: VALIDACAO`);
   if (!r.ok) throw new ApiIndisponivel(`${rotulo}: HTTP ${r.status}`, await idDaRequisicao(r));
   let corpo: unknown;
@@ -175,7 +188,7 @@ export async function buscarRegistro<S extends z.ZodTypeAny>(caminho: string, sc
   if (usaApiFalsa) return null;
   const r = await chamarAutenticado(caminho, { headers: { authorization: `Bearer ${acesso}` } });
   if (r.status === 401) throw new NaoAutenticado();
-  if (r.status === 403) throw new SemPermissao();
+  if (r.status === 403) throw await semPermissaoDe(r);
   if (r.status === 404) return null;
   if (r.status === 400) throw new DadosInvalidos(`${rotulo}: VALIDACAO`);
   if (!r.ok) throw new ApiIndisponivel(`${rotulo}: HTTP ${r.status}`, await idDaRequisicao(r));

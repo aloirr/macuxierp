@@ -21,6 +21,7 @@ export const ROTA_PERFIS = rotaDe('perfis');
 export const ROTA_LICENCAS = rotaDe('licencas');
 export const ROTA_AUDITORIA = rotaDe('auditoria');
 export const ROTA_AMBIENTE_FISCAL = rotaDe('ambiente');
+export const ROTA_EMPRESA = rotaDe('empresa');
 
 const USUARIOS = '/v1/core/usuarios';
 const GERIR = 'core.usuario.gerir' as const;
@@ -70,7 +71,7 @@ export const NOVO_USUARIO: TelaFormulario = {
   avisoSegredo: AVISO_SENHA_PROVISORIA,
   depois: () => ROTA_USUARIOS,
   voltar: ROTA_USUARIOS,
-  enviar: 'Criar usuário',
+  enviar: 'Criar',
   novaChave,
 };
 

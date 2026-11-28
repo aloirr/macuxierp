@@ -33,7 +33,7 @@ describe('Clientes no renderizador genérico', () => {
     const campos = NOVO_CLIENTE.camposDoPerfil!('gerente');
     const h = renderToStaticMarkup(<FormularioGenerico rota={ROTA_CLIENTE_NOVO} opcoes={{ filial_id: [{ valor: F, rotulo: 'Matriz' }] }} produtos={[]} perfil="gerente" campos={campos} />);
     expect(h).toContain('class="formulario"');
-    for (const t of ['Tipo de pessoa', 'CNPJ/CPF', 'Razão social', 'Inscrição estadual', 'Limite de crédito (R$)', 'CEP', 'UF', 'Salvar cliente', 'Cancelar', 'Matriz']) expect(h).toContain(t);
+    for (const t of ['Tipo de pessoa', 'CNPJ/CPF', 'Razão social', 'Inscrição estadual', 'Limite de crédito (R$)', 'CEP', 'UF', 'Salvar', 'Cancelar', 'Matriz']) expect(h).toContain(t);
     expect(h).toMatch(/class="campo campo-curto"[^>]*for="campo-end_cep"|for="campo-end_cep"/);
     expect(h.indexOf('barra-acoes')).toBeGreaterThan(h.indexOf('campo-end_cep')); // botões depois do último campo, na mesma barra
     expect((h.match(/class="barra-acoes"/g) ?? []).length).toBe(1);
@@ -46,5 +46,16 @@ describe('Clientes no renderizador genérico', () => {
     expect(h).toContain('value="11.222.333/0001-81"');
     expect(h).toContain('Salvar alterações');
     expect(h).not.toContain('campo-end_cep');
+  });
+
+  it('só leitura (T-0129): perfil sem a ação editar vê os dados como texto, sem campo, sem Salvar e só com Voltar', () => {
+    const { valores, original } = EDITAR_CLIENTE.edicao!.abrir(cliente(0));
+    const h = renderToStaticMarkup(<FormularioGenerico rota={ROTA_CLIENTE} opcoes={{ filial_id: [{ valor: F, rotulo: 'Matriz' }] }} produtos={[]} perfil="leitura" campos={EDITAR_CLIENTE.camposDoPerfil!('leitura')} aberto={{ valores, original, id: 'x' }} somenteLeitura />);
+    expect(h).toContain('Bar do Zé Ltda');
+    expect(h).toContain('Matriz');
+    expect(h).not.toMatch(/<(input|select|textarea)\b/);
+    expect(h).not.toContain('Salvar alterações');
+    expect(h).not.toContain('type="submit"');
+    expect(h).toContain('>Voltar<');
   });
 });

@@ -46,6 +46,14 @@ const pluginTeste = definirPlugin(manifestoCadastros, [
       return { status: 201, corpo: { tenant: tenantDaTx(c.tx), versoes: [v1.versao, v2.versao, v3.versao] } };
     },
   }),
+  // T-0129: escrita com a mensagem do módulo no 403 de perfil
+  definirRota({
+    metodo: 'PATCH',
+    caminho: '/clientes/:id',
+    acao: 'cadastros.cliente.editar',
+    semPermissao: 'Seu perfil só consulta clientes.',
+    executar: async () => ({ corpo: { ok: true } }),
+  }),
   // T-0042: devolve o fuso do tenant que a API pôs no contexto
   definirRota({ metodo: 'GET', caminho: '/fuso', acao: 'cadastros.ver', executar: async (c) => ({ corpo: { fuso: c.fuso ?? null } }) }),
 ]);
@@ -346,6 +354,21 @@ describe('rotas de módulo: ordem de checagem (RN-CORE-02)', () => {
     expect(outbox.eventos[0]).toMatchObject({ nome: 'cadastros.preco.alterado@1', tenant_id: TENANT, ator: ADM, request_id: 'req-teste-0001', ocorrido_em: '2026-11-21T15:00:00.000Z' });
     expect(auditoria.registros[0]).toMatchObject({ tenant_id: TENANT, usuario_id: ADM, request_id: 'req-teste-0001', acao: 'cadastros.preco.editar' });
     expect(trabalhos.pedidos).toEqual([expect.objectContaining({ tipo: 'cadastros.recalcular_precos', tenant_id: TENANT, external_id: 'p1' })]);
+  });
+
+  it('RN-CORE-02 (T-0129): o 403 de perfil leva a mensagem da rota (cadastros), antes da licença; quem pode, executa', async () => {
+    const { app, lidasEm } = await montar();
+    const patch = (token: string) => app.inject({ method: 'PATCH', url: `/v1/cadastros/clientes/${ADM}`, payload: {}, headers: { authorization: `Bearer ${token}` } });
+    const leitor: string = (await entrar(app, 'leitor@exemplo.com')).json().token_acesso;
+    const negado = await patch(leitor);
+    expect(negado.statusCode).toBe(403);
+    expect(negado.json()).toMatchObject({ codigo: 'PERFIL_SEM_PERMISSAO', mensagem: 'Seu perfil só consulta clientes.' });
+    expect(lidasEm).toEqual([]);
+    const adm: string = (await entrar(app)).json().token_acesso;
+    expect((await patch(adm)).json()).toEqual({ ok: true });
+    // A rota sem `semPermissao` segue com a mensagem genérica.
+    const generico = await app.inject({ method: 'POST', url: '/v1/cadastros/precos', payload: { preco_centavos: 1 }, headers: { authorization: `Bearer ${leitor}` } });
+    expect(generico.json()).toMatchObject({ codigo: 'PERFIL_SEM_PERMISSAO', mensagem: 'Seu perfil não permite esta ação' });
   });
 
   it('rota desconhecida é 404 NAO_ENCONTRADO', async () => {

@@ -93,7 +93,7 @@ describe('selecionarRegra por tributo', () => {
 });
 
 describe('contrato da regra (codigo de ICMS)', () => {
-  const base = { id: '00000000-0000-4000-8000-0000000000aa', ncm_prefixo: null, uf_origem: null, uf_destino: null, tipo_cliente: null, crt: null, cfop: null, fonte: { tipo: 'NT', referencia: 'x' }, versao: '1', vigencia_inicio: '2024-01-01', vigencia_fim: null };
+  const base = { id: '00000000-0000-4000-8000-0000000000aa', ncm_prefixo: null, uf_origem: null, uf_destino: null, tipo_cliente: null, crt: null, cfop: null, ajustar_mva: false, fonte: { tipo: 'NT', referencia: 'x' }, versao: '1', vigencia_inicio: '2024-01-01', vigencia_fim: null };
   it('RN-FIS-01: linha dedicada de IPI/PIS/COFINS dispensa o codigo de ICMS; linha de ICMS o exige', () => {
     expect(RegraTributaria.safeParse({ ...base, tributo: 'ipi', cst_ipi: '50', aliquota_ipi: 100000 }).success).toBe(true);
     expect(RegraTributaria.safeParse({ ...base, tributo: 'pis', codigo: null, cst_pis: '01' }).success).toBe(true);

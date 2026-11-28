@@ -5,7 +5,7 @@
  * pronto (`--pronto <arquivo>`) quando está ouvindo; no SIGTERM ou SIGINT fecha e apaga o banco. Fora do vitest.
  */
 import { randomBytes, randomUUID } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   CABECALHO_CSRF_CONFIG,
@@ -50,6 +50,12 @@ export interface OpcoesApiE2e {
   extra?: (c: { b: BancoEfemero; tenant: string; url: string }) => Record<string, unknown> | Promise<Record<string, unknown>>;
   /** Liga o "Esqueci a senha" (`GET /v1/auth/esqueci/situacao` = disponível), com o e-mail em memória (nada sai da sessão). */
   esqueci?: boolean;
+  /**
+   * Registra cada resposta da API (`MÉTODO <rota do registro> <status>`, uma por linha; sem corpo, query nem cabeçalho) num
+   * arquivo ao lado do JSON de pronto, cujo caminho vai em `rotas`: o roteiro confere que a tela chamou a rota do contrato do SDK
+   * (regra das rotas de tela; a ação passa pelo BFF, então o navegador não vê a chamada).
+   */
+  registrarRotas?: boolean;
 }
 
 export async function subirApiE2e(o: OpcoesApiE2e) {
@@ -80,6 +86,13 @@ export async function subirApiE2e(o: OpcoesApiE2e) {
     chaveIntegracao: randomBytes(32),
     ...(o.esqueci ? { esqueci: { envio: new EnvioEmailMemoria(), repoCore: new RepositorioCoreSql() } } : {}),
   });
+  const rotas = o.registrarRotas && pronto ? `${pronto}.rotas` : null;
+  if (rotas) {
+    writeFileSync(rotas, '');
+    app.addHook('onResponse', async (req, reply) => {
+      appendFileSync(rotas, `${req.method} ${req.routeOptions.url ?? '?'} ${reply.statusCode}\n`);
+    });
+  }
   await app.listen({ port: porta, host: '127.0.0.1' });
   const url = `http://127.0.0.1:${porta}`;
   const dados = {
@@ -87,6 +100,7 @@ export async function subirApiE2e(o: OpcoesApiE2e) {
     empresa: { id: tenant, slug: o.slug, nome: o.nome },
     superadmin: { email: o.sa.email, senha: SENHA_SA },
     administrador: { empresa: o.slug, email: o.adm, senha: SENHA_DE_TESTE },
+    ...(rotas ? { rotas } : {}),
     ...(o.extra ? await o.extra({ b, tenant, url }) : {}),
   };
   if (pronto) writeFileSync(pronto, JSON.stringify(dados));

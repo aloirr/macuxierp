@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import {
   ArmazenamentoMemoria,
+  armazenamentoIndisponivel,
+  type Armazenamento,
   ArquivoRecebido,
   auditar,
   criarEvento,
@@ -41,14 +43,14 @@ class LeitorFalso implements LeitorPfx {
   }
 }
 
-function montar(leitor: LeitorPfx = new LeitorFalso()) {
+function montar(leitor: LeitorPfx = new LeitorFalso(), armazenamentoDoTeste?: Armazenamento) {
   const repo = new RepositorioCoreMemoria();
   repo.empresaLinha = { id: TENANT, razao_social: 'Empresa Piloto LTDA', nome_fantasia: null, cnpj: CNPJ_EMPRESA, ie: null, fuso: 'America/Manaus', updated_at: AGORA };
   repo.usuarios.push({ id: ADM_ID, nome: 'Admin', email: 'admin@piloto.test', perfil: 'administrador', filial_ids: [FILIAL], ativo: true, external_id: null, ultimo_acesso_em: null, updated_at: AGORA, senha_hash: 'h' });
   const auditoria = new AuditoriaMemoria();
   const outbox = new OutboxMemoria();
   const fila = new FilaDeTrabalhosMemoria();
-  const armazenamento = new ArmazenamentoMemoria();
+  const armazenamento = armazenamentoDoTeste ?? new ArmazenamentoMemoria();
   let seq = 0;
   const plugin = criarPluginCore({
     repo,
@@ -577,6 +579,23 @@ describe('RF-CORE-05 e RF-CORE-06: auditoria, exportação e parâmetros', () =>
     const pronta = (await t.chamar('GET', '/exportacoes/:id', { params: { id } })).corpo as { url: string };
     expect(pronta.url).toContain(`macuxierp/${TENANT}/exportacoes/x.zip`);
     await expect(t.chamar('GET', '/exportacoes/:id', { params: { id: ADM_ID } })).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('T-0124 / RN-CORE-07: sem o armazenamento S3 (secrets MACUXI_S3_*) a exportação não é pedida, não grava, não enfileira e a tela fica oculta', async () => {
+    const t = montar(undefined, armazenamentoIndisponivel);
+    expect((await t.chamar('GET', '/exportacoes/disponibilidade')).corpo).toEqual({ disponivel: false });
+    await expect(t.chamar('POST', '/exportacoes')).rejects.toMatchObject({ status: 503 });
+    expect(t.repo.exportacoes).toHaveLength(0);
+    expect(t.fila.pedidos).toHaveLength(0);
+  });
+
+  it('T-0124: com o armazenamento a exportação está disponível e a auditoria leva só o id da exportação (sem dado pessoal)', async () => {
+    const t = montar();
+    expect((await t.chamar('GET', '/exportacoes/disponibilidade')).corpo).toEqual({ disponivel: true });
+    await t.chamar('POST', '/exportacoes');
+    const reg = JSON.stringify(t.auditoria.registros[0]);
+    expect(reg).not.toMatch(/admin@piloto|Admin|11222333000181|Empresa Piloto/);
+    await expect(t.chamar('GET', '/exportacoes/disponibilidade', { perfil: 'vendedor' })).rejects.toMatchObject({ status: 403 });
   });
 
   it('RF-CORE-05: a consulta da auditoria filtra por entidade e período e é só do administrador', async () => {

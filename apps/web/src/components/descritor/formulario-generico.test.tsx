@@ -26,6 +26,20 @@ describe('formulário do novo pedido (T-0021 rodada 2)', () => {
   });
 });
 
+describe('editar pedido (T-0126)', () => {
+  it('abre com os valores e os itens do pedido, botão "Salvar alterações" e Cancelar volta ao detalhe', () => {
+    const P = '1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8';
+    const ID = '3f1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c70';
+    const h = renderToStaticMarkup(
+      <FormularioGenerico rota="/pedido/pedidos/:id/editar" opcoes={{}} produtos={[{ valor: P, rotulo: 'Água' }]} aberto={{ id: ID, valores: { observacao: 'Entregar cedo' }, original: {}, versao: 'v1', itens: [{ produto_id: P, quantidade: '2', preco: '5,00', desconto: '' }] }} />,
+    );
+    expect(h).toContain('Entregar cedo');
+    expect(h).toContain('Salvar alterações');
+    expect(h).toContain(`href="/pedido/pedidos/${ID}"`);
+    expect(h).toMatch(/Total do pedido:[^]*10,00/);
+  });
+});
+
 describe('filtros e selo da lista', () => {
   it('"Todas" para filtro feminino e "Todos" para os demais', () => {
     expect(textoTodos('Filial')).toBe('Todas');

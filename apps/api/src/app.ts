@@ -419,7 +419,7 @@ async function executarRota(req: FastifyRequest, reply: FastifyReply, rota: Rota
   // O multipart é lido antes da transação (não segura conexão enquanto o arquivo sobe), mas só depois da sessão e do
   // perfil, na ordem da RN-CORE-02; tenant e licença seguem no `executarAutorizado`, antes de qualquer uso dos dados.
   if (rota.multipart && !req.sessao) throw erros.naoAutenticado();
-  if (rota.multipart && !pode(req.sessao!.perfil, rota.acao)) throw erros.perfilSemPermissao();
+  if (rota.multipart && !pode(req.sessao!.perfil, rota.acao)) throw erros.perfilSemPermissao(rota.semPermissao);
   const entrada = rota.multipart ? await lerMultipart(req, rota.multipart) : { corpo: req.body, todosArquivos: {} };
   if (estourou()) throw erros.tempoEsgotado(Math.round(rota.tempoMaximoMs! / 1000));
   const agora = d.relogio.agora();
@@ -427,6 +427,7 @@ async function executarRota(req: FastifyRequest, reply: FastifyReply, rota: Rota
   const resultado = await executarAutorizado({
     sessao: req.sessao,
     acao: rota.acao,
+    semPermissao: rota.semPermissao,
     agora,
     banco: d.banco,
     licencas: fonte,
