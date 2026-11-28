@@ -9,3 +9,4 @@ export * from './empresa-da-filial';
 export * from './ficha-receita';
 export * from './ficha-editavel';
 export * from './email-unico';
+export * from './usuarios-filiais';

@@ -6,7 +6,7 @@
 import { Cnpj, ConsultaLista, EmailUsuario, MODULOS, paginaDe, PERFIS } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 import { FORMATO_FICHA } from './ficha-receita';
-import { SituacaoUsuario } from './usuarios-config';
+import { MENSAGEM_FILIAL_DO_USUARIO, SituacaoUsuario } from './usuarios-config';
 import { OrigemCertificado } from '@macuxierp/platform-sdk/certificado-origem';
 
 export const MODULO = 'core' as const;
@@ -71,25 +71,34 @@ export const Usuario = z.object({
 });
 export type Usuario = z.infer<typeof Usuario>;
 
-export const UsuarioCriar = z.object({
+/**
+ * RN-CORE-40: o corpo que a API recebe aceita `filial_ids` vazio ou ausente no Zod; quem recusa é o domain
+ * (`avaliarFiliaisDoUsuario`), com 422 e "Escolha ao menos uma filial.". Os schemas de cliente (`UsuarioCriar`,
+ * `UsuarioEditar`) exigem uma filial no formulário, antes de chamar a API.
+ */
+export const UsuarioCriarCorpo = z.object({
   nome: z.string().trim().min(2).max(80),
   email: EmailUsuario,
   perfil: Perfil,
-  filial_ids: z.array(Id).min(1),
+  filial_ids: z.array(Id).default([]),
   external_id: z.string().max(64).optional(),
 });
+export const UsuarioCriar = UsuarioCriarCorpo.extend({ filial_ids: z.array(Id).min(1, MENSAGEM_FILIAL_DO_USUARIO) });
 export type UsuarioCriar = z.infer<typeof UsuarioCriar>;
 
+const camposUsuarioEditar = {
+  nome: z.string().trim().min(2).max(80),
+  perfil: Perfil,
+  filial_ids: z.array(Id),
+  ativo: z.boolean(),
+  updated_at: Instante,
+};
+const algoParaAlterar = (v: Record<string, unknown>) => Object.keys(v).some((k) => k !== 'updated_at');
+export const UsuarioEditarCorpo = z.object(camposUsuarioEditar).partial().refine(algoParaAlterar, { message: 'Nada para alterar' });
 export const UsuarioEditar = z
-  .object({
-    nome: z.string().trim().min(2).max(80),
-    perfil: Perfil,
-    filial_ids: z.array(Id).min(1),
-    ativo: z.boolean(),
-    updated_at: Instante,
-  })
+  .object({ ...camposUsuarioEditar, filial_ids: z.array(Id).min(1, MENSAGEM_FILIAL_DO_USUARIO) })
   .partial()
-  .refine((v) => Object.keys(v).some((k) => k !== 'updated_at'), { message: 'Nada para alterar' });
+  .refine(algoParaAlterar, { message: 'Nada para alterar' });
 export type UsuarioEditar = z.infer<typeof UsuarioEditar>;
 
 /** A senha provisória aparece só nesta resposta; o banco guarda apenas o hash (regra 9). */
