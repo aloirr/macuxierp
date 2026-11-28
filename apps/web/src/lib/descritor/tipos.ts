@@ -237,6 +237,8 @@ export interface CampoFormulario {
   fonte?: FonteOpcoes;
   opcoes?: readonly { valor: string; rotulo: string }[];
   ajuda?: string;
+  /** Mostra o campo só quando a condição vale (ex.: regime de PIS/COFINS só com CRT 3). É função: roda no navegador, nunca atravessa do servidor como dado. */
+  mostrarSe?: (valores: Readonly<Record<string, string>>) => boolean;
 }
 export type ValoresFormulario = Readonly<Record<string, string>>;
 /** Linha de itens em texto digitado, no formato do módulo. */

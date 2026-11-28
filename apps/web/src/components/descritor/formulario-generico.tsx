@@ -39,7 +39,7 @@ function SeletorOpcoes({ id, rotulo, largura = '', valor, opcoes, onChange, erro
 /** Formulário genérico: campos do descritor, seletores lidos do cadastros (opções vêm do servidor) e itens. A API revalida. */
 export function FormularioGenerico({ rota, opcoes, produtos, errosIniciais, perfil, campos, aberto }: { rota: string; opcoes: Readonly<Record<string, readonly Opcao[]>>; produtos: readonly Opcao[]; errosIniciais?: ErrosFormulario; perfil?: Perfil; campos?: readonly CampoFormulario[]; aberto?: Aberto }) {
   const tela = telaFormulario(rota);
-  return tela ? <Formulario tela={tela} opcoes={opcoes} produtos={produtos} errosIniciais={errosIniciais} perfil={perfil} campos={campos ?? tela.campos} aberto={aberto} /> : <p className="erro" role="alert">Formulário não encontrado.</p>;
+  return tela ? <Formulario tela={tela} opcoes={opcoes} produtos={produtos} errosIniciais={errosIniciais} perfil={perfil} campos={perfil && tela.camposDoPerfil ? tela.camposDoPerfil(perfil) : (campos ?? tela.campos)} aberto={aberto} /> : <p className="erro" role="alert">Formulário não encontrado.</p>;
 }
 
 /** Registro aberto na edição: valores iniciais, o original (para o diff do PATCH) e o id. */
@@ -86,7 +86,7 @@ function Formulario({ tela, opcoes, produtos, errosIniciais, perfil, campos, abe
   return (
     <form className="formulario" onSubmit={(ev) => void enviar(ev)} noValidate aria-busy={ocupado}>
       {!tela.itens && <RegiaoErros temErro={temErros(erros) || resultado !== null} />}
-      {campos.map((c) => {
+      {campos.filter((c) => !c.mostrarSe || c.mostrarSe(valores)).map((c) => {
         const id = `campo-${c.nome}`;
         if (c.tipo === 'cadastro' || c.tipo === 'selecao') {
           const lista = c.tipo === 'cadastro' ? (opcoes[c.nome] ?? []) : (c.opcoes ?? []).map((o) => ({ valor: o.valor, rotulo: o.rotulo }));
