@@ -4,7 +4,7 @@ import { MANIFESTOS } from '../manifestos';
 import { montarMenu, resolverPagina } from '../menu';
 import type { EuResposta } from '@macuxierp/platform-sdk';
 import {
-  EDITAR_PRODUTO, LISTA_PRODUTOS, NOVO_PRODUTO, ROTA_PRODUTO, ROTA_PRODUTO_NOVO, ROTA_PRODUTOS,
+  EDITAR_FILIAL, EDITAR_PRODUTO, LISTA_FILIAIS, LISTA_PRODUTOS, NOVA_FILIAL, NOVO_PRODUTO, ROTA_FILIAIS, ROTA_FILIAL, ROTA_FILIAL_NOVA, ROTA_PRODUTO, ROTA_PRODUTO_NOVO, ROTA_PRODUTOS,
 } from './cadastros';
 
 const FUSO = 'America/Manaus';
@@ -61,5 +61,52 @@ describe('adaptador do cadastros: Produtos (v0.3.28)', () => {
     expect(resolver(ROTA_PRODUTOS)?.pagina?.rota).toBe(ROTA_PRODUTOS);
     expect(resolver(`/cadastros/produtos/${ID}`)?.pagina?.rota).toBe(ROTA_PRODUTO);
     expect(resolverPagina(montarMenu([], MANIFESTOS, 'gerente'), ROTA_PRODUTOS, 'gerente')).toBeUndefined();
+  });
+});
+
+describe('adaptador do cadastros: Filiais (v0.3.28)', () => {
+  const filial = {
+    id: ID, cnpj: '11222333000181', razao_social: 'Macuxi Distribuidora Ltda', nome_fantasia: null, ie: '041234567', crt: '3', regime_pis_cofins: 'nao_cumulativo', industrial_ipi: false,
+    padrao: true, emissora: true, nfe_serie: 1, nfe_numero_inicial: 1, external_id: null, inativo: false,
+    endereco: { cep: '69000000', logradouro: 'Rua A', numero: '1', complemento: null, bairro: 'Centro', municipio_ibge: '1302603', uf: 'AM' },
+  };
+  const mod = [{ id: 'cadastros' as EuResposta['modulos'][number]['id'], menus: ['Filiais'] }];
+
+  it('registra lista, novo e edição; o PATCH só vale em /filiais/<uuid>', () => {
+    expect(telaDaRota(ROTA_FILIAIS)).toBe(LISTA_FILIAIS);
+    expect(telaFormulario(ROTA_FILIAL_NOVA)).toBe(NOVA_FILIAL);
+    expect(telaFormulario(ROTA_FILIAL)).toBe(EDITAR_FILIAL);
+    expect(escritaDeclarada('PATCH', `/v1/cadastros/filiais/${ID}`)).toBe(true);
+    expect(escritaDeclarada('PATCH', '/v1/cadastros/filiais')).toBe(false);
+  });
+
+  it('lista: colunas, selo e rota do registro', () => {
+    expect(LISTA_FILIAIS.colunas('gerente', FUSO).map((c) => c.id)).toEqual(expect.arrayContaining(['cnpj', 'razao_social', 'crt', 'nfe_serie', 'inativo']));
+    expect(LISTA_FILIAIS.linha(filial, FUSO)).toMatchObject({ cnpj: '11.222.333/0001-81', crt: 'Regime normal', regime_pis_cofins: 'Não cumulativo' });
+    expect(LISTA_FILIAIS.rotaDaLinha?.(filial)).toBe(`/cadastros/filiais/${ID}`);
+    expect(LISTA_FILIAIS.novo).toMatchObject({ rota: ROTA_FILIAL_NOVA, criar: 'cadastros.filial.editar' });
+  });
+
+  it('formulário: o regime de PIS/COFINS só aparece com CRT 3 (RN-FIS-02); o CNPJ só na criação', () => {
+    const regime = NOVA_FILIAL.camposDoPerfil!('gerente').find((c) => c.nome === 'regime_pis_cofins')!;
+    expect(regime.mostrarSe?.({ crt: '3' })).toBe(true);
+    expect(regime.mostrarSe?.({ crt: '1' })).toBe(false);
+    expect(NOVA_FILIAL.camposDoPerfil!('gerente').map((c) => c.nome)).toContain('cnpj');
+    expect(EDITAR_FILIAL.camposDoPerfil!('gerente').map((c) => c.nome)).not.toContain('cnpj');
+    expect(NOVA_FILIAL.validar({}, [], 'gerente')).toMatchObject({ cnpj: 'Preencha este campo', razao_social: 'Preencha este campo' });
+    expect(() => NOVA_FILIAL.montar({}, [], 'gerente')).toThrow();
+  });
+
+  it('edição: abre com os valores e o PATCH leva só o que mudou', () => {
+    const { valores, original } = EDITAR_FILIAL.edicao!.abrir(filial);
+    expect(valores).toMatchObject({ razao_social: 'Macuxi Distribuidora Ltda', crt: '3', end_uf: 'AM' });
+    expect(EDITAR_FILIAL.edicao!.montarPatch(valores, original, 'gerente')).toBeNull();
+    expect(EDITAR_FILIAL.edicao!.montarPatch({ ...valores, razao_social: 'Macuxi Ltda' }, original, 'gerente')).toEqual({ razao_social: 'Macuxi Ltda' });
+  });
+
+  it('regra 6: a página só abre com a licença do cadastros', () => {
+    expect(resolverPagina(montarMenu(mod, MANIFESTOS, 'gerente'), ROTA_FILIAIS, 'gerente')?.pagina?.rota).toBe(ROTA_FILIAIS);
+    expect(resolverPagina(montarMenu(mod, MANIFESTOS, 'gerente'), `/cadastros/filiais/${ID}`, 'gerente')?.pagina?.rota).toBe(ROTA_FILIAL);
+    expect(resolverPagina(montarMenu([], MANIFESTOS, 'gerente'), ROTA_FILIAIS, 'gerente')).toBeUndefined();
   });
 });
