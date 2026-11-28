@@ -1,6 +1,7 @@
 'use client';
 import type { IntegracaoFdvPlataforma, MonitorConectorFdv, PortalEntradaLeitura, SituacaoCargasPlataforma } from '@macuxierp/platform-sdk';
 import { ResultadoAcao, useResultado } from '@macuxierp/ui';
+import type { LigacoesResposta } from '@macuxierp/integracao-fdv/contracts';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { maisRecente, textoAtualizado } from '@/lib/config/operacao-fdv';
@@ -9,6 +10,7 @@ import { lerMonitorFdvAcao } from '@/lib/acoes-cliente';
 import { AbaDados } from './aba-dados';
 import { SecaoEnvioFdv } from './envio-fdv';
 import { EnviosRecentes } from './envios-recentes';
+import { EnviosSaida } from './envios-saida';
 import { LigacaoEntrada } from './ligacao-entrada';
 import { LigacaoSaida } from './ligacao-saida';
 
@@ -20,7 +22,7 @@ const ERRO_ATUALIZAR = 'Não foi possível atualizar. Tente de novo.';
  * (cadastros recebidos e enviados) ficam dentro do cartão de cada ligação, como na simulação aprovada (445e459); "Envios recentes" embaixo, com o único
  * "Atualizar" (relê as duas ligações: o Monitor e a ficha) na barra do bloco.
  */
-export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial = null, entrada = null, cargas = null }: { empresaId: string; dados: IntegracaoFdvPlataforma; fuso: string; monitor?: MonitorConectorFdv | null; entrada?: PortalEntradaLeitura | null; cargas?: SituacaoCargasPlataforma | null }) {
+export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial = null, entrada = null, cargas = null, ligacoes = null }: { empresaId: string; dados: IntegracaoFdvPlataforma; fuso: string; monitor?: MonitorConectorFdv | null; entrada?: PortalEntradaLeitura | null; cargas?: SituacaoCargasPlataforma | null; ligacoes?: LigacoesResposta | null }) {
   const router = useRouter();
   const [pendente, iniciar] = useTransition();
   const [rAtualizar, kAtualizar, mostrarAtualizar, limparAtualizar] = useResultado();
@@ -41,8 +43,9 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
     <div className="integracoes">
       <div className="ligacoes">
         <LigacaoEntrada empresaId={empresaId} dados={entrada} fuso={fuso} corpo={<AbaDados empresaId={empresaId} dados={cargas} fuso={fuso} entrada={entrada} />} />
-        <LigacaoSaida empresaId={empresaId} dados={dados} monitor={monitor} fuso={fuso} corpo={(barra) => <SecaoEnvioFdv empresaId={empresaId} dados={dados} fuso={fuso} barra={barra} />} />
+        <LigacaoSaida empresaId={empresaId} dados={dados} monitor={monitor} fuso={fuso} lida={ligacoes?.saida ?? null} corpo={(barra) => <SecaoEnvioFdv empresaId={empresaId} dados={dados} fuso={fuso} barra={barra} />} />
       </div>
+      {ligacoes && <EnviosSaida saida={ligacoes.saida} fuso={fuso} />}
       <EnviosRecentes
         lotes={entrada?.lotes ?? []}
         fuso={fuso}

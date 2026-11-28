@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { randomUUID } from 'node:crypto';
 import { redirect } from 'next/navigation';
 import { codigoExibido, destinoErroEmpresa, lerApoio, textoCriadaEm } from '@/lib/config/empresa';
-import { lerEmpresa, lerIntegracaoFdv, lerMonitorFdv, lerSituacaoCnpj, listarUsuarios } from '@/lib/config/api';
+import { lerEmpresa, lerIntegracaoFdv, lerLigacoesFdv, lerMonitorFdv, lerSituacaoCnpj, listarUsuarios } from '@/lib/config/api';
 import { lerCargas } from '@/lib/config/cargas-api';
 import { lerEntrada } from '@/lib/config/entrada-api';
 import { CodigoDoErro } from '@/components/codigo-do-erro';
@@ -46,6 +46,8 @@ export default async function Empresa({ params, searchParams }: { params: Promis
   };
   const { valor: integracao, requestId: idIntegracao } = naIntegracao ? await ler(() => lerIntegracaoFdv(token, id)) : { valor: null, requestId: undefined };
   const monitor = naIntegracao ? (await ler(() => lerMonitorFdv(token, id))).valor : null;
+  // T-0131: contadores, histórico de envios e cabeçalho do Contato da saída; sem a leitura a aba segue com a ficha de antes
+  const ligacoes = naIntegracao ? (await ler(() => lerLigacoesFdv(token, id))).valor : null;
   // a entrada vale para as duas abas: a ficha da ligação (Integração) e os números do último lote (Dados, "Cadastros recebidos")
   const entrada = naIntegracao ? (await ler(() => lerEntrada(token, id))).valor : null;
   const cargas = naIntegracao ? (await ler(() => lerCargas(token, id))).valor : null;
@@ -70,7 +72,7 @@ export default async function Empresa({ params, searchParams }: { params: Promis
       </nav>
       {naIntegracao ? (
         integracao ? (
-          <AbaIntegracao empresaId={empresa.id} dados={integracao} fuso={empresa.fuso} monitor={monitor} entrada={entrada} cargas={cargas} />
+          <AbaIntegracao empresaId={empresa.id} dados={integracao} fuso={empresa.fuso} monitor={monitor} entrada={entrada} cargas={cargas} ligacoes={ligacoes} />
         ) : (
           <>
             <p className="erro" role="alert">Não foi possível carregar a integração.</p>

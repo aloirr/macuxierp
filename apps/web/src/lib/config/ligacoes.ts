@@ -1,6 +1,7 @@
 import type { CadastroCargaPortal, IntegracaoFdvPlataforma, LoteEntradaResumo, MonitorConectorFdv, PortalEntradaLeitura } from '@macuxierp/platform-sdk';
 import { plural, rotuloCadastroCarga } from '@macuxierp/platform-sdk';
 import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
+import type { LigacaoSaida as LigacaoSaidaLida } from '@macuxierp/integracao-fdv/contracts';
 import { AMBIENTES_FDV } from './integracao-fdv';
 import { situacaoDoConector, type Tom } from './operacao-fdv';
 
@@ -61,18 +62,20 @@ export function fichaEntrada(l: PortalEntradaLeitura | null, fuso: string, agora
 }
 
 /** ERP → Macuxi FDV: o Monitor vira a Situação (Em dia / Atrasado / Desativado; Indisponível quando a leitura falha). */
-export function fichaSaida(d: IntegracaoFdvPlataforma, monitor: MonitorConectorFdv | null, fuso: string): FichaLigacao | null {
+export function fichaSaida(d: IntegracaoFdvPlataforma, monitor: MonitorConectorFdv | null, fuso: string, lida: LigacaoSaidaLida | null = null): FichaLigacao | null {
   if (d.credencial_id === null) return null;
+  // T-0131: o cabeçalho do Contato (só leitura) vem da leitura das ligações quando ela chegou; sem ela, da ficha de antes.
+  const c = lida?.contato ?? null;
   const apoio: string[] = [];
   if (!monitor) apoio.push(APOIO_INDISPONIVEL);
   if (monitor && monitor.fila.lotes > 0) apoio.push(`Fila: ${plural(monitor.fila.lotes, 'lote', 'lotes')}`);
   if (d.ultimo_sinal?.ultimo_codigo) apoio.push(`Código da última recusa: ${d.ultimo_sinal.ultimo_codigo}`);
   return {
     situacao: monitor ? situacaoDoConector(monitor.situacao) : SITUACAO_INDISPONIVEL,
-    ultimoContato: dataHora(monitor?.ultimo_sinal_em ?? d.ultimo_sinal?.ultimo_envio_em, fuso),
-    codigo: d.conector_id ?? '—',
-    chave: `${d.chave_prefixo ?? ''}…`,
-    ambiente: AMBIENTES_FDV.find(([v]) => v === d.ambiente)?.[1] ?? '—',
+    ultimoContato: dataHora(c?.ultimo_contato_em ?? monitor?.ultimo_sinal_em ?? d.ultimo_sinal?.ultimo_envio_em, fuso),
+    codigo: c?.conector_id ?? d.conector_id ?? '—',
+    chave: `${c?.chave_prefixo ?? d.chave_prefixo ?? ''}…`,
+    ambiente: AMBIENTES_FDV.find(([v]) => v === (c?.ambiente ?? d.ambiente))?.[1] ?? '—',
     ligadoA: ROTULO_DESTINO_FDV,
     apoio,
   };
@@ -103,3 +106,17 @@ export function rotuloDoLote(entidade: string): string {
   const par = (Object.entries(ENTIDADES_DO_CADASTRO) as [CadastroCargaPortal, readonly string[]][]).find(([, e]) => e.includes(entidade));
   return par ? rotuloCadastroCarga(par[0]) : entidade;
 }
+
+// ---- T-0131: contadores e histórico de envios da ERP → Macuxi FDV (só contagens; nenhum dado de cadastro) ----
+
+/** Enviados = registros dos lotes mandados ao Hub; Aceitos = os que o Hub aceitou. Sem "Gravados" (decisão do PO, 28/11 07h05). */
+export function contadoresDaSaida(l: LigacaoSaidaLida): readonly { id: 'enviados' | 'aceitos'; rotulo: string; valor: string }[] {
+  const n = (v: number) => v.toLocaleString('pt-BR');
+  return [
+    { id: 'enviados', rotulo: 'Enviados', valor: n(l.contadores.enviados) },
+    { id: 'aceitos', rotulo: 'Aceitos', valor: n(l.contadores.aceitos) },
+  ];
+}
+
+/** Aviso quando a API cortou o histórico no limite. */
+export const AVISO_ENVIOS_CORTADOS = (limite: number): string => `Mostrando os ${limite} envios mais recentes.`;

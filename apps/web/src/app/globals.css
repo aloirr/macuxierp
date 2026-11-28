@@ -119,6 +119,10 @@ tbody tr:nth-child(even) { background: var(--mx-cor-linha-alternada); }
 /* Aba Integração do /config (v0.3.24, docs/design/integracao-duas-ligacoes): duas ligações lado a lado; uma embaixo da outra só no celular (R-20261127-110345). */
 .ligacoes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
 @media (max-width: 767px) { .ligacoes { grid-template-columns: minmax(0, 1fr); } }
+.contadores { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0 0 16px; }
+.contador { border: 1px solid var(--mx-cor-borda-tabela); border-radius: 8px; padding: 8px 12px; background: var(--mx-cor-branco); }
+.contador dt { font-size: var(--mx-tamanho-rotulo-dado); font-weight: var(--mx-peso-rotulo-dado); color: var(--mx-cor-rotulo-destaque); text-transform: uppercase; letter-spacing: 0.04em; }
+.contador dd { margin: 0; font-size: 1.25rem; font-weight: var(--mx-peso-titulo); font-variant-numeric: tabular-nums; }
 .ligacao .ficha { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
 .ligacao h2 .seta, .direcao h2 .seta { color: var(--mx-cor-texto-secundario); font-weight: 400; }
 .apoio-situacao { display: block; margin-top: 4px; }

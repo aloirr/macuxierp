@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
+import { LigacoesResposta } from '@macuxierp/integracao-fdv/contracts';
 import { ENTIDADES_ENVIO_FDV, IntegracaoFdvPlataforma, MonitorConectorFdv, PortalEntradaLeitura } from '@macuxierp/platform-sdk';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }), redirect: vi.fn() }));
@@ -134,5 +135,39 @@ describe('CSS das ligações (docs/design/integracao-duas-ligacoes)', () => {
   it('.so-leitor não tem mais dois sentidos: a camada clicável ganhou nome próprio', () => {
     expect(css.match(/^\.so-leitor\s*\{/gm) ?? []).toHaveLength(1);
     expect(css).toMatch(/^\.sr-only[\s,{]/m);
+  });
+});
+
+describe('T-0131 (C-6): contadores, histórico de envios e cabeçalho do Contato da ERP → Macuxi FDV', () => {
+  const envio = (i: number, extra: Record<string, unknown> = {}) => ({ id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`, entidade: 'produto', estado: 'concluido', registros: 100 + i, aceitos: 100 + i, com_erro: 0, enviado_em: `2026-11-2${i % 9}T12:00:00.000Z`, concluido_em: `2026-11-2${i % 9}T12:00:05.000Z`, ...extra });
+  const lida = (extra: Record<string, unknown> = {}, envios = [envio(1), envio(3, { estado: 'concluido_com_erros', aceitos: 90, com_erro: 13 }), envio(2)]) =>
+    LigacoesResposta.parse({ saida: { contato: { conector_id: 'erp-9', ambiente: 'producao', chave_prefixo: 'zz99zz99', situacao: 'em_dia', ultimo_contato_em: '2026-11-24T19:59:00.000Z' }, contadores: { enviados: 12345, aceitos: 12000 }, envios, envios_cortados: false, ...extra } });
+  const renderLida = (l: LigacoesResposta | null) => renderToStaticMarkup(<AbaIntegracao empresaId={ID} dados={dados()} fuso="America/Manaus" monitor={monitor()} entrada={entrada} cargas={situacoes({ filial: { situacao: 'carregado', quantidade: 1 } })} ligacoes={l} />);
+
+  it('Enviados e Aceitos lado a lado, em número pt-BR, e nenhum "Gravados"', () => {
+    const h = renderLida(lida());
+    expect(h).toMatch(/<dt>Enviados<\/dt><dd>12\.345<\/dd>/);
+    expect(h).toMatch(/<dt>Aceitos<\/dt><dd>12\.000<\/dd>/);
+    expect(h).not.toContain('Gravados');
+  });
+  it('o cabeçalho do Contato vem da leitura, em texto (sem caixa de campo)', () => {
+    const h = renderLida(lida());
+    expect(h).toContain('erp-9');
+    expect(h).toContain('zz99zz99…');
+    expect(h).not.toMatch(/<input[^>]*value="erp-9"/);
+  });
+  it('o histórico lista do mais novo ao mais antigo, com o estado e as contagens', () => {
+    const h = renderLida(lida());
+    expect(h).toMatch(/<caption[^>]*>Envios ao Macuxi FDV<\/caption>/);
+    expect(h).toContain('Concluído com erros');
+    expect(h.indexOf('>103<')).toBeLessThan(h.indexOf('>102<'));
+    expect(h.indexOf('>102<')).toBeLessThan(h.indexOf('>101<'));
+    expect(h).not.toContain('Os 3 envios mais recentes');
+  });
+  it('envios_cortados avisa o limite; sem a leitura, a aba segue como antes (sem contadores nem histórico)', () => {
+    expect(renderLida(lida({ envios_cortados: true }))).toContain('Mostrando os 3 envios mais recentes.');
+    const sem = renderLida(null);
+    expect(sem).not.toContain('Enviados</dt>');
+    expect(sem).not.toContain('Envios ao Macuxi FDV');
   });
 });
