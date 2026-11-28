@@ -97,7 +97,7 @@ tbody tr:nth-child(even) { background: var(--mx-cor-linha-alternada); }
 .dados dd { margin: 0; font-weight: var(--mx-peso-medio); }
 .erro-campo { color: var(--mx-cor-erro-texto); display: block; margin-top: 4px; }
 .paginacao { display: flex; gap: 12px; margin-top: 12px; }
-.entrada, .campo select, .campo textarea { width: 100%; padding: 8px; font: inherit; font-size: var(--mx-tamanho-texto); border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; background: var(--mx-cor-branco); color: var(--mx-cor-grafite); }
+.entrada, .campo textarea { width: 100%; padding: 8px; font: inherit; font-size: var(--mx-tamanho-texto); border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; background: var(--mx-cor-branco); color: var(--mx-cor-grafite); }
 
 /* Integração FDV (T-0011) */
 .faixa-sinal { padding: 8px 12px; border-radius: 6px; border: 1px solid var(--mx-cor-borda-cinza); margin: 0 0 16px; }
@@ -177,8 +177,6 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 /* Troca de senha (T-0052): lista de regras e aviso de sucesso; só tokens do @macuxierp/ui. */
 .campo-senha-bloco { margin-bottom: 16px; }
 /* Login: código e e-mail com o mesmo tamanho, peso e recuo do rótulo e do input do CampoSenha. */
-.campo-login span { font-size: var(--mx-tamanho-micro); font-weight: var(--mx-peso-rotulo-campo); }
-.campo-login input { padding: 0 12px; }
 .sr-only, .legenda-so-leitor caption { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .legenda-so-leitor caption { padding: 0 !important; } /* a legenda da TabelaDensa traz padding inline */
 .regras-senha { margin: 0 0 16px; }
@@ -373,8 +371,9 @@ button.link { background: none; border: 0; padding: 0; color: inherit; font: inh
 .campo-ficha { grid-column: 1 / -1; margin-bottom: 12px; min-width: 0; }
 .campo-ficha.campo-curto { grid-column: auto; }
 @media (max-width: 389px) { .campo-ficha.campo-curto { grid-column: 1 / -1; } }
-.campo-ficha input, .campo-ficha select, .campo-ficha textarea { width: 100%; padding: 8px; border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; font: inherit; font-size: var(--mx-tamanho-texto); background: var(--mx-cor-branco); color: var(--mx-cor-grafite); }
+.campo-ficha input, .campo-ficha select, .campo-ficha textarea { width: 100%; border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; font: inherit; font-size: var(--mx-tamanho-texto); background: var(--mx-cor-branco); color: var(--mx-cor-grafite); }
 .campo-ficha input, .campo-ficha select { padding: 0 12px; height: var(--mx-medida-altura-campo); }
+.campo-ficha textarea { padding: 8px; }
 .campo-ficha [aria-invalid="true"] { border-color: var(--mx-cor-erro-texto); }
 .campo-ficha .dica-campo, .campo-ficha .marca-receita { display: block; font-size: var(--mx-tamanho-micro); color: var(--mx-cor-texto-apoio); margin-top: 4px; }
 .campo-ficha .marca-receita { color: var(--mx-cor-rotulo-destaque); font-weight: var(--mx-peso-rotulo-pequeno); }
@@ -395,8 +394,7 @@ button.link { background: none; border: 0; padding: 0; color: inherit; font: inh
 .campo-ficha .dica-salvo { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .ligacao .campo > span { color: var(--mx-cor-rotulo-destaque); }
 
-/* Parecer da marca (v0.3.28): MC-0201 data/hora sem quebra; MC-0205 filtros em 3 colunas com o menu aberto; MC-0206 cartão da tabela. */
-.sem-quebra, td .sem-quebra { white-space: nowrap; }
+/* Parecer da marca (v0.3.28): MC-0205 filtros em 3 colunas com o menu aberto; MC-0206 cartão da tabela. */
 @media (min-width: 801px) and (max-width: 1100px) { .filtros .campo { grid-column: span 3; } }
 .cartao-tabela { background: var(--mx-cor-branco); border: 1px solid var(--mx-cor-borda-tabela); border-radius: 8px; margin: 0 0 16px; }
 .cartao-tabela > .tabela-rolavel { border-radius: 8px 8px 0 0; }
