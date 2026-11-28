@@ -8,16 +8,21 @@ import { paginasDoMenu } from '@/lib/paginas';
 import { COOKIE_ACESSO, contexto } from '@/lib/sessao';
 import { telaDaRota } from '@/lib/telas';
 import { TelaGenerica } from '@/components/descritor/tela-generica';
+import { Selo } from '@/components/descritor/ui-cliente';
+import { paginaEditavel } from '@macuxierp/platform-sdk';
 import { TelaIntegracaoFdv } from './tela-integracao-fdv';
 import { PAGINAS_INTEGRACAO_FDV } from '@macuxierp/integracao-fdv/web';
 import { ROTA_BANDEIRA } from '@/lib/telas/bandeira';
 import { ROTA_AMBIENTE_FISCAL, ROTA_EMPRESA, ROTA_PERFIS } from '@/lib/telas/core';
+import { ROTA_ITENS_PRECO, rotaDosItens } from '@/lib/telas/cadastros-outros/itens-preco';
+import { ROTA_TABELA_PRECO } from '@macuxierp/cadastros/web';
+import { TelaItensPreco } from '@/components/cadastros-outros/itens-preco';
 import { TelaAmbienteFiscal, TelaBandeira, TelaEmpresa, TelaPerfis } from './telas-quadro';
 import { QualRegraVale, TelaRegraDetalhe, TelaRegraNova } from './tela-fiscal';
 import { ROTA_REGRAS_FISCAIS, ROTA_REGRA, ROTA_REGRA_NOVA } from '@/lib/telas/fiscal';
 
 /** Páginas que têm componente próprio (não passam pelo renderizador genérico nem mostram "Disponível em breve"). */
-const QUADROS: ReadonlySet<string> = new Set([ROTA_PERFIS, ROTA_EMPRESA, ROTA_AMBIENTE_FISCAL, ROTA_BANDEIRA, ROTA_REGRA_NOVA, ROTA_REGRA]);
+const QUADROS: ReadonlySet<string> = new Set([ROTA_PERFIS, ROTA_EMPRESA, ROTA_AMBIENTE_FISCAL, ROTA_BANDEIRA, ROTA_ITENS_PRECO, ROTA_REGRA_NOVA, ROTA_REGRA]);
 
 /** Título da aba do navegador: o mesmo da página (e do botão da seção), não o nome do item de menu. */
 export async function generateMetadata({ params }: { params: Promise<{ modulo: string; pagina: string[] }> }): Promise<Metadata> {
@@ -55,7 +60,7 @@ export default async function PaginaDoModulo({ params, searchParams }: { params:
   return (
     <>
       {/* No detalhe, o h1 é o título do registro (ex.: "Nota 12/1"), desenhado pelo DetalheGenerico: um h1 só por página. */}
-      {tela?.tipo !== 'detalhe' && <h1>{titulo}</h1>}
+      {tela?.tipo !== 'detalhe' && <h1>{titulo}{tela?.tipo === 'formulario' && declarada && !paginaEditavel(declarada, perfil) && <> <Selo selo={{ texto: 'Somente leitura', tom: 'neutro' }} /></>}</h1>}
       {secoes.length > 1 && !principalRepete && (
         <nav className="abas-texto" aria-label="Seções">
           {secoes.map((p) => <Link key={p.rota} href={p.rota} aria-current={p.rota === declarada?.rota || (declarada?.ocultaNoMenu && p.rota === secoes[0]?.rota) ? 'page' : undefined}>{p.titulo}</Link>)}
@@ -64,12 +69,15 @@ export default async function PaginaDoModulo({ params, searchParams }: { params:
       {declarada?.aviso && <p className="faixa-aviso" role="status">{declarada.aviso}</p>}
       {monitor && declarada?.rota === monitor.rota && <TelaIntegracaoFdv acesso={acesso} fuso={eu.empresa.fuso} perfil={perfil} />}
       {tela && declarada && (
-        <TelaGenerica outrasSecoes={outrasSecoes} titulo={titulo} tela={tela} rotaDaPagina={declarada.rota} rota={rota} params={resolvida.params ?? {}} busca={busca} perfil={perfil} acesso={acesso} fuso={eu.empresa.fuso} />
+        <TelaGenerica somenteLeitura={tela.tipo === 'formulario' && !paginaEditavel(declarada, perfil)} outrasSecoes={outrasSecoes} titulo={titulo} tela={tela} rotaDaPagina={declarada.rota} rota={rota} params={resolvida.params ?? {}} busca={busca} perfil={perfil} acesso={acesso} fuso={eu.empresa.fuso} />
       )}
       {/* Quadros com componente próprio (T-0087, T-0088): só leitura, exceto a bandeira (Ligar/Desligar do administrador, pelo executor do quadro). */}
       {declarada?.rota === ROTA_PERFIS && <TelaPerfis acesso={acesso} />}
       {declarada?.rota === ROTA_EMPRESA && <TelaEmpresa acesso={acesso} perfil={perfil} />}
       {declarada?.rota === ROTA_AMBIENTE_FISCAL && <TelaAmbienteFiscal acesso={acesso} perfil={perfil} />}
+      {declarada?.rota === ROTA_ITENS_PRECO && <TelaItensPreco id={resolvida.params?.id ?? ''} rota={rota} busca={busca} perfil={perfil} acesso={acesso} />}
+      {/* Itens de preço (T-0123, lote C): a barra do rodapé da tabela leva à grade (a ação fica junto das demais da página). */}
+      {declarada?.rota === ROTA_TABELA_PRECO && resolvida.params?.id && <div className="barra-acoes"><Link className="mx-botao-secundario" href={rotaDosItens(resolvida.params.id)}>Itens de preço</Link></div>}
       {declarada?.rota === ROTA_BANDEIRA && <TelaBandeira acesso={acesso} perfil={perfil} rota={rota} rotaDaPagina={declarada.rota} />}
       {/* Fiscal (T-0127): "qual regra vale" abaixo da lista; nova regra e regra aberta têm formulário próprio, com a barra única no rodapé. */}
       {declarada?.rota === ROTA_REGRAS_FISCAIS && <QualRegraVale acesso={acesso} rota={rota} busca={busca} />}

@@ -19,7 +19,7 @@ export interface PaginaRegistrada extends PaginaBase {
 /** Fonte única de rota e menu: o menu e a rota `[modulo]/[...pagina]` leem daqui. Módulo novo registra as páginas aqui. */
 /** Só o que o menu e a rota precisam do descritor do módulo (a lista, colunas e API ficam no módulo). */
 function registrar(modulo: ModuloId, p: PaginaBase, extra: { ocultaNoMenu?: boolean } = {}): PaginaRegistrada {
-  return { modulo, menu: p.menu, titulo: p.titulo, rota: p.rota, ...(p.ver ? { ver: p.ver } : {}), ...(p.aviso ? { aviso: p.aviso } : {}), ...(p.ocultaNoMenu !== undefined ? { ocultaNoMenu: p.ocultaNoMenu } : {}), ...extra };
+  return { modulo, menu: p.menu, titulo: p.titulo, rota: p.rota, ...(p.ver ? { ver: p.ver } : {}), ...(p.editar ? { editar: p.editar } : {}), ...(p.aviso ? { aviso: p.aviso } : {}), ...(p.ocultaNoMenu !== undefined ? { ocultaNoMenu: p.ocultaNoMenu } : {}), ...extra };
 }
 
 /**
