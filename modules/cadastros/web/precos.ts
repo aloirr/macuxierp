@@ -33,8 +33,8 @@ export const paginaTabelasPreco = definirPaginaLista({
 
 export const CAMPOS_TABELA_PRECO: readonly CampoEdicao[] = [
   { nome: 'nome', rotulo: 'Nome', tipo: 'texto', obrigatorio: true },
-  { nome: 'vigencia_inicio', rotulo: 'Início da vigência', tipo: 'texto', obrigatorio: true, ajuda: 'AAAA-MM-DD.' },
-  { nome: 'vigencia_fim', rotulo: 'Fim da vigência', tipo: 'texto', ajuda: 'AAAA-MM-DD; vazio = sem fim.' },
+  { nome: 'vigencia_inicio', rotulo: 'Início da vigência', tipo: 'data', obrigatorio: true, ajuda: 'AAAA-MM-DD.' },
+  { nome: 'vigencia_fim', rotulo: 'Fim da vigência', tipo: 'data', ajuda: 'AAAA-MM-DD; vazio = sem fim.' },
   { nome: 'padrao', rotulo: 'Tabela padrão', tipo: 'booleano', ajuda: 'A padrão vale para o cliente sem tabela.' },
 ];
 
