@@ -4,7 +4,7 @@
 - **Data:** 28/11/2026, 00h28 (Manaus)
 - **Dono:** engenheiro-software
 - **Tarefa:** T-0133 (v0.3.30). Desenho: o do engenheiro-software para a T-0133; banco: migração 0079 (banco-dados), depois da 0078.
-- **Decisões do PO (28/11/2026, repassadas pelo gerente-projetos):** a mensagem da empresa suspensa, que só aparece depois de a senha conferir (item 3), e a opção A para o superadmin (item 7).
+- **Decisões do PO (28/11/2026, repassadas pelo gerente-projetos):** a mensagem da empresa suspensa, que só aparece depois de a senha conferir, com o 403 `EMPRESA_SUSPENSA` (item 3), os quatro textos finais (seção Textos) e a opção A para o superadmin (item 7).
 - **Altera:** a D2 da T-0002 (`docs/desenho/T-0002.md`: usuário por tenant, login com empresa, e-mail e senha), a ADR 0012 §2 (login do superadmin e o `tenant_por_slug` no Suspender) e a ADR 0018 (o código reservado `MACUXI` no campo "empresa").
 - **Número:** o 0020 já é a ADR `0020-formas-e-prazos.md`; esta é a 0021, o próximo livre no `main` e nos branches.
 
@@ -28,14 +28,14 @@ Hoje o login pede empresa (código), e-mail e senha (D2 e ADR 0018). O e-mail é
 - **Sessão e JWT não mudam**: mesmo refresh, mesmo cookie, mesmas claims.
 
 ### 3. Falha neutra e empresa suspensa
-- E-mail inexistente ou senha errada: o mesmo 401 `NAO_AUTENTICADO`, com a mensagem **"e-mail ou senha inválidos"**. O e-mail inexistente paga o mesmo custo de argon2 (`ConferenciaCustoIgual`).
-- **Empresa suspensa (decisão do PO):** a função devolve o tenant mesmo suspenso. O `servico` confere a senha (argon2) primeiro. Com a senha certa, a resposta é 403 `EMPRESA_SUSPENSA` com **"Sua empresa está suspensa. Fale com o administrador da Macuxi."**, sem abrir sessão. Com a senha errada, o 401 genérico. Assim, só quem tem a senha descobre que a conta existe e que a empresa está suspensa.
+- E-mail inexistente ou senha errada: o mesmo 401 `NAO_AUTENTICADO`, com a mensagem **"E-mail ou senha inválidos."**. O e-mail inexistente paga o mesmo custo de argon2 (`ConferenciaCustoIgual`).
+- **Empresa suspensa (decisão do PO):** a função devolve o tenant mesmo suspenso. O `servico` confere a senha (argon2) primeiro. Com a senha certa, a resposta é 403 `EMPRESA_SUSPENSA` (confirmado pelo PO) com **"Sua empresa está suspensa. Fale com o administrador da Macuxi."**, sem abrir sessão. Com a senha errada, o 401 genérico. Assim, só quem tem a senha descobre que a conta existe e que a empresa está suspensa.
 - A suspensão continua revogando as sessões do tenant (ADR 0012 §2). Só a mensagem muda.
 
 ### 4. Trava e limite
 - A trava por conta passa a ser por e-mail: `chaveEmail(email)` no lugar de `chaveEmpresaEmail(empresa, email)`.
 - O limite por IP fica: 10 tentativas em 15 min (`LIMITE_LOGIN_IP_PADRAO`, ADR 0012 §6 e a emenda de 26/11).
-- O `/esqueci` responde **sempre 202**, exista ou não o e-mail, e segue os `LIMITES_ESQUECI_SENHA`.
+- O `/esqueci` responde **sempre 202**, exista ou não o e-mail, com **"Se o e-mail estiver cadastrado, enviamos as instruções."**, e segue os `LIMITES_ESQUECI_SENHA`.
 
 ### 5. Superadmin na mesma tela
 - O superadmin entra na mesma tela, com e-mail e senha, e vai ao `/config` (`destino: 'config'`, ADR 0018 §3 a §5 sem mudança nos cookies e no CSRF).
@@ -67,6 +67,16 @@ A emenda §1-A da ADR 0012 (decisão 45 A) acha o superadmin pelo **mesmo e-mail
 5. A função `conta_por_email` do item 2.
 
 O `producao-publicar` volta atrás sozinho se a checagem abortar: a migração roda numa transação, e a versão anterior segue no ar. Repetidos em produção são resolvidos com o cliente antes de publicar de novo.
+
+## Textos
+Travados pelo PO (28/11/2026), exatamente assim, com maiúscula e ponto. Valem também para o FDV copiar. A fonte única no ERP é o SDK; nenhuma tela ou rota escreve variante.
+
+| Situação | Texto |
+|---|---|
+| E-mail já usado (`email_em_uso`) | "Este e-mail já está em uso em outra empresa. Use outro e-mail." |
+| Login com e-mail inexistente ou senha errada (401 `NAO_AUTENTICADO`) | "E-mail ou senha inválidos." |
+| Empresa suspensa, depois da senha conferir (403 `EMPRESA_SUSPENSA`) | "Sua empresa está suspensa. Fale com o administrador da Macuxi." |
+| Esqueci a senha (202, sempre) | "Se o e-mail estiver cadastrado, enviamos as instruções." |
 
 ## LGPD e segredos
 - Nada de e-mail em log, auditoria, erro do banco ou recado: a checagem da migração e a contagem do campo `empresa` levam só números.
