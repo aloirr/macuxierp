@@ -13,11 +13,11 @@ import { paginaEditavel } from '@macuxierp/platform-sdk';
 import { TelaIntegracaoFdv } from './tela-integracao-fdv';
 import { PAGINAS_INTEGRACAO_FDV } from '@macuxierp/integracao-fdv/web';
 import { ROTA_BANDEIRA } from '@/lib/telas/bandeira';
-import { ROTA_AMBIENTE_FISCAL, ROTA_PERFIS } from '@/lib/telas/core';
-import { TelaAmbienteFiscal, TelaBandeira, TelaPerfis } from './telas-quadro';
+import { ROTA_AMBIENTE_FISCAL, ROTA_EMPRESA, ROTA_PERFIS } from '@/lib/telas/core';
+import { TelaAmbienteFiscal, TelaBandeira, TelaEmpresa, TelaPerfis } from './telas-quadro';
 
 /** Páginas que têm componente próprio (não passam pelo renderizador genérico nem mostram "Disponível em breve"). */
-const QUADROS: ReadonlySet<string> = new Set([ROTA_PERFIS, ROTA_AMBIENTE_FISCAL, ROTA_BANDEIRA]);
+const QUADROS: ReadonlySet<string> = new Set([ROTA_PERFIS, ROTA_EMPRESA, ROTA_AMBIENTE_FISCAL, ROTA_BANDEIRA]);
 
 /** Título da aba do navegador: o mesmo da página (e do botão da seção), não o nome do item de menu. */
 export async function generateMetadata({ params }: { params: Promise<{ modulo: string; pagina: string[] }> }): Promise<Metadata> {
@@ -68,6 +68,7 @@ export default async function PaginaDoModulo({ params, searchParams }: { params:
       )}
       {/* Quadros com componente próprio (T-0087, T-0088): só leitura, exceto a bandeira (Ligar/Desligar do administrador, pelo executor do quadro). */}
       {declarada?.rota === ROTA_PERFIS && <TelaPerfis acesso={acesso} />}
+      {declarada?.rota === ROTA_EMPRESA && <TelaEmpresa acesso={acesso} perfil={perfil} />}
       {declarada?.rota === ROTA_AMBIENTE_FISCAL && <TelaAmbienteFiscal acesso={acesso} perfil={perfil} />}
       {declarada?.rota === ROTA_BANDEIRA && <TelaBandeira acesso={acesso} perfil={perfil} rota={rota} rotaDaPagina={declarada.rota} />}
       {outrasSecoes.length > 0 && tela?.tipo !== 'lista' && <div className="barra-acoes">{outrasSecoes.map((p) => <Link key={p.rota} className="mx-botao-secundario" href={p.rota}>{p.titulo}</Link>)}</div>}

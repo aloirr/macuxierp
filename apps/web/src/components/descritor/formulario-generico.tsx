@@ -23,8 +23,8 @@ export const LARGURA_ENDERECO: Readonly<Record<string, string>> = {
 export const LARGURA_NFE: Readonly<Record<string, string>> = { nfe_serie: ' campo-medio', nfe_numero_inicial: ' campo-medio' };
 
 /** Largura do campo na grade de 12 colunas do formulário (regra 11): curto (2), 3, médio (4), longo (6, padrão), 8 ou largo (12). */
-export function larguraDoCampo(c: { nome: string; tipo: string; colunas?: number; inicioLinha?: boolean }): string {
-  const base = larguraBase(c);
+export function larguraDoCampo(c: { nome: string; tipo: string; colunas?: number; colunasSe?: (v: Readonly<Record<string, string>>) => number; inicioLinha?: boolean }, valores?: Readonly<Record<string, string>>): string {
+  const base = larguraBase(c.colunasSe && valores ? { ...c, colunas: c.colunasSe(valores) } : c);
   return c.inicioLinha && !base.includes('campo-inicio-linha') ? `${base} campo-inicio-linha` : base;
 }
 
@@ -139,10 +139,10 @@ function Formulario({ tela, opcoes, produtos, errosIniciais, perfil, campos, abe
         const id = `campo-${c.nome}`;
         if (c.tipo === 'cadastro' || c.tipo === 'selecao') {
           const lista = c.tipo === 'cadastro' ? (opcoes[c.nome] ?? []) : (c.opcoes ?? []).map((o) => ({ valor: o.valor, rotulo: o.rotulo }));
-          return <SeletorOpcoes key={c.nome} largura={larguraDoCampo(c)} id={id} rotulo={c.rotulo} valor={valores[c.nome] ?? ''} opcoes={lista} onChange={(v) => trocar(c.nome, v)} erro={erros[c.nome]} obrigatorio={c.obrigatorio} />;
+          return <SeletorOpcoes key={c.nome} largura={larguraDoCampo(c, valores)} id={id} rotulo={c.rotulo} valor={valores[c.nome] ?? ''} opcoes={lista} onChange={(v) => trocar(c.nome, v)} erro={erros[c.nome]} obrigatorio={c.obrigatorio} />;
         }
         return (
-          <label key={c.nome} className={`campo${larguraDoCampo(c)}`} htmlFor={id}>
+          <label key={c.nome} className={`campo${larguraDoCampo(c, valores)}`} htmlFor={id}>
             <span>{c.rotulo}{c.obrigatorio ? ' *' : ''}</span>
             {c.tipo === 'area' ? <textarea id={id} rows={3} value={valores[c.nome] ?? ''} onChange={(e) => trocar(c.nome, e.target.value)} aria-invalid={erros[c.nome] ? true : undefined} aria-describedby={erros[c.nome] ? `${id}-erro` : undefined} /> : <input id={id} type={c.tipo === 'data' ? 'date' : 'text'} lang="pt-BR" inputMode={c.tipo === 'numero' ? 'decimal' : undefined} value={valores[c.nome] ?? ''} onChange={(e) => trocar(c.nome, e.target.value)} aria-invalid={erros[c.nome] ? true : undefined} aria-describedby={erros[c.nome] ? `${id}-erro` : undefined} />}
             {c.ajuda && <small className="apoio">{c.ajuda}</small>}
