@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
+import { LigacoesResposta } from '@macuxierp/integracao-fdv/contracts';
 import { ENTIDADES_ENVIO_FDV, IntegracaoFdvPlataforma, MonitorConectorFdv, PortalEntradaLeitura } from '@macuxierp/platform-sdk';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }), redirect: vi.fn() }));
@@ -36,14 +37,18 @@ describe('Config v4: aba Integrações como a simulação aprovada 445e459', () 
     expect(h.indexOf('id="h-ligacao-entrada"')).toBeLessThan(h.indexOf('id="h-ligacao-saida"'));
     expect(h).toMatch(new RegExp(`<h2 id="h-ligacao-saida">ERP <span class="seta" aria-hidden="true">→</span><span class="sr-only"> para o </span> ${ROTULO_FORCA_VENDAS}</h2>`));
     expect(h.match(/class="cabeca-ligacao"/g)).toHaveLength(2); // título e selo na mesma linha
-    // as tabelas por ligação moram nos cartões: recebidos, enviados e Envios recentes
-    for (const legenda of ['Cadastros recebidos', 'Cadastros enviados', 'Envios recentes']) expect(h).toMatch(new RegExp(`<caption[^>]*>${legenda}</caption>`));
+    // as tabelas por ligação moram nos cartões: recebidos, enviados e Envios do sistema do cliente ao ERP
+    for (const legenda of ['Cadastros recebidos', 'Cadastros enviados', 'Envios do sistema do cliente ao ERP']) expect(h).toMatch(new RegExp(`<caption[^>]*>${legenda}</caption>`));
     expect(h.indexOf('Cadastros recebidos')).toBeLessThan(h.indexOf('id="h-ligacao-saida"'));
     expect(h.indexOf('Cadastros enviados')).toBeGreaterThan(h.indexOf('id="h-ligacao-saida"'));
     expect(h.indexOf('id="h-envios-recentes"')).toBeGreaterThan(h.indexOf('Cadastros enviados'));
+    // T-0131 (PO): a tabela dos cadastros enviados não tem coluna de erro (ela contradizia o selo do envio); o erro fica em "Envios ao Macuxi FDV"
+    const enviados = h.slice(h.indexOf('Cadastros enviados'), h.indexOf('</table>', h.indexOf('Cadastros enviados')));
+    expect(enviados).not.toMatch(/>(Com erro|Falha)</);
+    expect(enviados).toContain('>Último envio<');
     for (const fora of ['Monitor', 'Conexão com o Macuxi FDV', 'Integração via API', 'cabeca-ligacoes', 'form-lote', 'campo-com-botao']) expect(h).not.toContain(fora);
   });
-  it('um único Atualizar, na barra do bloco Envios recentes (regra 12), com "Atualizado às" ao lado e o retorno logo abaixo', () => {
+  it('um único Atualizar, na barra do bloco Envios do sistema do cliente ao ERP (regra 12), com "Atualizado às" ao lado e o retorno logo abaixo', () => {
     const h = render(dados(), monitor());
     expect(h.match(/>Atualizar<\/button>/g)).toHaveLength(1);
     expect(h).toMatch(/<div class="barra-acoes barra-bloco"><button[^>]*>Atualizar<\/button><span class="apoio" data-testid="atualizado-as"[^>]*>Atualizado às 14:39<\/span><\/div><div data-resultado-acao/);
@@ -134,5 +139,41 @@ describe('CSS das ligações (docs/design/integracao-duas-ligacoes)', () => {
   it('.so-leitor não tem mais dois sentidos: a camada clicável ganhou nome próprio', () => {
     expect(css.match(/^\.so-leitor\s*\{/gm) ?? []).toHaveLength(1);
     expect(css).toMatch(/^\.sr-only[\s,{]/m);
+  });
+});
+
+describe('T-0131 (C-6): contadores, histórico de envios e cabeçalho do Contato da ERP → Macuxi FDV', () => {
+  const envio = (i: number, extra: Record<string, unknown> = {}) => ({ id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`, entidade: 'produto', estado: 'concluido', registros: 100 + i, aceitos: 100 + i, com_erro: 0, enviado_em: `2026-11-2${i % 9}T12:00:00.000Z`, concluido_em: `2026-11-2${i % 9}T12:00:05.000Z`, ...extra });
+  const lida = (extra: Record<string, unknown> = {}, envios = [envio(1), envio(3, { estado: 'concluido_com_erros', aceitos: 90, com_erro: 13 }), envio(2)]) =>
+    LigacoesResposta.parse({ saida: { contato: { conector_id: 'erp-9', ambiente: 'producao', chave_prefixo: 'zz99zz99', situacao: 'em_dia', ultimo_contato_em: '2026-11-24T19:59:00.000Z' }, contadores: { enviados: 12345, aceitos: 12000 }, envios, envios_cortados: false, ...extra } });
+  const renderLida = (l: LigacoesResposta | null) => renderToStaticMarkup(<AbaIntegracao empresaId={ID} dados={dados()} fuso="America/Manaus" monitor={monitor()} entrada={entrada} cargas={situacoes({ filial: { situacao: 'carregado', quantidade: 1 } })} ligacoes={l} />);
+
+  it('Enviados e Aceitos lado a lado, em número pt-BR, e nenhum "Gravados"', () => {
+    const h = renderLida(lida());
+    expect(h).toMatch(/<dt>Enviados<\/dt><dd>12\.345<\/dd>/);
+    expect(h).toMatch(/<dt>Aceitos<\/dt><dd>12\.000<\/dd>/);
+    expect(h).not.toContain('Gravados');
+  });
+  it('o cabeçalho do Contato vem da leitura, em texto (sem caixa de campo)', () => {
+    const h = renderLida(lida());
+    expect(h).toContain('erp-9');
+    expect(h).toContain('zz99zz99…');
+    expect(h).not.toMatch(/<input[^>]*value="erp-9"/);
+  });
+  it('o histórico lista do mais novo ao mais antigo, com o estado e as contagens', () => {
+    const h = renderLida(lida());
+    expect(h).toMatch(/<caption[^>]*>Envios ao Macuxi FDV<\/caption>/);
+    expect(h).toContain('Concluído com erros');
+    expect(h).toContain('<span class="selo selo-aviso">Concluído com erros</span>');
+    expect(h).toContain('<span class="selo selo-ativo">Concluído</span>');
+    expect(h.indexOf('>103<')).toBeLessThan(h.indexOf('>102<'));
+    expect(h.indexOf('>102<')).toBeLessThan(h.indexOf('>101<'));
+    expect(h).not.toContain('Os 3 envios mais recentes');
+  });
+  it('envios_cortados avisa o limite; sem a leitura, a aba segue como antes (sem contadores nem histórico)', () => {
+    expect(renderLida(lida({ envios_cortados: true }))).toContain('Mostrando os 3 envios mais recentes.');
+    const sem = renderLida(null);
+    expect(sem).not.toContain('Enviados</dt>');
+    expect(sem).not.toContain('Envios ao Macuxi FDV');
   });
 });

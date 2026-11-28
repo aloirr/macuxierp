@@ -21,7 +21,7 @@ export function FichaDaLigacao({ ficha, rotulo }: { ficha: FichaLigacao; rotulo:
   return (
     <>
       <dl className="ficha" aria-label={rotulo}>
-        <div><dt>Código</dt><dd className="codigo">{ficha.codigo}</dd></div>
+        <div><dt>Código</dt><dd className="codigo sem-quebra">{ficha.codigo}</dd></div>
         {ficha.ambiente && <div><dt>Ambiente</dt><dd>{ficha.ambiente}</dd></div>}
         {ficha.ligadoA && <div><dt>Ligado a</dt><dd>{ficha.ligadoA}</dd></div>}
         <div><dt>Último contato</dt><dd>{ficha.ultimoContato}</dd></div>

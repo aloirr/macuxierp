@@ -175,10 +175,9 @@ async function bkoConfere(esperado) {
 }
 
 // ---- T-0131 (C-6): contadores Enviados/Aceitos, histórico "Envios ao Macuxi FDV" e Contato só leitura ----
-// A rota (#989/#1000/#1009) já está no main; a tela (#1001) ainda não. Desligado até a tela entrar: o passo roda e só avisa
-// "pendente"; ligado, reprova. Para ligar: troque `false` por `true` em LIGADA_T0131, no PR do testes depois do merge do #1001;
-// para ensaiar o branch da tela antes: `MX_LIGAR=ligacoesT0131`.
-const LIGADA_T0131 = false;
+// Ligado: a rota (#989/#1000/#1009) e a tela (#1001, 8ff24a9) estão no main; o passo reprova. Com `false` ele roda e só avisa
+// "pendente" (para um ajuste futuro que entre antes da tela); `MX_LIGAR=ligacoesT0131` liga sem editar.
+const LIGADA_T0131 = true;
 const LIGAR_T0131 = LIGADA_T0131 || (process.env.MX_LIGAR ?? '').split(',').map((s) => s.trim()).includes('ligacoesT0131');
 exigir(dados.ligacoes, 'o api-portal-integracao.ts não passou a rota das ligações (CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.ligacoes)');
 const ROTA_LIGACOES = dados.ligacoes;
@@ -218,12 +217,12 @@ async function conferirLigacoes() {
   exigir(rotasDaApi().some((l) => /^GET \S*\/integracao-fdv\/ligacoes 200$/.test(l)), 'a tela não chamou o GET das ligações na API');
 }
 async function passoT0131(nome, fn) {
-  await passo(`${nome}${LIGAR_T0131 ? '' : ' [desligado até a tela da T-0131, #1001]'}`, async () => {
+  await passo(`${nome}${LIGAR_T0131 ? '' : ' [desligado]'}`, async () => {
     try {
       await fn();
     } catch (e) {
       if (LIGAR_T0131) throw e;
-      console.error(`[e2e] pendente (ligacoesT0131, T-0131; desligado até a tela #1001 entrar no main): ${String(e?.message ?? e).split('\n')[0]}`);
+      console.error(`[e2e] pendente (ligacoesT0131, T-0131; desligado): ${String(e?.message ?? e).split('\n')[0]}`);
     }
   });
 }
