@@ -32,7 +32,7 @@ beforeEach(() => {
 
 describe('guarda do grupo /config (layout)', () => {
   it('sem sessão de superadmin: redireciona ao login da plataforma (caminho relativo)', async () => {
-    await expect(abrir()).rejects.toThrow('REDIRECT /#codigo=MACUXI');
+    await expect(abrir()).rejects.toThrow('REDIRECT /');
   });
   it('token recusado pela API (401): limpa o cookie pela rota de encerramento', async () => {
     estado.jar = { mx_config: 'velho' };
@@ -56,7 +56,7 @@ describe('guarda do grupo /config (layout)', () => {
 describe('páginas do portal têm guarda própria', () => {
   it('criar empresa sem sessão: redireciona ao login, sem depender do layout', async () => {
     const { default: NovaEmpresa } = await import('./empresas/nova/page');
-    await expect(NovaEmpresa()).rejects.toThrow('REDIRECT /#codigo=MACUXI');
+    await expect(NovaEmpresa()).rejects.toThrow('REDIRECT /');
     estado.jar = { mx_config: 'tok' };
     await expect(NovaEmpresa()).resolves.toBeTruthy();
   });

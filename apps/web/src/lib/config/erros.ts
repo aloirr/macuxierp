@@ -1,3 +1,5 @@
+import { MENSAGEM_LOGIN_INVALIDO } from '@macuxierp/platform-sdk';
+import { erroEmailEmUso } from '../email-em-uso';
 import { ehRespostaDefinitiva } from '../descritor/idempotencia';
 import { TEXTOS_BLOQUEIO } from '../login-regras';
 import { FALHA, SESSAO_EXPIRADA } from '../textos';
@@ -49,7 +51,7 @@ const RECEITA_DADO_RECUSADO = 'A Receita enviou um dado que o cadastro não acei
 export const EMPRESA_NAO_ENCONTRADA = 'Empresa não encontrada. Volte à lista.';
 
 /** Credencial errada e conta travada dão a MESMA mensagem (ADR 0012, seção 6). */
-export const CREDENCIAL_INVALIDA = 'E-mail ou senha inválidos.';
+export const CREDENCIAL_INVALIDA = MENSAGEM_LOGIN_INVALIDO;
 export const SEM_PERMISSAO = 'Você não tem permissão para esta ação.';
 export const ADMIN_JA_EXISTE = 'Esta empresa já tem administrador. Redefina a senha dele.';
 export const SENHA_ATUAL_INCORRETA = 'Senha provisória atual incorreta. Confira e tente de novo.';
@@ -92,6 +94,9 @@ export function mensagemDoErro(e: unknown, ctx: ContextoErro): MensagemErro {
     }
     // Ficha editável (RN-CORE-16): a mensagem curta do core no conflito e na falta da porta (ex.: sem CNPJ, consulta de notas fora).
     if (ctx === 'ficha' && (e.status === 409 || e.status === 503) && e.mensagem) return { ...base, texto: e.mensagem, chaveNova: ehRespostaDefinitiva(e.status) };
+    // ADR 0021 §1: e-mail já usado em outra empresa (409 com detalhes.codigo = email_em_uso): texto do SDK, junto do campo e-mail, em qualquer contexto.
+    const emailEmUso = erroEmailEmUso(e.status, e.detalhes);
+    if (emailEmUso) return { ...base, texto: emailEmUso.mensagem, campos: emailEmUso.campos, chaveNova: ehRespostaDefinitiva(e.status) };
     if (e.status === 409) {
       if (ctx === 'criar_empresa') return { ...base, texto: '', campos: { codigo: 'Já existe uma empresa com esse código. Escolha outro.' }, chaveNova: ehRespostaDefinitiva(e.status) };
       if (ctx === 'criar_admin') return { ...base, texto: ADMIN_JA_EXISTE, chaveNova: ehRespostaDefinitiva(e.status) };
