@@ -84,6 +84,8 @@ tbody tr:nth-child(even) { background: var(--mx-cor-linha-alternada); }
 .filtros .campo { grid-column: span 2; margin: 0; min-width: 0; }
 /* RD-2382: sem "Filtrar" com JS (aplica ao mudar); sem JS o botão aparece. "Limpar filtros" é link ao lado dos filtros. */
 .filtros-enviar { display: none; }
+/* O "x" nativo da busca sai: o link "Limpar filtros" já cobre isso. */
+.filtros input[type="search"]::-webkit-search-cancel-button { display: none; }
 @media (scripting: none) { .filtros-enviar { display: inline-flex; grid-column: span 1; justify-self: start; } }
 .filtros-limpar { grid-column: span 2; align-self: end; padding-bottom: 8px; white-space: nowrap; color: inherit; }
 @media (max-width: 640px) { .filtros .campo, .filtros-limpar { grid-column: span 6; } }

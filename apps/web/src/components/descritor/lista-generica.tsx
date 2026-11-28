@@ -47,7 +47,7 @@ export async function ListaGenerica({ tela, rota, rotaDaPagina, busca, perfil, a
   const filtrada = Object.keys(filtros).some((k) => k !== 'cursor' && k !== 'limite');
   const aoLimpar = urlDaLista(rota, filtros.limite ? { limite: filtros.limite } : {});
   const declarado = tela.pagina.vazio;
-  const textoVazio = declarado ? (filtrada ? declarado.comFiltro : declarado.semFiltro) : 'Nenhum registro com estes filtros.';
+  const textoVazio = declarado ? (filtrada ? declarado.comFiltro : declarado.semFiltro) : filtrada ? 'Nenhum registro com estes filtros.' : 'Nenhum registro ainda.';
   const proxima = urlProxima(rota, filtros, pagina.proximo_cursor);
   const acaoBarra = tela.acaoDaBarra?.acao(perfil) ?? null;
   const iFilial = tela.filtrosTela.findIndex((f) => f.chave === 'filial_id');
@@ -58,7 +58,7 @@ export async function ListaGenerica({ tela, rota, rotaDaPagina, busca, perfil, a
     <section>
       <FiltrosLista rota={rota}>
         {tela.pagina.busca && (
-          <label className="campo campo-busca"><span>Buscar</span><input type="search" name="busca" defaultValue={filtros.busca ?? ''} maxLength={80} {...(tela.rotuloBusca ? { placeholder: tela.rotuloBusca } : {})} /></label>
+          <label className="campo"><span>Buscar</span><input type="search" name="busca" defaultValue={filtros.busca ?? ''} maxLength={80} {...(tela.rotuloBusca ? { placeholder: tela.rotuloBusca } : {})} /></label>
         )}
         {tela.filtrosTela.map((f, i) => (
           <label key={f.chave} className="campo">
@@ -97,12 +97,12 @@ export async function ListaGenerica({ tela, rota, rotaDaPagina, busca, perfil, a
       />
       </div>
       {/* RD-2381: uma barra só, no rodapé da página, com as ações da lista e a paginação juntas. */}
-      {(novo || csv || barra || proxima || pagina.itens.length > 0) && (
+      {(novo || csv || barra || proxima) && (
         <div className="barra-acoes barra-rodape-lista">
           {novo && <Link className="mx-botao" href={novo.rota}>{novo.rotulo}</Link>}
           {csv && <a className="mx-botao-secundario" href={csv}>Exportar CSV</a>}
           {barra && <AcoesDetalhe acoes={[barra]} rota={rota} rotaDaPagina={rotaDaPagina} origem="barra" compacta />}
-          <nav className="paginacao" aria-label="Paginação">{proxima ? <Link className="mx-botao-secundario" href={proxima}>Próxima página</Link> : pagina.itens.length > 0 ? <span className="apoio">Fim da lista.</span> : null}</nav>
+          {proxima && <nav className="paginacao" aria-label="Paginação"><Link className="mx-botao-secundario" href={proxima}>Próxima página</Link></nav>}
         </div>
       )}
     </section>

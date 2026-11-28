@@ -86,16 +86,19 @@ export interface VistaStatusFdv {
   comFalha: number;
 }
 
+/** Selo da Integração FDV sem conector (RD-2393, RD-2394): a frase única que substitui a faixa e a tabela. */
+export const SELO_SEM_CONECTOR = 'Sem conector · fale com a Macuxi';
+
 export function montarVistaStatus(s: StatusIntegracaoFdvTenant, fuso: string): VistaStatusFdv {
   const linhas = s.cadastros.map((c): LinhaStatusFdv => linhaBaseFdv(c, fuso, acaoNoBko));
   const u = s.ultimo_sinal;
   const sinal: VistaStatusFdv['sinal'] = !s.conector_id
-    ? { texto: 'sem conector configurado. Fale com a Macuxi para ligar a integração.', tom: 'aviso' }
+    ? { texto: SELO_SEM_CONECTOR, tom: 'aviso' }
     : u?.parado_por_versao
-      ? { texto: 'envio parado: a versão do conector não é mais aceita. Fale com a Macuxi.', tom: 'aviso' }
+      ? { texto: 'Envio parado: a versão do conector não é mais aceita. Fale com a Macuxi.', tom: 'aviso' }
       : u?.ultimo_envio_em
-        ? { texto: `último sinal do conector em ${formatarDataHora(u.ultimo_envio_em, fuso)}.`, tom: 'ok' }
-        : { texto: 'ainda sem sinal do conector.', tom: 'aviso' };
+        ? { texto: `Último sinal do conector em ${formatarDataHora(u.ultimo_envio_em, fuso)}.`, tom: 'ok' }
+        : { texto: 'Ainda sem sinal do conector.', tom: 'aviso' };
   return {
     sinal,
     semConector: !s.conector_id,

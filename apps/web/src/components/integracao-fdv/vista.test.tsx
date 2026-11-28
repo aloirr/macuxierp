@@ -53,12 +53,13 @@ describe('BKO: status da Integração FDV (T-0056), só leitura', () => {
     expect(h).toMatch(/<p class="faixa-aviso" role="status"/);
     expect(h).toContain('2 cadastros não chegaram ao FDV. Veja o motivo na tabela.');
   });
-  it('não mostra conector, ambiente nem o começo da chave; sinal em minúscula; plural do alerta', () => {
+  it('não mostra conector, ambiente nem o começo da chave; sinal em frase inteira; plural do alerta', () => {
     const h = html();
     expect(h).not.toContain('Conector erp-1');
     expect(h).not.toContain('abcd1234');
     expect(h).not.toContain('<dt>Chave</dt>'); // a frase "O FDV recusou a chave do conector." é só o motivo da falha
-    expect(h).toContain('Conexão com o FDV:</strong> último sinal');
+    expect(h).toMatch(/data-testid="sinal">Último sinal do conector em 22\/11\/2026,? 10:05\.<\/p>/); // frase inteira, sem rótulo (125 B)
+    expect(h).not.toContain('Conexão com o FDV:');
     expect(textoAlertaFalha(1)).toBe('1 cadastro não chegou ao FDV. Veja o motivo na tabela.');
   });
   it('sem credencial: uma frase só (selo), sem a tabela de "Desligado — —" (RD-2394)', () => {
@@ -72,6 +73,10 @@ describe('BKO: status da Integração FDV (T-0056), só leitura', () => {
     expect(h).toContain('<table');
     expect(h).toContain('>Desligado<');
     expect(h).not.toContain('Sem conector');
+  });
+  it('sem sinal ainda: frase inteira, com maiúscula e sem rótulo', () => {
+    const h = renderToStaticMarkup(<VistaIntegracaoFdv vista={montarVistaStatus({ ...status, ultimo_sinal: null }, 'America/Manaus')} />);
+    expect(h).toContain('data-testid="sinal">Ainda sem sinal do conector.</p>');
   });
 });
 
