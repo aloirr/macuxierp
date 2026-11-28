@@ -19,6 +19,8 @@
 - **Rodapé com o domínio do ERP** (`erp.macuxifdv.com.br`). O manual não manda usar `macuxifdv.com.br`.
 - **Modo escuro** (mesmas cores do e-mail do FDV `depois-backoffice.html`): fundo e folha #1E3350, título e valores #FFFFFF, texto e rótulos #C9CED5, cartão e borda #3A4D68, filete #C9CED5, botão #FFFFFF com texto #1E3350. Estrutura e classes `mx-*` (`mx-claro`/`mx-escuro` para os dois logos) seguem o FDV.
 - **Senha selecionável inteira:** texto puro num único bloco, com `user-select: all` (um toque seleciona tudo). Não separar em partes nem usar imagem.
+- **Sem código da empresa (T-0133, v0.3.30):** a empresa some de qualquer tela; o e-mail mostra só e-mail e senha, e o link abre o login já com o e-mail (`/#email=…`). Nenhum prefixo "Erro.", "Aviso." ou "Pronto." nos textos (decisão 125 B).
+  **Pendência:** as prévias PNG ainda mostram a linha antiga; regerar na próxima passada com Chromium.
 - Sem dado real: os exemplos são fictícios (`EXEMPLO`, `ana.souza@exemplo.com.br`, `Tr4m-Qa7p-Zx2k`).
 
 ## Textos exatos (o core copia sem alterar, em `modules/core/domain`)
@@ -27,12 +29,11 @@
 | Assunto | `Sua senha temporária do Macuxi ERP` |
 | Título | `Sua senha temporária` |
 | Abertura | `Recebemos um pedido de senha temporária para entrar no Macuxi ERP. Se não foi você, ignore este e-mail.` |
-| Rótulo 1 | `Código da empresa` |
-| Rótulo 2 | `E-mail` |
-| Rótulo 3 | `Senha temporária` |
+| Rótulo 1 | `E-mail` |
+| Rótulo 2 | `Senha temporária` |
 | Aviso | `Vale por 72 horas e serve para entrar uma vez só. Ela também desbloqueia a conta.` |
 | Botão | `Abrir o Macuxi ERP` |
-| URL do botão | `https://erp.macuxifdv.com.br/` |
+| URL do botão | `https://erp.macuxifdv.com.br/#email=<e-mail>` (e-mail codificado com `encodeURIComponent`) |
 | Assinatura | `Equipe Macuxi ERP · Boa Vista, RR · erp.macuxifdv.com.br` |
 | Alt do logo | `Macuxi ERP` |
 | Pré-cabeçalho | `Sua senha temporária para entrar no Macuxi ERP. Vale por 72 horas.` |
@@ -41,10 +42,9 @@
 | Placeholder | Exemplo | Regra |
 |---|---|---|
 | `{{assunto}}` | `Sua senha temporária do Macuxi ERP` | Texto fixo do core; vai também no `<title>`. Escape HTML. |
-| `{{codigo_empresa}}` | `EXEMPLO` | Escape HTML (`& < > " '`). Vem do cadastro da empresa, nunca digitado pelo usuário sem validação. |
 | `{{email}}` | `ana.souza@exemplo.com.br` | Escape HTML. É o e-mail de login do usuário. |
 | `{{senha_temporaria}}` | `Tr4m-Qa7p-Zx2k` | Escape HTML, mas o alfabeto do gerador não deve conter `& < > " '`; sem espaços nas pontas; **sem quebra de linha**. Em texto puro, sem escape. |
-| `{{url_entrar}}` | `https://erp.macuxifdv.com.br/` | Só `https://`, vinda de configuração do envio (nunca de entrada do usuário). Escape de atributo HTML (`"` e `&`). No `.txt`, sem escape. |
+| `{{url_entrar}}` | `https://erp.macuxifdv.com.br/#email=ana.souza%40exemplo.com.br` | Só `https://`, vinda de configuração do envio (nunca de entrada do usuário). Escape de atributo HTML (`"` e `&`). No `.txt`, sem escape. |
 
 Regras gerais:
 - Trocar cada placeholder por substituição de texto simples, só depois do escape. Nenhum outro campo entra no modelo.
