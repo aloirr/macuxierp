@@ -53,10 +53,10 @@ Os adicionais vendidos somam ao teto do item:
 - `integracao_fdv`, nos planos que não a incluem, libera o módulo.
 
 Regras de contagem:
-- usuário inativo ou excluído não conta; o bloqueado por senha (RN-CORE-15) continua contando;
+- o usuário desativado (inativo) ou excluído não conta; o bloqueado por senha (RN-CORE-15) continua contando (premissa provisória a);
 - um perfil por usuário (RN-CORE-01), então uma conta ocupa no máximo uma licença;
 - o perfil marcado `nao_conta` no mapa não ocupa licença;
-- **carência do analista de implantação** (RN-CORE-09): o usuário com esse perfil não ocupa licença nos primeiros 60 dias, contados do `created_at` da conta (premissa 3); a partir do 61º dia, conta pelo tipo do mapa;
+- **carência do analista de implantação** (RN-CORE-09): o usuário com esse perfil não ocupa licença nos primeiros 60 dias, contados do `created_at` da conta (premissa provisória b); a partir do 61º dia, conta pelo tipo do mapa;
 - o superadmin da Plataforma nunca conta: ele não é usuário de tenant (ADR 0012 §1).
 
 O mapa perfil → tipo (quais dos 7 perfis da RN-CORE-01 contam como `usuario` e quais ficam `nao_conta`) é **PENDENTE**. Enquanto o seed não trouxer o mapa, a bandeira não liga (seção 7).
@@ -85,7 +85,7 @@ O tenant lê a própria assinatura e o histórico só sob RLS (`SELECT` para o `
   Ela vale no BKO (core) e no `/config` (`empresa_usuario_criar` e as demais funções da 0078).
 - **Na mesma transação** do insert ou update, quem grava chama `plataforma.licencas_do_tenant()`. A função é `SECURITY INVOKER`, roda sob RLS, faz `FOR UPDATE` na linha da assinatura e devolve, por item, o contratado (plano + adicionais) e o em uso. O `FOR UPDATE` serializa duas criações simultâneas, que assim nunca passam do limite. Nas funções `SECURITY DEFINER` do `/config`, a mesma conferência roda dentro da função, antes do insert.
 - **Recusa:** 422 com `codigo = 'LICENCAS_ESGOTADAS'` e `detalhes = { item, contratado, em_uso }`. A mensagem é "O plano da empresa não tem mais licenças de <item>. Fale com a Macuxi para ampliar." (texto final com o designer-ux; regra 125 B, sem rótulo no início). No banco, a recusa é SQLSTATE 22023 com o código no `hint`, como na ADR 0047.
-- **Teste vencido sem pagamento** (`teste_ate` no passado e `paga = false`): trava só a criação, com 422 `TESTE_VENCIDO`; não bloqueia o uso nem o login.
+- **Teste vencido sem pagamento** (`teste_ate` no passado e `paga = false`): trava só a criação, com 422 `TESTE_VENCIDO`; não bloqueia o uso nem o login: nota, pedido e consulta continuam (premissa provisória c).
 - **A trava nunca bloqueia quem já usa:** ela só olha a mudança pedida. Uma empresa acima do teto (por exemplo, por uma carência que venceu) continua usando tudo; só não cresce.
 - **Sem assinatura, não trava:** a empresa anterior aos planos segue como hoje até ganhar uma assinatura.
 - **Filial emissora:** marcar `emissora` é do módulo cadastros. Por isso, a conferência da filial é do modulo-cadastros (§9, pedido à parte). A contagem fica dentro da `licencas_do_tenant()`, que é infraestrutura do banco-dados, como a `tenant_modulo`. Nenhum módulo lê `cadastros.filial` direto (regra 1).
@@ -184,12 +184,17 @@ Ordem: E1 → E2 (banco e SDK em paralelo) → E3 (core e API) → E4 (telas) �
 2. **Tetos por plano:** usuários e filiais emissoras de cada plano do A, e se o D tem teto de filial. **PENDENTE.**
 3. **Mapa perfil → tipo de licença:** para cada perfil da RN-CORE-01 (administrador, gerente, faturista, fiscal, vendedor, leitura e analista de implantação), se ocupa `usuario` ou `nao_conta`. **PENDENTE.**
 
-## Premissas (a confirmar com o PO)
-1. O bloqueado por senha continua contando, como no FDV.
-2. O teste vencido sem pagamento trava só novos cadastros, sem bloquear o uso.
-3. A carência de 60 dias do analista conta do `created_at` da conta, e não do início da assinatura.
-4. O administrador do tenant só vê a ficha. Quem troca de plano é só o superadmin.
-5. A thathyany fica no Piloto, sem teto.
+## Premissas PROVISÓRIAS (decisão do PO, 28/11/2026, 07h13, Manaus; valem até a resposta do Alexandre)
+1. **(a) PROVISÓRIA:** o usuário bloqueado por senha continua ocupando licença. Só o usuário **desativado** libera a licença. Vai ao Alexandre na pergunta 134.
+2. **(b) PROVISÓRIA:** a carência de 60 dias do analista conta da criação da conta (`created_at`), e não do início da assinatura.
+3. **(c) PROVISÓRIA:** o teste vencido sem pagamento trava só os cadastros novos. Nota, pedido e consulta continuam. Vai ao Alexandre na pergunta 134.
+4. **(d) PROVISÓRIA:** o TOTP do superadmin fica obrigatório no momento em que a senha do `macuxierp_config` for criada (ADR 0012, emenda §7-A).
+
+Se a resposta do Alexandre mudar (a) ou (c), muda a `licencas_do_tenant()` e a `conferirNovoUsuario`, por emenda desta ADR. Preços e tetos seguem PENDENTES (seção acima).
+
+Também valem, sem pergunta aberta:
+- o administrador do tenant só vê a ficha, e quem troca de plano é só o superadmin;
+- a thathyany fica no Piloto, sem teto.
 
 ## Alternativas consideradas
 - **Planos como constantes no SDK:** descartada. Cada preço viraria deploy, e o histórico da assinatura se perderia.

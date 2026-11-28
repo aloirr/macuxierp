@@ -250,10 +250,10 @@ Pedido do Alexandre, pelo PO, em 26/11 às 21h21: "quando eu clicar em esquecer 
   - o compose entrega a senha só à api;
   - a API abre um **segundo pool**, `criarPool('macuxierp-api-config')`, com `PGUSER=macuxierp_config`, e confere na partida (`conferirPapel('macuxierp_config')`, sem superusuário e sem BYPASSRLS);
   - o `BancoPlataformaPg` passa a usar esse pool **sem `SET ROLE`**;
-  - o TOTP passa a ser obrigatório no `/config`.
+  - o TOTP passa a ser obrigatório no `/config` (premissa PROVISÓRIA d da ADR 0022, decisão do PO de 28/11 07h13, até a resposta do Alexandre).
 - **Falha cedo:** com a `MACUXIERP_SENHA_CONFIG` e sem a `MACUXIERP_CHAVE_TOTP`, a API não sobe. O aviso cita só o nome da variável (T-0076).
 - **Chave do segredo TOTP:** é a `MACUXIERP_CHAVE_TOTP` (32 bytes, hex ou base64), gerada na VM pelo `preparar-vm.sh` se faltar e nunca trocada, como a `MACUXIERP_CHAVE_INTEGRACAO`. É separada da chave do A1 e da chave da integração: nunca reaproveitar.
-- **A membership sai depois:** o `GRANT macuxierp_config TO macuxierp_app` da 0033 só pode ser revogado depois de a produção rodar com o pool próprio. Revogar antes quebraria o `/config` enquanto a senha não existe. A revogação é uma migração seguinte, com número pedido ao gerente, e só fecha o "Risco aberto" quando entrar. Até ela entrar, vale a regra de operação de não criar a 2ª empresa (Risco aberto).
+- **A membership sai depois:** o `GRANT macuxierp_config TO macuxierp_app` da 0033 só pode ser revogado depois de a produção rodar com o pool próprio. Revogar antes quebraria o `/config` enquanto a senha não existe. A revogação é a migração **0087** (banco-dados, reservada pelo gerente). Ela entra só depois disso, e é ela que fecha o "Risco aberto". Até ela entrar, vale a regra de operação de não criar a 2ª empresa (Risco aberto).
 
 ### 2. Colunas e funções (0084)
 **Papel:** `ALTER ROLE macuxierp_config LOGIN`, sem senha na migração.
@@ -344,9 +344,10 @@ Ordem: E1 → E2 (banco) → E3 (API, core e operador) → E4 (telas) → E5 (te
 | E3 | modulo-core | o plugin de plataforma: nenhuma rota de empresa responde com a sessão "fator" (teste citando RN-CORE-12); o `entrar_pelo_bko` devolve o `proximo_passo` | testes do core verdes |
 | E4 | engenheiro-apps | `/config`: as telas "Código de verificação" (6 dígitos, com o link "Usar um código de recuperação"), "Cadastrar o autenticador" (QR ou chave, e o código para confirmar) e "Códigos de recuperação" (mostrados uma vez, com "Copiar" e "Já guardei"), seguindo o `proximo_passo` também na entrada pelo BKO. Os textos vêm do designer-ux. Grade de 12 colunas, tokens do `packages/ui`, botões no rodapé (regras 11 e 12); prints em 1366 e 1920 px | prints validados pelo `design-de-marca` |
 | E5 | testes, corretor-redundancias e engenheiro-software | `tests/`: sem TOTP não entra (critério 1); a recuperação vale uma vez (critério 2); o papel só alcança as funções do portal (critério 3); a temporária não dispensa o TOTP; nada de código ou segredo em log | suíte verde; revisão sem 🔴 |
+| E6 (depois da produção com o pool próprio) | banco-dados | migração **0087**: `REVOKE macuxierp_config FROM macuxierp_app`; o teste (a) de `db/testes/superadmin-0033.db.test.ts` passa a provar que o `macuxierp_app` **não** consegue `SET ROLE macuxierp_config`. A API sem `MACUXIERP_SENHA_CONFIG` deixa de abrir o `/config`, e isso fica escrito na nota da versão | testes de banco verdes; a produção já rodando com o pool próprio |
 
 **Do Alexandre, depois do deploy da v0.3.32:**
 1. Criar a `MACUXIERP_SENHA_CONFIG` na VM (64 hex, `openssl rand -hex 32`) e reiniciar a api.
 2. Cadastrar o autenticador no primeiro login do `/config`.
 
-Até a variável existir, o `/config` funciona como hoje (decisão 130 A). O critério 4 da T-0090 ("pronto antes da 2ª empresa") só fecha com a variável criada e com a migração seguinte, que revoga a membership.
+Até a variável existir, o `/config` funciona como hoje (decisão 130 A). O critério 4 da T-0090 ("pronto antes da 2ª empresa") só fecha com a variável criada e com a 0087, que revoga a membership.
