@@ -20,9 +20,9 @@ const base = `
 html,body{margin:0}
 body{font-family:var(--mx-fonte-texto);font-size:var(--mx-tamanho-base);background:var(--mx-cor-perola);color:var(--mx-cor-grafite);line-height:1.5}
 a{color:var(--mx-cor-azul-noite)}
-.cartao-central{background:var(--mx-cor-branco);border:1px solid var(--mx-cor-borda-tabela);border-radius:10px;padding:32px;max-width:420px;margin:8vh auto}
+.cartao-central{background:var(--mx-cor-branco);border:1px solid var(--mx-cor-borda-tabela);border-radius:var(--mx-medida-canto-cartao);padding:32px;max-width:420px;margin:8vh auto}
 @media(max-width:480px){.cartao-central{margin-left:16px;margin-right:16px}}
-.cartao-central header{background:var(--mx-cor-azul-noite);margin:-32px -32px 24px;padding:24px 32px;border-radius:10px 10px 0 0}
+.cartao-central header{background:var(--mx-cor-azul-noite);margin:-32px -32px 24px;padding:24px 32px;border-radius:var(--mx-medida-canto-cartao) var(--mx-medida-canto-cartao) 0 0}
 .cartao-central header img{display:block;height:100px;width:auto}
 .cartao-central h1{font-size:var(--mx-tamanho-titulo-dialogo);font-weight:var(--mx-peso-titulo);margin:0 0 16px}
 .campo{display:block;margin-bottom:16px}
@@ -32,11 +32,12 @@ a{color:var(--mx-cor-azul-noite)}
 .com-olho{position:relative}.com-olho input{padding-right:40px}
 .mx-olho{position:absolute;top:0;right:0;width:var(--mx-medida-altura-campo);height:var(--mx-medida-altura-campo);display:flex;align-items:center;justify-content:center;border:0;background:transparent;color:var(--mx-cor-texto-secundario)}
 .barra{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px}
-.barra .mx-botao{flex:1}
+.barra .mx-botao,.barra .mx-botao-secundario{flex:1}
 .erro-login{color:var(--mx-cor-erro-texto);background:var(--mx-cor-erro-fundo);border:1px solid var(--mx-cor-erro-texto);border-radius:6px;padding:8px 12px;margin:16px 0 0;font-size:var(--mx-tamanho-texto)}
 .erro-login::before{content:"Erro. ";font-weight:var(--mx-peso-titulo)}
+.erro-login.suspensa::before{content:"Aviso. "}
 .aviso-sucesso{color:var(--mx-cor-ativo-texto);background:var(--mx-cor-ativo-fundo);border:1px solid var(--mx-cor-verde-sucesso);border-radius:6px;padding:8px 12px;margin:0 0 16px;font-size:var(--mx-tamanho-texto)}
-.aviso-sucesso::before{content:"Enviado. ";font-weight:var(--mx-peso-titulo)}
+.aviso-sucesso::before{content:"Pronto. ";font-weight:var(--mx-peso-titulo)}
 .apoio{color:var(--mx-cor-texto-secundario);font-size:var(--mx-tamanho-pequeno);margin:16px 0 0}
 .apoio.neutro{margin:0 0 16px}
 button.link{background:none;border:0;padding:0;font:inherit;color:var(--mx-cor-azul-noite);text-decoration:underline;cursor:pointer}
@@ -49,6 +50,7 @@ const campoSenha = `<label class="campo"><span>Senha</span><div class="com-olho"
 const telas = {
   'login': `<main class="cartao-central">${topo('Acesse sua conta')}<form>${campoEmail()}${campoSenha}<div class="barra"><button class="mx-botao" type="submit">Entrar</button></div><p class="apoio"><button type="button" class="link">Esqueci a senha</button></p></form></main>`,
   'login-erro': `<main class="cartao-central">${topo('Acesse sua conta')}<form>${campoEmail('ana@empresa.com.br')}${campoSenha}<div class="barra"><button class="mx-botao" type="submit">Entrar</button></div><p class="erro-login" role="alert">E-mail ou senha inválidos.</p><p class="apoio"><button type="button" class="link">Esqueci a senha</button></p></form></main>`,
+  'login-suspensa': `<main class="cartao-central">${topo('Acesse sua conta')}<form>${campoEmail('ana@empresa.com.br')}${campoSenha}<div class="barra"><button class="mx-botao" type="submit">Entrar</button></div><p class="erro-login suspensa" role="alert">Sua empresa está suspensa. Fale com o administrador da Macuxi.</p><p class="apoio"><button type="button" class="link">Esqueci a senha</button></p></form></main>`,
   'esqueci': `<main class="cartao-central">${topo('Esqueci a senha')}<form>${campoEmail('ana@empresa.com.br')}<div class="barra"><button class="mx-botao" type="submit">Enviar instruções</button><button class="mx-botao-secundario" type="button">Voltar para entrar</button></div></form></main>`,
   'esqueci-enviado': `<main class="cartao-central">${topo('Esqueci a senha')}<p class="aviso-sucesso" role="status">Se o e-mail estiver cadastrado, enviamos as instruções.</p><div class="barra"><button class="mx-botao-secundario" type="button">Voltar para entrar</button></div></main>`,
 };
