@@ -155,7 +155,8 @@ troca_armar_trap() { # compõe com o trap do laço (laco_iniciar): o socorro pri
 }
 
 # ---------- laço de curl pelo domínio durante a troca (v0.3.24; ADR 0003, adendo 48 A, "Laço durante a troca") ----------
-# GET <base>/login e <base>/v1/saude a cada MACUXIERP_TROCA_LACO_PASSO_S (1 s), do "réplica nova ao lado da velha" até a
+# GET <base>/ (a raiz: o login sem sessão responde 200; o /login responde 308 → "/" desde o #886) e <base>/v1/saude a cada
+# MACUXIERP_TROCA_LACO_PASSO_S (1 s), sem seguir redirecionamento (3xx é "não 200"), do "réplica nova ao lado da velha" até a
 # velha sair do túnel e drenar. Base: MACUXIERP_URL_PUBLICA (ambiente ou .env; não é segredo), padrão o domínio do ERP.
 # Os resultados ficam num mktemp -d apagado no fim; o laço e o curl em curso morrem no fim, na falha e na saída do script.
 TROCA_URL_PADRAO=https://erp.macuxifdv.com.br
@@ -183,7 +184,9 @@ laco_iniciar() { # 0 = laço no ar (TROCA_LACO_PID, TROCA_LACO_DIR)
     trap '[ -n "$c" ] && kill "$c" 2>/dev/null; exit 0' TERM
     trap '' INT
     while :; do
-      for p in login v1/saude; do
+      for p in '' v1/saude; do # '' = a raiz ("/"), no arquivo "raiz"
+        a="${p//\//_}"
+        a="${a:-raiz}"
         h="$(date -u +%H:%M:%S)"
         : >"$TROCA_LACO_DIR/r"
         curl -s -o /dev/null -m "$TROCA_LACO_TIMEOUT_S" -w '%{http_code} %{time_total} %{time_connect} %{errormsg}' "$base/$p" >"$TROCA_LACO_DIR/r" 2>/dev/null &
@@ -192,7 +195,7 @@ laco_iniciar() { # 0 = laço no ar (TROCA_LACO_PID, TROCA_LACO_DIR)
         wait "$c" || s=$?
         c=""
         r="$(cat "$TROCA_LACO_DIR/r" 2>/dev/null || true)"
-        printf '%s %s %s\n' "$h" "$s" "${r:-000 0 0}" >>"$TROCA_LACO_DIR/${p//\//_}"
+        printf '%s %s %s\n' "$h" "$s" "${r:-000 0 0}" >>"$TROCA_LACO_DIR/$a"
       done
       sleep "$TROCA_LACO_PASSO_S" &
       c=$!
@@ -249,15 +252,15 @@ laco_encerrar() { # → as linhas do laço; 0 = as duas URLs passaram (laco_resu
   local ok=0 t=0 limite
   [ -n "$TROCA_LACO_DIR" ] || return 1
   limite=$(( (2 * TROCA_LACO_TIMEOUT_S + TROCA_LACO_PASSO_S + 1) * 5 ))
-  while { [ ! -s "$TROCA_LACO_DIR/login" ] || [ ! -s "$TROCA_LACO_DIR/v1_saude" ]; } && [ "$t" -lt "$limite" ]; do
+  while { [ ! -s "$TROCA_LACO_DIR/raiz" ] || [ ! -s "$TROCA_LACO_DIR/v1_saude" ]; } && [ "$t" -lt "$limite" ]; do
     sleep 0.2
     t=$((t + 1))
   done
   kill -TERM "$TROCA_LACO_PID" 2>/dev/null || true
   wait "$TROCA_LACO_PID" 2>/dev/null || true
   TROCA_LACO_PID=""
-  touch "$TROCA_LACO_DIR/login" "$TROCA_LACO_DIR/v1_saude"
-  laco_resumo "$TROCA_LACO_DIR/login" /login || ok=1
+  touch "$TROCA_LACO_DIR/raiz" "$TROCA_LACO_DIR/v1_saude"
+  laco_resumo "$TROCA_LACO_DIR/raiz" / || ok=1
   laco_resumo "$TROCA_LACO_DIR/v1_saude" /v1/saude || ok=1
   laco_parar
   return "$ok"
@@ -267,17 +270,17 @@ laco_encerrar() { # → as linhas do laço; 0 = as duas URLs passaram (laco_resu
 # Toda resposta da api e do web da v0.3.25 em diante traz x-macuxierp-instancia (8 hex aleatórios da partida do processo;
 # apps/api/src/dreno.ts e apps/web/dreno.cjs), e o SIGUSR2 põe a réplica em dreno (Connection: close e keep-alive ocioso
 # fechado). A instância de cada réplica é lida de dentro do contêiner (docker exec pelo id do dc ps -q); a do domínio, pelo
-# mesmo URL base do laço (/v1/saude para a api, /login para o web).
+# mesmo URL base do laço (/v1/saude para a api, a raiz "/" para o web; o /login responde 308 → "/" desde o #886).
 TROCA_USR2_S="${MACUXIERP_TROCA_USR2_S:-10}"         # dreno pedido: tempo mínimo antes do disconnect (além do TROCA_DRENO_S)
 TROCA_USR2_MAX_S="${MACUXIERP_TROCA_USR2_MAX_S:-30}" # sem a nova vista até aqui: segue com aviso (a conferência decide)
 TROCA_CONFERE_N="${MACUXIERP_TROCA_CONFERE_N:-5}"
 TROCA_CONFERE_PASSO_S="${MACUXIERP_TROCA_CONFERE_PASSO_S:-0.5}"
 TROCA_CABECALHO_INSTANCIA=x-macuxierp-instancia
 
-caminho_do_servico() { # serviço → caminho público respondido por ele
+caminho_do_servico() { # serviço → caminho público respondido por ele, sem a barra inicial (web: a raiz, vazio)
   case "$1" in
     *api) printf 'v1/saude\n' ;;
-    *) printf 'login\n' ;;
+    *) printf '\n' ;;
   esac
 }
 
@@ -433,6 +436,6 @@ api_na_versao() { # id versão → 0 = banco ok e a versão pedida
   corpo="$(saude_api "$1" || true)"
   printf '%s' "$corpo" | grep -q '"banco":"ok"' && printf '%s' "$corpo" | grep -q "\"versao\":\"$2\""
 }
-web_responde() { # id → 0 = /login 200 na réplica
-  docker exec "$1" node -e "fetch('http://127.0.0.1:3100/login').then((r)=>process.exit(r.ok?0:1),()=>process.exit(1))" >/dev/null 2>&1
+web_responde() { # id → 0 = a raiz ("/", o login sem sessão) 200 na réplica, sem seguir redirecionamento, como o laço
+  docker exec "$1" node -e "fetch('http://127.0.0.1:3100/',{redirect:'manual'}).then((r)=>process.exit(r.ok?0:1),()=>process.exit(1))" >/dev/null 2>&1
 }
