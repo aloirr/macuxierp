@@ -10,7 +10,6 @@ import { ConfigNaoAutenticado } from '@/lib/config/erros';
 import { exigirTokenConfig, ROTA_ENCERRAR, ROTA_SENHA } from '@/lib/config/sessao';
 import { MANIFESTOS } from '@/lib/manifestos';
 import { SeloSituacao } from '../../selo-situacao';
-import { AbaDados } from './aba-dados';
 import { AbaIntegracao } from './aba-integracao';
 import { PainelEmpresa } from './painel';
 
@@ -71,10 +70,7 @@ export default async function Empresa({ params, searchParams }: { params: Promis
       </nav>
       {naIntegracao ? (
         integracao ? (
-          <>
-            <AbaIntegracao empresaId={empresa.id} dados={integracao} fuso={empresa.fuso} monitor={monitor} entrada={entrada} />
-            <AbaDados empresaId={empresa.id} dados={cargas} fuso={empresa.fuso} integracao={integracao} entrada={entrada} />
-          </>
+          <AbaIntegracao empresaId={empresa.id} dados={integracao} fuso={empresa.fuso} monitor={monitor} entrada={entrada} cargas={cargas} />
         ) : (
           <>
             <p className="erro" role="alert">Não foi possível carregar a integração.</p>

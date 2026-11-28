@@ -56,9 +56,9 @@ describe('aba Dados (T-0058, T-0086)', () => {
     expect(h).toContain('Unidades (opcional)');
     expect(h).not.toContain('(opcional).');
   });
-  it('v0.3.24: seção "Sistema do cliente → ERP" com a legenda "Cadastros recebidos"; Registros e Com erro do último lote; sem integração, sem a seção de envio', () => {
+  it('v0.3.24: tabela da ligação "Sistema do cliente → ERP" com a legenda "Cadastros recebidos"; Registros e Com erro do último lote; sem integração, sem a seção de envio', () => {
     const h = aba();
-    expect(h).toMatch(/<h2 id="h-dados-entrada">Sistema do cliente <span class="seta" aria-hidden="true">→<\/span><span class="sr-only"> para o <\/span> ERP<\/h2>/);
+    expect(h).not.toContain('<h2'); // o título da ligação é do cartão (ligacao.tsx), não da tabela
     expect(h).toMatch(new RegExp(`<caption[^>]*>${LEGENDA_RECEBIDOS}</caption>`));
     expect(h).not.toContain('Cargas por cadastro');
     expect(h).not.toContain('h-dados-saida');

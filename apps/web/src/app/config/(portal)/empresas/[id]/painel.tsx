@@ -21,8 +21,8 @@ interface Comum {
   aoErro: (tem: boolean) => void;
 }
 /**
- * Aba Empresa (Config v4, regras 11 e 12): a Ficha da Receita (com o CNPJ) é o bloco largo, com os Módulos ao lado; os Usuários
- * (que trazem o 1º administrador) ocupam a largura toda abaixo; no celular, um embaixo do outro. O rodapé da página é uma barra
+ * Aba Empresa (Config v4, regras 11 e 12): a Ficha da Receita é a grade de 12 colunas (Identificação e Endereço na largura toda; Atividades, Contato
+ * e Módulos lado a lado; Situação na Receita), como a simulação aprovada; os Usuários ocupam a largura toda abaixo; no celular, um embaixo do outro. O rodapé da página é uma barra
  * fixa: o estado da Ficha à esquerda; à direita Suspender empresa e, separados, Atualizar pela Receita, Descartar e Salvar.
  */
 export function PainelEmpresa({ empresa, deps, chaves, ficha = null, cnpj = null, usuarios = null }: { empresa: EmpresaPlataforma; deps: Dependencia[]; chaves: ChavesPainel; ficha?: FichaReceitaPlanaMascarada | null; cnpj?: SituacaoTrocaCnpj | null; usuarios?: UsuarioConfig[] | null }) {
@@ -31,7 +31,7 @@ export function PainelEmpresa({ empresa, deps, chaves, ficha = null, cnpj = null
   return (
     <>
       <RegiaoErros temErro={temErro} />
-      <div className="grade-blocos grade-empresa">
+      <div className="grade-empresa">
         <FichaReceita
           empresaId={empresa.id}
           ficha={ficha}
@@ -41,10 +41,8 @@ export function PainelEmpresa({ empresa, deps, chaves, ficha = null, cnpj = null
           editavel={empresa.situacao !== 'encerrado'}
           cnpj={<CampoCnpj empresa={empresa} situacao={cnpj} />}
           rodapeAlvo={rodape}
+          lateral={<div className="cartao-ficha cartao-3"><BlocoModulos empresa={empresa} deps={deps} aoErro={setTemErro} /></div>}
         />
-        <div className="blocos-laterais">
-          <BlocoModulos empresa={empresa} deps={deps} aoErro={setTemErro} />
-        </div>
         <BlocoUsuarios empresaId={empresa.id} itens={usuarios} fuso={empresa.fuso} editavel={empresa.situacao !== 'encerrado'} />
       </div>
       <div className="rodape-pagina">
@@ -100,9 +98,11 @@ function BlocoModulos({ empresa, deps, aoErro }: Comum & { deps: Dependencia[] }
           </li>
         ))}
       </ul>
-      <button className={mudancas.length > 0 ? 'mx-botao' : 'mx-botao-secundario'} type="button" disabled={mudancas.length === 0 || pendente || !editavel} onClick={salvar}>
-        {pendente ? 'Salvando…' : 'Salvar módulos'}
-      </button>
+      <div className="barra-acoes">
+        <button className={mudancas.length > 0 ? 'mx-botao' : 'mx-botao-secundario'} type="button" disabled={mudancas.length === 0 || pendente || !editavel} onClick={salvar}>
+          {pendente ? 'Salvando…' : 'Salvar módulos'}
+        </button>
+      </div>
       <ResultadoAcao resultado={resultado} chave={chaveResultado} />
       {desligar && (
         <DialogoMotivo

@@ -8,10 +8,8 @@ import { ChavesIdempotencia } from '@/lib/config/chaves';
 import { salvarCsv } from '@/lib/baixar-csv';
 import { acoesDaCarga, avisoCarga, estadoCargaCompleta, menuDaLinha } from '@/lib/config/integracao-fdv';
 import { cargaCompletaFdvAcao } from '@/lib/acoes-cliente';
-import { LIGACAO_ENTRADA, origemDaCarga, ultimoLoteDoCadastro } from '@/lib/config/ligacoes';
+import { origemDaCarga, ultimoLoteDoCadastro } from '@/lib/config/ligacoes';
 import { AUSENTE } from '@/lib/config/empresa';
-import { TituloLigacao } from './ligacao';
-import { SecaoEnvioFdv } from './envio-fdv';
 import {
   AVISO_LIMITE_FDV, ROTULO_MODO, TEXTO_SUBSTITUIR, caixasDaConferencia, conferirArquivoEscolhido, enderecoModelo, linhasCargas, pedirConferencia, pedirErros, pedirGravacao,
   podeGravar, rotuloAdicionar, rotuloLinhaErro, textoEfeito, textoGravado, textoErrosOmitidos, textoLinhaErro, tituloImportar, type LinhaCarga, type Retorno,
@@ -90,9 +88,7 @@ export function AbaDados({ empresaId, dados, fuso, integracao = null, entrada = 
     } },
   ];
   return (
-    <>
-    <section className="bloco direcao" aria-labelledby="h-dados-entrada">
-      <TituloLigacao ligacao={LIGACAO_ENTRADA} id="h-dados-entrada" />
+    <div className="dados-entrada">
       <div className="tabela-rolavel com-sinal-rolagem tabela-dados legenda-so-leitor">
         <TabelaDensa colunas={colunas} linhas={linhas} chaveLinha={(l) => l.cadastro} textoVazio="Nenhum cadastro." legenda={LEGENDA_RECEBIDOS} />
       </div>
@@ -119,9 +115,7 @@ export function AbaDados({ empresaId, dados, fuso, integracao = null, entrada = 
           }}
         />
       )}
-    </section>
-    {integracao && <SecaoEnvioFdv empresaId={empresaId} dados={integracao} fuso={fuso} />}
-    </>
+    </div>
   );
 }
 

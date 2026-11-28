@@ -51,7 +51,7 @@ const EMPRESA = { id: EMP, slug: 'exemplo', codigo: 'AM0000', nome: 'EMPRESA EXE
 const ENTIDADES = ['filial', 'vendedor', 'forma_pagamento', 'prazo_pagamento', 'produto', 'produto_unidade', 'preco', 'estoque', 'cliente', 'cliente_endereco'];
 const INTEGRACAO = { empresa_id: EMP, modulo_licenciado: true, credencial_id: EMP, conector_id: 'ent-0000', ambiente: 'producao', chave_prefixo: '91c0abcd', criada_em: '2026-11-23T12:00:00.000Z', entidades_habilitadas: ['produto', 'cliente'], limite_registros_lote: 500, ultimo_sinal: null, cadastros: ENTIDADES.map((entidade) => ({ entidade, ligada: entidade === 'produto' || entidade === 'cliente', ultimo_envio_em: null, falha: null, lote_em_voo: false })) };
 const MONITOR = { identificador: 'ent-0000', situacao: 'em_dia', versao: '1.4.2', ultimo_sinal_em: '2026-11-27T21:58:00.000Z', fila: { lotes: 0, linhas: 0 }, lido_em: '2026-11-27T22:00:00.000Z' };
-const ENTRADA = { credenciais: [{ conector_id: 'ENT-0000', prefixo: '7F2AbCdE', criada_em: '2026-11-26T15:00:00.000Z', revogada_em: null }], ultimo_sinal: null, lotes: [] };
+const ENTRADA = { credenciais: [{ conector_id: 'ENT-0000', prefixo: '7F2AbCdE', criada_em: '2026-11-26T15:00:00.000Z', revogada_em: null }], ultimo_sinal: null, lotes: [{ lote_id: '0a1b2c3d-0000-4000-8000-000000000001', entidade: 'produto', modo: 'delta', status: 'concluido', recebidos: 101, com_erro: 0, recebido_em: '2026-11-27T21:00:00.000Z', concluido_em: '2026-11-27T21:00:05.000Z' }, { lote_id: '0a1b2c3d-0000-4000-8000-000000000002', entidade: 'cliente', modo: 'delta', status: 'concluido_com_erros', recebidos: 60, com_erro: 3, recebido_em: '2026-11-27T20:30:00.000Z', concluido_em: '2026-11-27T20:30:09.000Z' }] };
 const CARGA = (numero, cadastro, situacao, erros, quantidade, opcional = false) => ({ numero, cadastro, situacao, erros, ultima_carga: quantidade ? { em: '2026-11-23T18:39:00.000Z', quantidade } : null, liberado: true, opcional });
 const CARGAS = { empresa_id: EMP, modulo_licenciado: true, cadastros: [CARGA(1, 'filial', 'carregado', 0, 2), CARGA(2, 'vendedor', 'nao_carregado', 0, 0), CARGA(3, 'condicao_pagamento', 'nao_carregado', 0, 0), CARGA(4, 'produto', 'com_erro', 2, 101), CARGA(5, 'produto_unidade', 'nao_carregado', 0, 0, true), CARGA(6, 'preco', 'nao_carregado', 0, 0), CARGA(7, 'estoque', 'nao_carregado', 0, 0), CARGA(8, 'cliente', 'carregado', 0, 60)] };
 const EU = { usuario: { id: '00000000-0000-4000-8000-000000000001', nome: 'Usuária de demonstração', perfil: 'administrador' }, empresa: { id: '00000000-0000-4000-8000-0000000000e1', slug: 'demo', razao_social: 'Empresa de Demonstração Ltda', fuso: 'America/Manaus' }, filiais: [{ id: '00000000-0000-4000-8000-0000000000f1', nome: 'Matriz Manaus', cnpj: '11222333000181' }], modulos: [{ id: 'core', menus: ['Empresa', 'Usuários e perfis'] }] };
@@ -115,7 +115,7 @@ const api = createServer((req, res) => {
     if (caminho === `/v1/plataforma/empresas/${EMP}/integracao-fdv`) return enviar(res, 200, INTEGRACAO);
     if (caminho === `/v1/plataforma/empresas/${EMP}/integracao-fdv/monitor`) return enviar(res, 200, MONITOR);
     if (caminho === `/v1/plataforma/empresas/${EMP}/entrada`) return enviar(res, 200, ENTRADA);
-    if (caminho.startsWith(`/v1/plataforma/empresas/${EMP}/cargas`)) return enviar(res, 200, CARGAS);
+    if (caminho.startsWith(`/v1/plataforma/empresas/${EMP}/cadastros/cargas`)) return enviar(res, 200, CARGAS);
     return erro(res, 404, 'NAO_ENCONTRADO', 'não encontrado');
   });
 });
@@ -260,13 +260,32 @@ try {
   confere(bko.join('|') === 'Redefinir senha|Inativar|Excluir', `BKO: Inativar e Excluir separados, Editar à vista, Excluir no fim (${bko.join(', ')})`);
   await p.keyboard.press('Escape');
 
+  // Prints da v0.3.29 (passo 2): 1366 e 1920, página inteira e por bloco, mais o 390
+  if (PRINTS) {
+    for (const largura of [1366, 1920]) {
+      const c = await contexto(largura, 900);
+      const q = await c.newPage();
+      reiniciar();
+      await abrir(q, `/config/empresas/${EMP}`);
+      await q.screenshot({ path: join(PRINTS, `empresa-${largura}.png`), fullPage: true });
+      await abrir(q, `/config/empresas/${EMP}?aba=integracao`);
+      await q.screenshot({ path: join(PRINTS, `integracoes-${largura}.png`), fullPage: true });
+      await q.locator('section.ligacao[aria-labelledby="h-ligacao-saida"]').screenshot({ path: join(PRINTS, `ligacao-saida-${largura}.png`) });
+      await q.locator('section.ligacao[aria-labelledby="h-ligacao-entrada"]').screenshot({ path: join(PRINTS, `ligacao-entrada-${largura}.png`) });
+      await q.locator('.envio-fdv').screenshot({ path: join(PRINTS, `dados-enviados-fdv-${largura}.png`) });
+      await abrir(q, '/config/empresas/nova');
+      await q.screenshot({ path: join(PRINTS, `empresa-nova-${largura}.png`), fullPage: true });
+      await c.close();
+    }
+  }
+
   // 390 px
   if (PRINTS) {
     const celular = await contexto(390, 844);
     const m = await celular.newPage();
     reiniciar();
     await abrir(m, `/config/empresas/${EMP}`);
-    await m.screenshot({ path: join(PRINTS, 'empresa-usuarios-390.png'), fullPage: true });
+    await m.screenshot({ path: join(PRINTS, 'empresa-390.png'), fullPage: true });
     await abrir(m, `/config/empresas/${EMP}?aba=integracao`);
     await m.screenshot({ path: join(PRINTS, 'integracoes-390.png'), fullPage: true });
     await abrir(m, '/core/usuarios');

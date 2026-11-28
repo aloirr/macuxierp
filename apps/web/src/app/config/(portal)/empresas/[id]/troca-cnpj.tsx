@@ -14,7 +14,7 @@ const CNPJ_SEM_SITUACAO: SituacaoTrocaCnpj = { permitida: false, motivo: 'consul
 /** CNPJ no topo da Ficha da Receita (docs/design/telas-horizontais §3): rótulo em destaque, valor com máscara e a troca ou o motivo do bloqueio. */
 export function CampoCnpj({ empresa, situacao }: { empresa: EmpresaPlataforma; situacao: SituacaoTrocaCnpj | null }) {
   return (
-    <div className="campo-ficha campo-cnpj">
+    <div className="campo campo-curto campo-cnpj">
       <span className="rotulo-campo" id="rotulo-cnpj">CNPJ</span>
       <p className="valor-cnpj" aria-labelledby="rotulo-cnpj">{empresa.cnpj ? formatarDocumento(empresa.cnpj) : AUSENTE}</p>
       {empresa.cnpj && empresa.situacao !== 'encerrado' && <TrocaCnpj empresa={empresa} situacao={situacao ?? CNPJ_SEM_SITUACAO} />}

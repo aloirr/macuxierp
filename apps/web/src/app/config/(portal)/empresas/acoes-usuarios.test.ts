@@ -169,7 +169,7 @@ describe('Usuários da Config: fluxo completo contra a API falsa (criar → senh
 
   it('sem sessão do superadmin, vai ao login e não chama a API', async () => {
     estado.cookie = undefined;
-    await expect(inativarUsuarioAcao(EMP, ADM)).rejects.toThrow('REDIRECT /login?destino=%2Fconfig');
+    await expect(inativarUsuarioAcao(EMP, ADM)).rejects.toThrow('REDIRECT /#codigo=MACUXI');
     expect(chamadas).toHaveLength(0);
   });
 });

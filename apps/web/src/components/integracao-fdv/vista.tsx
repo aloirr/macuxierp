@@ -13,7 +13,7 @@ export function VistaIntegracaoFdv({ vista, podeVerLog = false, fuso = 'America/
         <strong>Conexão com o FDV:</strong> {vista.sinal.texto}
       </p>
       {vista.comFalha > 0 && <p className="faixa-aviso" role="status" data-testid="alerta-falha">{textoAlertaFalha(vista.comFalha)}</p>}
-      <section style={{ marginTop: 24 }} aria-labelledby="h-ent">
+      <section className="secao-espacada" aria-labelledby="h-ent">
         <h2 id="h-ent">Cadastros enviados ao Macuxi FDV</h2>
         <div className="tabela-rolavel com-sinal-rolagem tabela-fdv tabela-fdv-bko">
           <TabelaDensa colunas={colunas} linhas={vista.linhas} chaveLinha={(l) => l.entidade} textoVazio="Nenhum cadastro configurado ainda." legenda="Situação do envio por cadastro" />

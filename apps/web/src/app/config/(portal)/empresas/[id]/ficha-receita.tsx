@@ -29,6 +29,8 @@ interface Props {
   cnpj?: ReactNode;
   /** Rodapé da página (regra 12): quando existe, o estado e os botões Atualizar pela Receita, Descartar e Salvar vão para ele; sem ele ficam no rodapé do cartão. */
   rodapeAlvo?: HTMLElement | null;
+  /** Bloco que divide a grade da Ficha com os cartões (os Módulos, ao lado de Atividades e Contato). */
+  lateral?: ReactNode;
 }
 
 type Erros = Partial<Record<CampoFicha, string>>;
@@ -47,7 +49,7 @@ function Campo({ def, valor, erro, daReceita, desabilitado, aoMudar, extra }: { 
   const id = `ficha-${def.campo}`;
   const comum = { id, name: def.campo, value: valor, disabled: desabilitado, 'aria-invalid': erro ? true : undefined, 'aria-describedby': erro ? `${id}-erro` : undefined } as const;
   return (
-    <div className={`campo-ficha${def.curto ? ' campo-curto' : ''}${def.largo ? ' campo-largo' : ''}${daReceita ? ' veio-da-receita' : ''}`}>
+    <div className={`campo${def.curto ? ' campo-curto' : ''}${def.medio ? ' campo-medio' : ''}${def.largo ? ' campo-largo' : ''}${daReceita ? ' veio-da-receita' : ''}`}>
       <label htmlFor={id} className="rotulo-campo">{def.rotulo}</label>
       {def.tipo === 'regime' ? (
         <select {...comum} onChange={(e) => aoMudar(e.target.value)}>
@@ -80,7 +82,7 @@ function Campo({ def, valor, erro, daReceita, desabilitado, aoMudar, extra }: { 
  * formulário; "Salvar", no rodapé do cartão, grava com auditoria (só nomes de campo). Só o superadmin chega aqui (todo o
  * /config é dele). A API revalida tudo.
  */
-export function FichaReceita({ empresaId, ficha, razaoEmpresa, lugar = null, fuso, editavel, cnpj, rodapeAlvo = null }: Props) {
+export function FichaReceita({ empresaId, ficha, razaoEmpresa, lugar = null, fuso, editavel, cnpj, rodapeAlvo = null, lateral = null }: Props) {
   const router = useRouter();
   const idForm = useId();
   const [salvo, setSalvo] = useState<FormFicha>(() => formDaFicha(ficha, razaoEmpresa));
@@ -229,18 +231,22 @@ export function FichaReceita({ empresaId, ficha, razaoEmpresa, lugar = null, fus
           if (mudados.length > 0) salvar();
         }}
       >
-        <div className="grade-cartoes">
+        <div className="formulario">
           {GRUPOS_FICHA.map((g) => (
-            <fieldset key={g.id} className={`cartao-campos${g.largo ? ' cartao-largo' : ''}`} aria-labelledby={`h-ficha-${g.id}`}>
-              <h3 id={`h-ficha-${g.id}`} className="titulo-cartao">{g.titulo}</h3>
-              {g.campos.map((d) => (
-                <Fragment key={d.campo}>
-                  <Campo def={d} valor={form[d.campo]} erro={erros[d.campo]} daReceita={daReceita.has(d.campo)} desabilitado={bloqueado} aoMudar={(v) => mudar(d.campo, v)} extra={extra(d.campo)} />
-                  {/* o CNPJ logo depois da razão social, ao lado do nome fantasia */}
-                  {d.campo === 'razao_social' && cnpj}
-                </Fragment>
-              ))}
-            </fieldset>
+            <Fragment key={g.id}>
+              <fieldset className={`formulario cartao-ficha cartao-${g.colunas}`} aria-labelledby={`h-ficha-${g.id}`}>
+                <h3 id={`h-ficha-${g.id}`} className="titulo-cartao">{g.titulo}</h3>
+                {g.campos.map((d) => (
+                  <Fragment key={d.campo}>
+                    <Campo def={d} valor={form[d.campo]} erro={erros[d.campo]} daReceita={daReceita.has(d.campo)} desabilitado={bloqueado} aoMudar={(v) => mudar(d.campo, v)} extra={extra(d.campo)} />
+                    {/* o CNPJ logo depois do nome fantasia, na mesma linha (simulação aprovada) */}
+                    {d.campo === 'nome_fantasia' && cnpj}
+                  </Fragment>
+                ))}
+              </fieldset>
+              {/* os Módulos ficam ao lado de Atividades e Contato, na mesma linha da grade */}
+              {g.id === 'contato' && lateral}
+            </Fragment>
           ))}
         </div>
         {rodapeAlvo ? createPortal(barra, rodapeAlvo) : <div className="barra-acoes rodape-cartao">{barra}</div>}
