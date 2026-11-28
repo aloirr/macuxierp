@@ -7,7 +7,7 @@ import type { Perfil } from '@macuxierp/platform-sdk';
 import { definirPaginaLista } from '@macuxierp/platform-sdk/listas';
 import { TabelaPreco, TabelaPrecoAtualizacao, TabelaPrecoDados } from '../contracts';
 import { validarVigenciaTabela } from '../domain';
-import { camposVisiveis, corpoDoPatch, faltandoObrigatorios, simNao, situacao, vazioParaNulo, type CampoEdicao, type Corpo, type Erros, type Modo, type Valores } from './edicao';
+import { camposVisiveis, corpoDoPatch, faltandoObrigatorios, simNao, colunaSituacao, vazioParaNulo, type CampoEdicao, type Corpo, type Erros, type Modo, type Valores } from './edicao';
 
 export const ROTA_TABELAS_PRECO = '/cadastros/tabelas-preco';
 export const ROTA_TABELA_PRECO_NOVA = '/cadastros/tabelas-preco/novo';
@@ -25,7 +25,7 @@ export const paginaTabelasPreco = definirPaginaLista({
     { id: 'vigencia_inicio', titulo: 'Início', valor: (t) => t.vigencia_inicio },
     { id: 'vigencia_fim', titulo: 'Fim', valor: (t) => t.vigencia_fim ?? '' },
     { id: 'padrao', titulo: 'Padrão', valor: (t) => simNao(t.padrao) },
-    { id: 'inativo', titulo: 'Situação', valor: (t) => situacao(t.inativo) },
+    colunaSituacao(),
   ],
   csv: { arquivo: 'tabelas-preco.csv' },
   vazio: { semFiltro: 'Nenhuma tabela de preço cadastrada.', comFiltro: 'Nenhuma tabela de preço com estes filtros.' },

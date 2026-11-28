@@ -9,7 +9,7 @@ import { formatarDocumento } from '@macuxierp/platform-sdk/formatar';
 import { definirPaginaLista } from '@macuxierp/platform-sdk/listas';
 import { Filial, FilialAtualizacao, FilialDados, RegimePisCofins } from '../contracts';
 import { validarFilial } from '../domain';
-import { CAMPOS_ENDERECO, camposVisiveis, corpoDoPatch, enderecoDoFormulario, faltandoObrigatorios, opcoes, simNao, situacao, soDigitos, validarEnderecoTela, vazioParaNulo, type CampoEdicao, type Corpo, type Erros, type Modo, type Valores } from './edicao';
+import { CAMPOS_ENDERECO, camposVisiveis, corpoDoPatch, enderecoDoFormulario, faltandoObrigatorios, opcoes, simNao, colunaSituacao, soDigitos, validarEnderecoTela, vazioParaNulo, type CampoEdicao, type Corpo, type Erros, type Modo, type Valores } from './edicao';
 
 export const ROTA_FILIAIS = '/cadastros/filiais';
 export const ROTA_FILIAL_NOVA = '/cadastros/filiais/novo';
@@ -33,7 +33,7 @@ export const paginaFiliais = definirPaginaLista({
     { id: 'industrial_ipi', titulo: 'Industrial (IPI)', valor: (f) => simNao(f.industrial_ipi) },
     // RN-FIS-02: só a filial de CRT 3 tem regime; nos demais a célula vem vazia.
     { id: 'regime_pis_cofins', titulo: 'Regime PIS/COFINS', valor: (f) => (f.regime_pis_cofins ? ROTULO_REGIME_PIS_COFINS[f.regime_pis_cofins] : '') },
-    { id: 'inativo', titulo: 'Situação', valor: (f) => situacao(f.inativo) },
+    colunaSituacao(),
   ],
   csv: { arquivo: 'filiais.csv' },
   vazio: { semFiltro: 'Nenhuma filial cadastrada.', comFiltro: 'Nenhuma filial com estes filtros.' },

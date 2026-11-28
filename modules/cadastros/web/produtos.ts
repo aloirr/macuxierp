@@ -8,7 +8,7 @@ import { formatarCentavos, formatarValorCentavos } from '@macuxierp/platform-sdk
 import { definirPaginaLista } from '@macuxierp/platform-sdk/listas';
 import { Ean, Produto, ProdutoAtualizacao, ProdutoDados } from '../contracts';
 import { formatarNcm } from '../domain';
-import { camposVisiveis, centavosDoTexto, corpoDoPatch, faltandoObrigatorios, simNao, situacao, soDigitos, vazioParaNulo, type CampoEdicao, type Corpo, type Erros, type Modo, type Valores } from './edicao';
+import { camposVisiveis, centavosDoTexto, corpoDoPatch, faltandoObrigatorios, simNao, colunaSituacao, soDigitos, vazioParaNulo, type CampoEdicao, type Corpo, type Erros, type Modo, type Valores } from './edicao';
 
 export const ROTA_PRODUTOS = '/cadastros/produtos';
 export const ROTA_PRODUTO_NOVO = '/cadastros/produtos/novo';
@@ -27,7 +27,7 @@ export const paginaProdutos = definirPaginaLista({
     { id: 'unidade_comercial', titulo: 'Un.', valor: (p) => p.unidade_comercial },
     { id: 'producao_propria', titulo: 'Fabricado pela empresa', valor: (p) => simNao(p.producao_propria) },
     { id: 'custo_centavos', titulo: 'Custo', valor: (p) => (p.custo_centavos === null ? '' : formatarCentavos(p.custo_centavos)), exige: 'cadastros.produto.editar' },
-    { id: 'inativo', titulo: 'Situação', valor: (p) => situacao(p.inativo) },
+    colunaSituacao(),
   ],
   csv: { arquivo: 'produtos.csv' },
   vazio: { semFiltro: 'Nenhum produto cadastrado.', comFiltro: 'Nenhum produto com estes filtros.' },
