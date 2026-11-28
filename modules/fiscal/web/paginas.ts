@@ -7,6 +7,7 @@ import { definirPaginaLista, type ColunaLista } from '@macuxierp/platform-sdk/li
 import { formatarDataCivil } from '@macuxierp/platform-sdk/formatar';
 import { z } from 'zod';
 import { CatalogoLinha, RegraLinha, SituacaoRegra, TributoRegra } from '../contracts';
+import { rotuloDoCodigoIcms } from './formulario';
 import { Uf } from '@macuxierp/cadastros/contracts';
 
 export const ROTULO_TRIBUTO: Readonly<Record<TributoRegra, string>> = { icms: 'ICMS', ipi: 'IPI', pis: 'PIS', cofins: 'COFINS', ibs_cbs: 'IBS/CBS', is: 'IS' };
@@ -24,7 +25,6 @@ export function textoPercentual(n: number | null | undefined): string {
 }
 
 const ou = (t: string | null | undefined): string => (t && t.trim() !== '' ? t : 'Todos');
-const vazio = (t: string | null | undefined): string => t ?? '';
 
 /** Tipo da coluna para o shell (o `ColunaLista` do sdk ainda não tem `tipo`). */
 export type ColunaFiscal<L> = ColunaLista<L> & { tipo?: 'texto' | 'numero' | 'dinheiro' | 'data' | 'status'; selos?: (l: L) => readonly { texto: string; tom: 'ok' | 'aviso' | 'erro' | 'neutro' }[] };
@@ -38,8 +38,8 @@ const colunasRegras: readonly ColunaFiscal<RegraLinha>[] = [
   { id: 'uf_origem', titulo: 'UF origem', valor: (r) => ou(r.uf_origem) },
   { id: 'uf_destino', titulo: 'UF destino', valor: (r) => ou(r.uf_destino) },
   { id: 'tipo_cliente', titulo: 'Cliente', valor: (r) => (r.tipo_cliente ? (ROTULO_CLIENTE[r.tipo_cliente] ?? r.tipo_cliente) : 'Todos') },
-  { id: 'crt', titulo: 'CRT', tipo: 'numero', valor: (r) => (r.crt === null ? 'Todos' : String(r.crt)) },
-  { id: 'codigo', titulo: 'CST/CSOSN', tipo: 'numero', valor: (r) => vazio(r.codigo) },
+  { id: 'crt', titulo: 'Regime (CRT)', valor: (r) => (r.crt === null ? 'Todos' : (ROTULO_CRT[r.crt] ?? String(r.crt))) },
+  { id: 'codigo', titulo: 'Situação tributária', valor: (r) => rotuloDoCodigoIcms(r.codigo) },
   { id: 'aliquota_icms', titulo: 'ICMS', tipo: 'numero', valor: (r) => textoPercentual(r.aliquota_icms) },
   { id: 'mva_original', titulo: 'MVA', tipo: 'numero', valor: (r) => textoPercentual(r.mva_original) },
   { id: 'fonte_tipo', titulo: 'Tipo da fonte', valor: (r) => (r.fonte ? (ROTULO_FONTE[r.fonte.tipo] ?? r.fonte.tipo) : '') },
@@ -76,8 +76,8 @@ const colunasCatalogo: readonly ColunaFiscal<CatalogoLinha>[] = [
   { id: 'tributo', titulo: 'Tributo', valor: (c) => ROTULO_TRIBUTO[c.tributo] },
   { id: 'ncm_prefixo', titulo: 'NCM', valor: (c) => ou(c.ncm_prefixo) },
   { id: 'uf_destino', titulo: 'UF destino', valor: (c) => ou(c.uf_destino) },
-  { id: 'crt', titulo: 'CRT', tipo: 'numero', valor: (c) => (c.crt === null ? 'Todos' : String(c.crt)) },
-  { id: 'codigo', titulo: 'CST/CSOSN', tipo: 'numero', valor: (c) => vazio(c.codigo) },
+  { id: 'crt', titulo: 'Regime (CRT)', valor: (c) => (c.crt === null ? 'Todos' : (ROTULO_CRT[c.crt] ?? String(c.crt))) },
+  { id: 'codigo', titulo: 'Situação tributária', valor: (c) => rotuloDoCodigoIcms(c.codigo) },
   { id: 'fonte_tipo', titulo: 'Tipo da fonte', valor: (c) => (c.fonte ? (ROTULO_FONTE[c.fonte.tipo] ?? c.fonte.tipo) : '') },
   { id: 'fonte', titulo: 'Fonte', valor: (c) => c.fonte?.referencia ?? '' },
   { id: 'versao', titulo: 'Versão', valor: (c) => c.versao },

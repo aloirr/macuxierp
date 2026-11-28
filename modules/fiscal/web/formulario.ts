@@ -268,6 +268,12 @@ export const GRUPOS_REGRA: readonly GrupoRegra[] = [
   },
 ];
 
+/** "00 – Tributada integralmente": o nome da tabela oficial junto ao CST/CSOSN do ICMS (código fora da tabela sai só como código). */
+export function rotuloDoCodigoIcms(codigo: string | null | undefined): string {
+  if (!codigo) return '';
+  return CST_ICMS.find((o) => o.valor === codigo)?.rotulo ?? codigo;
+}
+
 /** Opções do campo para o valor atual: código salvo que não está na lista aparece como "código não listado" em vez de abrir vazio. */
 export function opcoesDoCampo(campo: CampoRegra, atual: string): readonly { valor: string; rotulo: string }[] {
   const o = campo.opcoes ?? [];

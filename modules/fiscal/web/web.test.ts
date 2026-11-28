@@ -134,4 +134,12 @@ describe('formulário da regra (grade de 12 colunas, regra 11)', () => {
     for (const campo of CAMPOS_REGRA) if (campo.ajuda) expect(campo.ajuda, campo.nome).toMatch(/\.$/);
     expect(CAMPOS_REGRA.find((x) => x.nome === 'p_ibs_mun')!.rotulo).toBe('IBS do município (%)');
   });
+  it('RN-FIS-04: as colunas Regime e Situação tributária da lista e do catálogo mostram "código – nome"', () => {
+    const linha = RegraLinha.parse({ ...regra({ crt: 3, codigo: '20' }), updated_at: '2026-01-01T00:00:00.000Z', situacao: 'vigente' });
+    const v = (id: string) => paginaRegras.colunas.find((c) => c.id === id)!.valor(linha);
+    expect(v('crt')).toBe('3 – Regime normal');
+    expect(v('codigo')).toBe('20 – Com redução de base de cálculo');
+    expect(paginaCatalogo.colunas.find((c) => c.id === 'crt')!.titulo).toBe('Regime (CRT)');
+    expect(paginaCatalogo.colunas.find((c) => c.id === 'codigo')!.titulo).toBe('Situação tributária');
+  });
 });
