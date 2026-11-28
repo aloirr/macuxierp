@@ -4,7 +4,7 @@
  */
 import type { Transacao } from '@macuxierp/platform-sdk';
 import { Uf } from '@macuxierp/cadastros/contracts';
-import { CalculoEntrada, type CalculoSaida, type ErroFiscal, type ItemCalculo, type ResultadoCalculoFiscal } from '../contracts';
+import { CalculoEntrada, CalculoSaida as CalculoSaidaSchema, type CalculoSaida, type ErroFiscal, type ItemCalculo, type ResultadoCalculoFiscal } from '../contracts';
 import { calcularDocumento, cfopBase, cfopPeloIcms, destinatarioPeloIndIe, type EntradaCfop } from '../domain';
 import type { ConsultaEmitenteFiscal, RepositorioFiscal } from './portas';
 import { repositorioFiscalSql } from './sql';
@@ -115,6 +115,9 @@ export function criarCalculoFiscal(deps: DepsCalculoFiscal): CalculoFiscalDoFisc
         const diverge = entrada.itens.find((i) => novos[i.sequencia] !== cfops[i.sequencia]);
         if (!diverge) {
           const saida: CalculoSaida = { ...r.valor, itens: r.valor.itens.map((it) => ({ ...it, cfop: cfops[Number(it.item_id)] })) };
+          // A API revalida (RN-FIS-05, 63 A): calc_* só com regra_aplicada e total só se todos os itens têm regra.
+          const v = CalculoSaidaSchema.safeParse(saida);
+          if (!v.success) return falha('ENTRADA_INVALIDA', `Saída do cálculo incoerente: ${v.error.issues[0]?.message ?? ''}`, 'RN-FIS-05');
           return { ok: true, saida, cfops };
         }
         if (passada === 1) {

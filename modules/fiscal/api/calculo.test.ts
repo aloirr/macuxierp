@@ -36,6 +36,17 @@ describe('adaptador CalculoFiscal sobre fiscal.calculo@1', () => {
     expect(r.saida.itens[0]?.icms.v_icms).toBe(18000);
     expect(chamadas[0]).toMatchObject({ data_emissao: '2026-11-21', uf_origem: 'AM', uf_destino: 'AM', crt: 3, ncms: ['22021000'] });
   });
+  it('RN-FIS-05: o adaptador devolve regra_aplicada e calc_st do item e do total (63 A), revalidados pelo CalculoSaida; sem regra de ST, omitidos', async () => {
+    const com = await montar(normal, [regra({ codigo: '10', mva_original: 400000, aliquota_interna_destino: 180000 })]).calc.calcular(tx, entrada());
+    if (!com.ok) throw new Error(JSON.stringify(com.erros));
+    expect(com.saida.itens[0]).toMatchObject({ regra_aplicada: { st: true, ipi: false }, calc_st: { v_bc: 140000, p_aliq: 180000, v_valor: 7200 } });
+    expect(com.saida.totais.calc_st).toEqual({ v_bc: 140000, v_valor: 7200 });
+    const sem = await montar(normal, [regra()]).calc.calcular(tx, entrada());
+    if (!sem.ok) throw new Error('esperava ok');
+    expect(sem.saida.itens[0]?.regra_aplicada).toEqual({ st: false, ipi: false });
+    expect(sem.saida.totais.calc_st).toBeUndefined();
+    expect(sem.saida.itens[0]?.calc_st).toBeUndefined();
+  });
   it('RN-FIS-01: pedido misto escolhe o CFOP por item (fabricado × revenda): interna e interestadual contribuinte', async () => {
     const itens = [item(1), item(2)];
     const regras = [regra({ cfop: '5101' }), regra({ cfop: '5102' }), regra({ cfop: '6101' }), regra({ cfop: '6102' })];

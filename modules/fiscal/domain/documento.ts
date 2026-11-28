@@ -2,8 +2,8 @@ import type { CalculoEntrada, CalculoResultado, CargaAproximadaItem, ErroFiscal,
 import { calcularCargaAproximada, type ResultadoCarga } from './carga-aproximada';
 import type { ModoArredondamento } from './dinheiro';
 import { calcularIbsCbsItem, calcularIsItem, MODO_RTC } from './ibs-cbs';
-import { calcularIcmsItem, ipiEntraNaBc } from './icms';
-import { calcularIpiItem } from './ipi';
+import { calcStDoIcms, calcularIcmsItem, ipiEntraNaBc } from './icms';
+import { calcIpiDoGrupo, calcularIpiItem } from './ipi';
 import { calcularPisCofinsItem } from './pis-cofins';
 import { pisCofinsNoDas, selecionarRegra, type AlvoRegra, type Resultado } from './regra';
 
@@ -52,6 +52,8 @@ export function calcularDocumento(entrada: CalculoEntrada, opcoes: OpcoesDocumen
   let vTotTrib = 0;
   const noDas = pisCofinsNoDas(entrada.emitente.crt);
   let temRtc = false;
+  let totSt: { v_bc: number; v_valor: number } | undefined;
+  let totIpi: { v_bc: number; v_valor: number } | undefined;
 
   for (const itemEntrada of entrada.itens) {
     const alvo = (tributo: TributoRegra): AlvoRegra => ({
@@ -135,8 +137,14 @@ export function calcularDocumento(entrada: CalculoEntrada, opcoes: OpcoesDocumen
     const i = ri.icms;
     const versao_nt_rtc = rtc?.ok ? rtc.versao_nt_rtc : isRes?.ok ? isRes.versao_nt_rtc : undefined;
     if (versao_nt_rtc) temRtc = true;
+    // RN-FIS-05 (63 A): ST e IPI por regra. Sem regra o campo é omitido (nunca se inventa alíquota); regra_aplicada diz qual dos dois valeu.
+    const calcSt = calcStDoIcms(i);
+    const calcIpi = calcIpiDoGrupo(ipi);
     itens.push({
       item_id: item.id,
+      regra_aplicada: { st: calcSt !== undefined, ipi: calcIpi !== undefined },
+      ...(calcSt ? { calc_st: calcSt } : {}),
+      ...(calcIpi ? { calc_ipi: calcIpi } : {}),
       icms: i,
       ...(ipi ? { ipi } : {}),
       ...(pc.pis ? { pis: pc.pis.grupo } : {}),
@@ -164,6 +172,8 @@ export function calcularDocumento(entrada: CalculoEntrada, opcoes: OpcoesDocumen
     t.v_seg += item.seguro_centavos;
     t.v_outro += item.outras_despesas_centavos;
     t.v_ipi += item.ipi_centavos;
+    totSt = calcSt ? { v_bc: (totSt?.v_bc ?? 0) + calcSt.v_bc, v_valor: (totSt?.v_valor ?? 0) + calcSt.v_valor } : totSt;
+    totIpi = calcIpi ? { v_bc: (totIpi?.v_bc ?? 0) + calcIpi.v_bc, v_valor: (totIpi?.v_valor ?? 0) + calcIpi.v_valor } : totIpi;
     t.v_pis = (t.v_pis ?? 0) + (pc.pis?.v ?? 0);
     t.v_cofins = (t.v_cofins ?? 0) + (pc.cofins?.v ?? 0);
     if (rtc?.ok) {
@@ -187,6 +197,9 @@ export function calcularDocumento(entrada: CalculoEntrada, opcoes: OpcoesDocumen
   t.v_nf = t.v_prod - t.v_desc + t.v_frete + t.v_seg + t.v_outro + t.v_st + t.v_fcp_st + t.v_ipi;
   if (temIbsCbs) Object.assign(t, { v_bc_ibs_cbs: rtcT.v_bc, v_ibs_uf: rtcT.v_ibs_uf, v_ibs_mun: rtcT.v_ibs_mun, v_ibs: rtcT.v_ibs, v_cbs: rtcT.v_cbs });
   if (temIs) t.v_is = vIs;
+  // Total por regra só se TODOS os itens têm regra daquele imposto (item misto → omitido); v_st e v_ipi continuam sempre.
+  if (itens.length > 0 && itens.every((x) => x.regra_aplicada?.st) && totSt) t.calc_st = totSt;
+  if (itens.length > 0 && itens.every((x) => x.regra_aplicada?.ipi) && totIpi) t.calc_ipi = totIpi;
   if (temCarga) t.v_tot_trib = vTotTrib;
   if (temRtc) t.v_nf_tot = t.v_nf + rtcT.v_ibs + rtcT.v_cbs + vIs;
   return { ok: true, valor: { operacao: interestadual ? 'interestadual' : 'interna', itens, totais: t } };

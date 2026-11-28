@@ -19,3 +19,9 @@ Motor tributário puro (`modules/fiscal/domain`), contrato `fiscal.calculo@1` (`
 ## Pendências
 - Ligação no apps/api (`ConsultaEmitenteFiscal` e `calculo: criarCalculoFiscal(...)` em `DepsEmissao`).
 - CFOP de devolução, exterior (7xxx) e produção própria x revenda por produto (precisa de dado no cadastro de produto).
+
+## ICMS-ST e IPI por regra: `regra_aplicada`, `calc_st`, `calc_ipi` (T-0132, RN-FIS-05, 63 A)
+- O motor preenche por item `regra_aplicada: { st, ipi }` e, só quando verdadeiro, `calc_st` / `calc_ipi` (`v_bc`, `p_aliq` de 4 casas, `v_valor`, em centavos, meio para cima). Sem regra o campo é omitido; nunca se inventa alíquota.
+- `calc_st` = base do ST (BC × (1 + MVA) × (1 − redução ST)), alíquota interna do destino e ICMS-ST (menos o ICMS próprio). O FCP-ST segue em `icms.v_fcp_st`. ST retido (CST 60/CSOSN 500) é repasse da nota de compra: não gera `calc_st`.
+- `calc_ipi`: ad valorem usa BC e alíquota da regra; por unidade (pauta) e CST 51..55 saem com `v_bc` e `p_aliq` 0 (regra existe, sem alíquota ad valorem). Emitente não industrial: sem `calc_ipi`. Industrial sem regra de IPI continua erro `REGRA_NAO_ENCONTRADA`.
+- Totais `calc_st` / `calc_ipi` só se todos os itens têm a regra do imposto; `v_st` e `v_ipi` continuam sempre. O adaptador da API revalida a saída pelo `CalculoSaida`.

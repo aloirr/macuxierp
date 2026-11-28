@@ -1,4 +1,4 @@
-import type { IcmsItem, ItemCalculo, RegraTributaria } from '../contracts';
+import type { IcmsItem, ImpostoCalculado, ItemCalculo, RegraTributaria } from '../contracts';
 import type { CodigoErroCalculo } from './erros';
 import { ehCsosn } from './regra';
 import { aplicarPercentual, BASE_PERCENTUAL, divArredonda, valorOperacao } from './dinheiro';
@@ -198,4 +198,14 @@ export function calcularIcmsItem(c: ContextoIcmsItem): ResultadoIcmsItem {
     icms.v_cred_icms_sn = aplicarPercentual(baseIcms(item, false), regra.p_cred_sn);
   }
   return { ok: true, icms };
+}
+
+/**
+ * RN-FIS-05 (63 A): ICMS-ST calculado por regra (modBC ST, redução, MVA e alíquota interna do destino). Só existe quando o motor calculou o ST da
+ * operação (grupo com `p_icms_st`); sem regra de ST, ou CST/CSOSN sem ST, devolve undefined e o campo sai omitido. O ST retido (60/500) é repasse
+ * da nota de compra, não cálculo: não gera `calc_st`. O FCP-ST segue em `icms.v_fcp_st`.
+ */
+export function calcStDoIcms(icms: IcmsItem): ImpostoCalculado | undefined {
+  if (icms.p_icms_st === undefined || icms.v_bc_st === undefined || icms.v_icms_st === undefined) return undefined;
+  return { v_bc: icms.v_bc_st, p_aliq: icms.p_icms_st, v_valor: icms.v_icms_st };
 }
