@@ -202,7 +202,9 @@ describe('RF-CORE-02: usuários', () => {
     const antes = t.repo.usuarios.length;
     await expect(t.chamar('POST', '/usuarios', { corpo: { ...novo, email: ' RITA@Outra.test ' } })).rejects.toMatchObject({
       status: 409,
-      codigo: 'EMAIL_EM_USO',
+      codigo: 'CONFLITO',
+      detalhes: { codigo: 'email_em_uso' },
+      campos: { email: 'Este e-mail já está em uso em outra empresa. Use outro e-mail.' },
       message: 'Este e-mail já está em uso em outra empresa. Use outro e-mail.',
     });
     expect(t.repo.usuarios).toHaveLength(antes);

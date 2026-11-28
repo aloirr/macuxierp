@@ -10,7 +10,6 @@ import {
   ErroCertificado,
   csvDaLista,
   definirRota,
-  ErroApi,
   erros,
   paginar,
   PERFIS,
@@ -49,7 +48,7 @@ import { ORIGEM_CERTIFICADO_PADRAO } from '@macuxierp/platform-sdk/certificado-o
 import { alertaVencimento, avaliarCertificado, decidirEmailUnico, normalizarEmailUsuario, avaliarTrocaAmbienteTenant, diasParaVencer, gerarSenhaProvisoria, situacaoDoUsuario } from '../domain';
 import { alterarUsuarioComTrava, excluirUsuarioComTrava, type OpcoesAlterarUsuario } from './alterar-usuario';
 import { cifrarColunasA1 } from './colunas-a1';
-import { sqlstate } from './erro-pg';
+import { erroEmailEmUso, sqlstate } from './erro-pg';
 import {
   PfxInvalido,
   type DependenciasCore,
@@ -256,7 +255,7 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
         if (await repo.usuarioPorEmail(c.tx, email)) throw erros.conflito(MENSAGEM_EMAIL_EM_USO);
         // RN-CORE-18: único no sistema todo (usuários de outras empresas; o superadmin fica fora); a regra é do domain, a consulta é a porta.
         const unico = decidirEmailUnico({ existe_vivo_em_outra_conta: await repo.existeEmailVivoEmOutraConta(c.tx, email) });
-        if (!unico.ok) throw new ErroApi(409, unico.codigo, unico.mensagem);
+        if (!unico.ok) throw erroEmailEmUso();
         const senha = gerarSenhaProvisoria(aleatorios(256));
         const criado = await repo.criarUsuario(
           c.tx,
