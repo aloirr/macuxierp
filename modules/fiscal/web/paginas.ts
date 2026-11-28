@@ -12,7 +12,7 @@ import { Uf } from '@macuxierp/cadastros/contracts';
 export const ROTULO_TRIBUTO: Readonly<Record<TributoRegra, string>> = { icms: 'ICMS', ipi: 'IPI', pis: 'PIS', cofins: 'COFINS', ibs_cbs: 'IBS/CBS', is: 'IS' };
 export const ROTULO_SITUACAO: Readonly<Record<SituacaoRegra, string>> = { vigente: 'Vigente', futura: 'Futura', encerrada: 'Encerrada' };
 export const TOM_SITUACAO: Readonly<Record<SituacaoRegra, 'ok' | 'aviso' | 'neutro'>> = { vigente: 'ok', futura: 'aviso', encerrada: 'neutro' };
-export const ROTULO_CRT: Readonly<Record<number, string>> = { 1: '1 Simples', 2: '2 Sublimite', 3: '3 Normal', 4: '4 MEI' };
+export const ROTULO_CRT: Readonly<Record<number, string>> = { 1: '1 – Simples Nacional', 2: '2 – Simples Nacional, excesso de sublimite', 3: '3 – Regime normal', 4: '4 – MEI' };
 const ROTULO_CLIENTE: Readonly<Record<string, string>> = { contribuinte: 'Contribuinte', isento: 'Isento', nao_contribuinte: 'Não contribuinte' };
 
 /** Percentual de 4 casas (180000 = 18%): sem zeros à direita. */
