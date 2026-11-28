@@ -67,7 +67,7 @@ export function colunasStatusFdv<T extends LinhaBaseFdv>(opcoes: { falhaSobreNom
     { id: 'ultimoEnvio', titulo: 'Último envio', tipo: 'data', celula: (l) => l.ultimoEnvio },
     {
       id: 'falha',
-      titulo: 'Falha',
+      titulo: 'Com erro',
       celula: (l) => (l.falha ? createElement('span', null, l.falha.acao ? `${l.falha.motivo} ` : l.falha.motivo, l.falha.acao ? createElement('span', { className: 'apoio' }, l.falha.acao) : null, elementoProximaTentativa(l.proximaTentativa)) : createElement('span', { className: 'apoio' }, '—')),
     },
   ];

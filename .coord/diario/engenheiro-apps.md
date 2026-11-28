@@ -68,3 +68,4 @@
 2026-11-28 — T-0131 — aba Integrações: contadores Enviados e Aceitos (sem Gravados), histórico de envios (até 50, com aviso de corte) e cabeçalho do Contato pela leitura lerLigacoesFdv(); sem a leitura a aba segue como antes
 2026-11-28 — T-0129 — Formulário só leitura quando paginaEditavel é falso (campos em texto, selo, só Voltar) e 403 da API com a mensagem da rota
 2026-11-28 — v0.3.32 apps-3 core telas — T-0125: Empresa renderiza a fichaEmpresa() do core com o Ambiente fiscal como bloco (oculto no menu); colunasSe do cadastros lido de forma tolerante; exportação segue sem tela
+2026-11-28 — T-0131 — ressalvas da marca: título Envios do sistema do cliente ao ERP, selos na Situação, coluna Com erro, Código sem quebra

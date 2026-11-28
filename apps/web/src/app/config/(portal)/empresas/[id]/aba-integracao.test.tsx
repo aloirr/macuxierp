@@ -37,14 +37,14 @@ describe('Config v4: aba Integrações como a simulação aprovada 445e459', () 
     expect(h.indexOf('id="h-ligacao-entrada"')).toBeLessThan(h.indexOf('id="h-ligacao-saida"'));
     expect(h).toMatch(new RegExp(`<h2 id="h-ligacao-saida">ERP <span class="seta" aria-hidden="true">→</span><span class="sr-only"> para o </span> ${ROTULO_FORCA_VENDAS}</h2>`));
     expect(h.match(/class="cabeca-ligacao"/g)).toHaveLength(2); // título e selo na mesma linha
-    // as tabelas por ligação moram nos cartões: recebidos, enviados e Envios recentes
-    for (const legenda of ['Cadastros recebidos', 'Cadastros enviados', 'Envios recentes']) expect(h).toMatch(new RegExp(`<caption[^>]*>${legenda}</caption>`));
+    // as tabelas por ligação moram nos cartões: recebidos, enviados e Envios do sistema do cliente ao ERP
+    for (const legenda of ['Cadastros recebidos', 'Cadastros enviados', 'Envios do sistema do cliente ao ERP']) expect(h).toMatch(new RegExp(`<caption[^>]*>${legenda}</caption>`));
     expect(h.indexOf('Cadastros recebidos')).toBeLessThan(h.indexOf('id="h-ligacao-saida"'));
     expect(h.indexOf('Cadastros enviados')).toBeGreaterThan(h.indexOf('id="h-ligacao-saida"'));
     expect(h.indexOf('id="h-envios-recentes"')).toBeGreaterThan(h.indexOf('Cadastros enviados'));
     for (const fora of ['Monitor', 'Conexão com o Macuxi FDV', 'Integração via API', 'cabeca-ligacoes', 'form-lote', 'campo-com-botao']) expect(h).not.toContain(fora);
   });
-  it('um único Atualizar, na barra do bloco Envios recentes (regra 12), com "Atualizado às" ao lado e o retorno logo abaixo', () => {
+  it('um único Atualizar, na barra do bloco Envios do sistema do cliente ao ERP (regra 12), com "Atualizado às" ao lado e o retorno logo abaixo', () => {
     const h = render(dados(), monitor());
     expect(h.match(/>Atualizar<\/button>/g)).toHaveLength(1);
     expect(h).toMatch(/<div class="barra-acoes barra-bloco"><button[^>]*>Atualizar<\/button><span class="apoio" data-testid="atualizado-as"[^>]*>Atualizado às 14:39<\/span><\/div><div data-resultado-acao/);
@@ -160,6 +160,8 @@ describe('T-0131 (C-6): contadores, histórico de envios e cabeçalho do Contato
     const h = renderLida(lida());
     expect(h).toMatch(/<caption[^>]*>Envios ao Macuxi FDV<\/caption>/);
     expect(h).toContain('Concluído com erros');
+    expect(h).toContain('<span class="selo selo-aviso">Concluído com erros</span>');
+    expect(h).toContain('<span class="selo selo-ativo">Concluído</span>');
     expect(h.indexOf('>103<')).toBeLessThan(h.indexOf('>102<'));
     expect(h.indexOf('>102<')).toBeLessThan(h.indexOf('>101<'));
     expect(h).not.toContain('Os 3 envios mais recentes');
