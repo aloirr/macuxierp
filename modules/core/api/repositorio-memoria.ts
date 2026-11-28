@@ -1,5 +1,5 @@
 /** Repositório em memória para os testes de rota (o `BancoMemoria` do SDK não executa SQL). Não entra em produção. */
-import type { Transacao } from '@macuxierp/platform-sdk';
+import { erros, type Transacao } from '@macuxierp/platform-sdk';
 import { ORIGEM_CERTIFICADO_PADRAO } from '@macuxierp/platform-sdk/certificado-origem';
 import type {
   LinhaAmbiente,
@@ -53,13 +53,12 @@ export class RepositorioCoreMemoria implements RepositorioCore {
   async usuarioPorEmail(_tx: Transacao, email: string): Promise<LinhaUsuario | null> {
     return this.vivos().find((u) => u.email === email) ?? null;
   }
-  async existeEmailVivoEmOutraConta(_tx: Transacao, email: string, exceto?: string): Promise<boolean> {
-    return this.emailsEmOutrasContas.has(email) || this.vivos().some((u) => u.email === email && u.id !== exceto);
-  }
   async usuarioPorExternalId(_tx: Transacao, externalId: string): Promise<LinhaUsuario | null> {
     return this.vivos().find((u) => u.external_id === externalId) ?? null;
   }
   async criarUsuario(_tx: Transacao, u: NovoUsuario, agora: Date): Promise<LinhaUsuario> {
+    // Simula o índice global da 0079: o e-mail vivo de outra empresa recusa o INSERT.
+    if (this.emailsEmOutrasContas.has(u.email)) throw erros.emailEmUso();
     const linha = { ...u, ultimo_acesso_em: null, updated_at: agora, deve_trocar_senha: true };
     this.usuarios.push(linha);
     return linha;

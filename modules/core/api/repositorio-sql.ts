@@ -4,9 +4,9 @@
  * licença, auditoria, arquivo). O certificado: o app nunca lê `pfx_cifrado` nem `senha_cifrada` (ADR 0005), então o
  * SELECT de resumo lista as colunas uma a uma.
  */
-import type { Transacao } from '@macuxierp/platform-sdk';
-import { ehEmailEmUso, erroEmailEmUso } from './erro-pg';
+import { erros, type Transacao } from '@macuxierp/platform-sdk';
 import { ORIGEM_CERTIFICADO_PADRAO } from '@macuxierp/platform-sdk/certificado-origem';
+import { ehEmailEmUso } from './erro-pg';
 import type {
   LinhaAmbiente,
   LinhaAuditoria,
@@ -70,15 +70,6 @@ export class RepositorioCoreSql implements RepositorioCore {
     return u ?? null;
   }
 
-  /** RN-CORE-18. Enquanto a visão global da 0079 (banco-dados) não chega, enxerga só o tenant da transação (RLS). */
-  async existeEmailVivoEmOutraConta(tx: Transacao, email: string, exceto?: string): Promise<boolean> {
-    const [u] = await tx.consultar<{ id: string }>(
-      'SELECT id FROM plataforma.usuario WHERE lower(email::text) = $1 AND deleted_at IS NULL AND ($2::uuid IS NULL OR id <> $2::uuid) LIMIT 1',
-      [email, exceto ?? null],
-    );
-    return Boolean(u);
-  }
-
   async usuarioPorExternalId(tx: Transacao, externalId: string): Promise<LinhaUsuario | null> {
     const [u] = await tx.consultar<LinhaUsuario>(`SELECT ${COLUNAS_USUARIO} FROM plataforma.usuario WHERE external_id = $1 AND deleted_at IS NULL`, [externalId]);
     return u ?? null;
@@ -94,7 +85,7 @@ export class RepositorioCoreSql implements RepositorioCore {
     )
       .catch((e: unknown) => {
         // RN-CORE-18 (0079): o índice global pega o e-mail de outra empresa, que a RLS esconde da busca da rota.
-        throw ehEmailEmUso(e) ? erroEmailEmUso() : e;
+        throw ehEmailEmUso(e) ? erros.emailEmUso() : e;
       });
     if (!linha) throw new Error('plataforma.usuario: insert sem retorno');
     return linha;

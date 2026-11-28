@@ -5,7 +5,7 @@
  * Local: `bash db/scripts/pg-local.sh`.
  */
 import { randomUUID } from 'node:crypto';
-import type { Transacao } from '@macuxierp/platform-sdk';
+import { erros, type Transacao } from '@macuxierp/platform-sdk';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MENSAGEM_ULTIMO_ADMIN } from '../contracts';
@@ -51,6 +51,12 @@ class Sessao implements Transacao {
     this.c.release();
   }
 }
+
+/** O corpo do 409 do SDK (`erros.emailEmUso()`), sem repetir o texto. */
+const corpoEmailEmUso = (): object => {
+  const e = erros.emailEmUso();
+  return { status: e.status, codigo: e.codigo, message: e.message, campos: e.campos, detalhes: e.detalhes };
+};
 
 const pausa = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 /** 'travada' se a promessa não terminar em `ms` (a transação espera a trava do banco). */
@@ -219,14 +225,14 @@ describe.skipIf(!PG_DISPONIVEL)('concorrência do adaptador SQL do core (Postgre
     expect((await linha(id)).deleted_at).not.toBeNull();
   });
 
-  it('RN-CORE-18 (0079): o mesmo e-mail em outra empresa no INSERT do BKO = 409 email_em_uso (não 500)', async () => {
+  it('RN-CORE-18 (0079): o mesmo e-mail em outra empresa no INSERT do BKO é recusado com 409 email_em_uso (não 500)', async () => {
     const novo = { email: 'dupla@piloto.test', nome: 'Pessoa Dupla', senha_hash: '$argon2id$y', perfil: 'faturista', filial_ids: [], ativo: true, external_id: null };
     const t1 = await abrir();
     await repo.criarUsuario(t1, { id: randomUUID(), ...novo } as never);
     await t1.confirmar();
     const t2 = await abrir(T2);
     const e = await repo.criarUsuario(t2, { id: randomUUID(), ...novo } as never).catch((x: unknown) => x);
-    expect(e).toMatchObject({ status: 409, codigo: 'CONFLITO', detalhes: { codigo: 'email_em_uso' }, campos: { email: 'Este e-mail já está em uso em outra empresa. Use outro e-mail.' } });
+    expect(e).toMatchObject(corpoEmailEmUso());
     await t2.descartar();
   });
 

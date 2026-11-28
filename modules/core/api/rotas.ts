@@ -42,13 +42,13 @@ import {
   type Exportacao,
   type Usuario,
   type UsuarioExcluido,
-  MENSAGEM_EMAIL_EM_USO,
+  MENSAGEM_EMAIL_EM_USO_NA_EMPRESA,
 } from '../contracts';
 import { ORIGEM_CERTIFICADO_PADRAO } from '@macuxierp/platform-sdk/certificado-origem';
-import { alertaVencimento, avaliarCertificado, decidirEmailUnico, normalizarEmailUsuario, avaliarTrocaAmbienteTenant, diasParaVencer, gerarSenhaProvisoria, situacaoDoUsuario } from '../domain';
+import { alertaVencimento, avaliarCertificado, normalizarEmailUsuario, avaliarTrocaAmbienteTenant, diasParaVencer, gerarSenhaProvisoria, situacaoDoUsuario } from '../domain';
 import { alterarUsuarioComTrava, excluirUsuarioComTrava, type OpcoesAlterarUsuario } from './alterar-usuario';
 import { cifrarColunasA1 } from './colunas-a1';
-import { erroEmailEmUso, sqlstate } from './erro-pg';
+import { sqlstate } from './erro-pg';
 import {
   PfxInvalido,
   type DependenciasCore,
@@ -252,10 +252,8 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
           const repetido = await repo.usuarioPorExternalId(c.tx, corpo.external_id);
           if (repetido) return { status: 200, corpo: usuarioDto(repetido, c.agora) };
         }
-        if (await repo.usuarioPorEmail(c.tx, email)) throw erros.conflito(MENSAGEM_EMAIL_EM_USO);
-        // RN-CORE-18: único no sistema todo (usuários de outras empresas; o superadmin fica fora); a regra é do domain, a consulta é a porta.
-        const unico = decidirEmailUnico({ existe_vivo_em_outra_conta: await repo.existeEmailVivoEmOutraConta(c.tx, email) });
-        if (!unico.ok) throw erroEmailEmUso();
+        if (await repo.usuarioPorEmail(c.tx, email)) throw erros.conflito(MENSAGEM_EMAIL_EM_USO_NA_EMPRESA);
+        // RN-CORE-18: o e-mail de outra empresa a RLS esconde daqui; quem barra é o índice global (0079), traduzido no repositório.
         const senha = gerarSenhaProvisoria(aleatorios(256));
         const criado = await repo.criarUsuario(
           c.tx,

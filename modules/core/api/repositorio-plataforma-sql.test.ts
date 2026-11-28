@@ -1,4 +1,4 @@
-import { DETALHE_CODIGO_RESERVADO, ErroApi, MENSAGEM_CODIGO_RESERVADO, type Transacao } from '@macuxierp/platform-sdk';
+import { DETALHE_CODIGO_RESERVADO, ErroApi, erros, MENSAGEM_CODIGO_RESERVADO, type Transacao } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { RepositorioPlataformaSql } from './repositorio-plataforma-sql';
 
@@ -8,6 +8,12 @@ const txQueLanca = (code: string, message: string): Transacao => ({
   },
 });
 const criar = (tx: Transacao) => new RepositorioPlataformaSql().criarEmpresa(tx, { slug: 'am2808', uf: 'AM', nome: 'Xis', fuso: 'America/Manaus', request_id: 'r' });
+
+
+const corpoEmailEmUso = (): object => {
+  const e = erros.emailEmUso();
+  return { status: e.status, codigo: e.codigo, message: e.message, campos: e.campos, detalhes: e.detalhes };
+};
 
 const ID = '00000000-0000-4000-8000-0000000000e1';
 describe('adaptador SQL da plataforma: ficha da Receita (0063)', () => {
@@ -157,7 +163,6 @@ describe('adaptador SQL da plataforma: e-mail único no sistema todo (RN-CORE-18
       throw Object.assign(new Error(message), { code: '23505', ...props });
     },
   });
-  const esperado = { status: 409, codigo: 'CONFLITO', detalhes: { codigo: 'email_em_uso' }, campos: { email: 'Este e-mail já está em uso em outra empresa. Use outro e-mail.' } };
 
   it.each([
     ['índice usuario_email_global_uq', { constraint: 'usuario_email_global_uq' }, 'duplicate'],
@@ -166,7 +171,7 @@ describe('adaptador SQL da plataforma: e-mail único no sistema todo (RN-CORE-18
     for (const f of [novo, admin]) {
       const e = await f(txErro(props, msg)).catch((x: unknown) => x);
       expect(e).toBeInstanceOf(ErroApi);
-      expect(e).toMatchObject(esperado);
+      expect(e).toMatchObject(corpoEmailEmUso());
     }
   });
 

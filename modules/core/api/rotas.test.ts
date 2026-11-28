@@ -104,6 +104,12 @@ const regra = async (p: Promise<unknown>, codigo: string) => {
   return e as ErroApi;
 };
 
+/** O corpo do 409 do SDK (`erros.emailEmUso()`), sem repetir o texto. */
+const corpoEmailEmUso = (): object => {
+  const e = erros.emailEmUso();
+  return { status: e.status, codigo: e.codigo, message: e.message, campos: e.campos, detalhes: e.detalhes };
+};
+
 describe('permissões por ação (RN-CORE-02, matriz do doc 03)', () => {
   it('RN-CORE-02: só o administrador edita empresa, gere usuários e troca ambiente; fiscal e faturista só veem o ambiente', async () => {
     const t = montar();
@@ -196,17 +202,11 @@ describe('RF-CORE-02: usuários', () => {
     await expect(t.chamar('POST', '/usuarios', { corpo: { ...novo, email: 'MARIA@piloto.test' } })).rejects.toMatchObject({ status: 409 });
   });
 
-  it('RN-CORE-18: e-mail vivo em outra empresa é recusado com EMAIL_EM_USO e nada é gravado', async () => {
+  it('RN-CORE-18: e-mail vivo em outra empresa é recusado com 409 email_em_uso e nada é gravado', async () => {
     const t = montar();
     t.repo.emailsEmOutrasContas.add('rita@outra.test');
     const antes = t.repo.usuarios.length;
-    await expect(t.chamar('POST', '/usuarios', { corpo: { ...novo, email: ' RITA@Outra.test ' } })).rejects.toMatchObject({
-      status: 409,
-      codigo: 'CONFLITO',
-      detalhes: { codigo: 'email_em_uso' },
-      campos: { email: 'Este e-mail já está em uso em outra empresa. Use outro e-mail.' },
-      message: 'Este e-mail já está em uso em outra empresa. Use outro e-mail.',
-    });
+    await expect(t.chamar('POST', '/usuarios', { corpo: { ...novo, email: ' RITA@Outra.test ' } })).rejects.toMatchObject(corpoEmailEmUso());
     expect(t.repo.usuarios).toHaveLength(antes);
   });
 

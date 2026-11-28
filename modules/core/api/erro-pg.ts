@@ -1,12 +1,8 @@
-import { ErroApi } from '@macuxierp/platform-sdk';
-import { MENSAGEM_EMAIL_EM_USO_GLOBAL } from '../domain';
-
 /** SQLSTATE do erro do driver `pg` (campo `code`), ou `undefined` se não for erro de banco. */
 export const sqlstate = (e: unknown): unknown => (e as { code?: unknown } | null)?.code;
 
-
 /** Índice único global do e-mail do usuário (0079, RN-CORE-18). */
-export const INDICE_EMAIL_GLOBAL = 'usuario_email_global_uq';
+const INDICE_EMAIL_GLOBAL = 'usuario_email_global_uq';
 
 /**
  * 23505 do e-mail em uso: o índice `usuario_email_global_uq` ou o `email_em_uso` que `empresa_usuario_criar` e
@@ -17,7 +13,3 @@ export function ehEmailEmUso(e: unknown): boolean {
   const { constraint, message } = e as { constraint?: unknown; message?: unknown };
   return constraint === INDICE_EMAIL_GLOBAL || (typeof message === 'string' && (message.includes(INDICE_EMAIL_GLOBAL) || message.includes('email_em_uso')));
 }
-
-/** 409 CONFLITO com `detalhes.codigo = email_em_uso` e `campos.email` (mensagem fixa, sem o e-mail). */
-export const erroEmailEmUso = (): ErroApi =>
-  new ErroApi(409, 'CONFLITO', MENSAGEM_EMAIL_EM_USO_GLOBAL, { email: MENSAGEM_EMAIL_EM_USO_GLOBAL }, { codigo: 'email_em_uso' });

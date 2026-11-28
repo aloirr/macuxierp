@@ -4,7 +4,7 @@
  * Sem Postgres o teste pula (falha com `MACUXI_PG_EXIGIR=1`). Local: `bash db/scripts/pg-local.sh`.
  */
 import { randomUUID } from 'node:crypto';
-import { cnpjValido, ErroApi, MENSAGEM_CODIGO_RESERVADO, type Transacao } from '@macuxierp/platform-sdk';
+import { cnpjValido, ErroApi, erros, MENSAGEM_CODIGO_RESERVADO, type Transacao } from '@macuxierp/platform-sdk';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -22,6 +22,12 @@ import {
 import { MANIFESTOS_TESTE } from './manifestos-teste';
 import { criarPluginPlataformaCore } from './plataforma';
 import { RepositorioPlataformaSql } from './repositorio-plataforma-sql';
+
+/** O corpo do 409 do SDK (`erros.emailEmUso()`), sem repetir o texto. */
+const corpoEmailEmUso = (): object => {
+  const e = erros.emailEmUso();
+  return { status: e.status, codigo: e.codigo, message: e.message, campos: e.campos, detalhes: e.detalhes };
+};
 
 const HASH = '$argon2id$v=19$m=65536,t=3,p=4$c2FsdGZpY3RpY2lv$aGFzaGZpY3RpY2lv';
 const SA = '5a000000-0000-4000-8000-0000000000c1';
@@ -372,11 +378,10 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
     const c2 = await criarTenant(b.admin, `portal-eml-${randomUUID().slice(0, 8)}`, ['core']);
     const corpo = { nome: 'Dora Dupla', email: 'dora.dupla@exemplo.com.br', perfil: 'faturista' };
     expect((await chamar('POST', '/empresas/:id/usuarios', { params: { id: a }, corpo }, true)).status).toBe(201);
-    const esperado = { status: 409, codigo: 'CONFLITO', detalhes: { codigo: 'email_em_uso' }, campos: { email: 'Este e-mail já está em uso em outra empresa. Use outro e-mail.' } };
     const e1 = await chamar('POST', '/empresas/:id/usuarios', { params: { id: c2 }, corpo }).catch((x: unknown) => x);
-    expect(e1).toMatchObject(esperado);
+    expect(e1).toMatchObject(corpoEmailEmUso());
     const e2 = await chamar('POST', '/empresas/:id/primeiro-admin', { params: { id: c2 }, corpo: { email: 'DORA.dupla@exemplo.com.br' } }).catch((x: unknown) => x);
-    expect(e2).toMatchObject(esperado);
+    expect(e2).toMatchObject(corpoEmailEmUso());
   });
 
   it('v0.3.28 (0078): Usuários na Config — criar, listar mascarado, travar o último admin, inativar, reativar e excluir', async () => {
