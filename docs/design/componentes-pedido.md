@@ -2,7 +2,7 @@
 
 Pacote `@macuxierp/ui`. Todos são apresentacionais: sem dados próprios, sem fetch. Cores só por `var(--mx-cor-*)` dos tokens da marca (T-0028); o shell importa `@macuxierp/ui/tokens.css` uma vez. Dinheiro sempre em **centavos**; quem formata é o chamador. Os componentes de formulário e diálogo são de cliente (`'use client'` na página que os usa).
 
-Espaçamentos: a marca ainda não tem tokens de espaço; os componentes usam múltiplos de 4 px (`estilos.ts`). Pedido ao `design-de-marca`: oficializar a escala 4/8/12/16/24.
+Espaçamentos: tokens `--mx-espaco-*` (`tokens.ts`, MC-0218); a fonte é a §1 de `docs/design/telas-horizontais.md`.
 
 ## TabelaDensa<T>
 | Prop | Tipo | Notas |

@@ -26,14 +26,14 @@ Tokens em `packages/ui/src/tokens.ts` (variáveis `--mx-*` em `tokens.css`). A c
 | `notebook` | 1280 a 1439 | 3 | largura cheia | 24 px 32 px |
 | `monitor` | 1440 ou mais | 4 | largura cheia | 24 px 32 px |
 
-Vão entre cartões: 16 px (`espaco.lg`). Cartão nunca abaixo de `--mx-grade-cartao-minimo` (280 px): se não couber, a grade cai para menos colunas. Media query não lê variável CSS; as telas escrevem estes números (390, 768, 1280, 1440) em `@media (min-width: …)`, e esta tabela é a fonte única deles. As quebras antigas do shell (480, 800, 900 e 1100 px) migram para estas quando a tela for tocada.
+Vão entre cartões: 12 px (`--mx-espaco-vao-cartoes`); padding interno do cartão: 16 px (`--mx-espaco-cartao`). Os dois fecharam no MC-0218 (v0.3.29), iguais às simulações aprovadas (Config v4 e Início do BKO); a escala inteira está em `--mx-espaco-xs|sm|md|lg|xl` (4, 8, 12, 16 e 24 px), e a tela usa o token, nunca o número. Cartão nunca abaixo de `--mx-grade-cartao-minimo` (280 px): se não couber, a grade cai para menos colunas. Media query não lê variável CSS; as telas escrevem estes números (390, 768, 1280, 1440) em `@media (min-width: …)`, e esta tabela é a fonte única deles. As quebras antigas do shell (480, 800, 900 e 1100 px) migram para estas quando a tela for tocada.
 
 ### Grade de blocos (receita para o shell)
 
 ```css
 .grade-blocos {
   display: grid;
-  gap: 16px;                                       /* espaco.lg */
+  gap: var(--mx-espaco-vao-cartoes);               /* 12 px */
   grid-template-columns: minmax(0, 1fr);            /* celular: 1 coluna */
   align-items: start;
 }
@@ -56,7 +56,7 @@ O rótulo e o cabeçalho ficam **visivelmente diferentes do valor**; o valor fic
 | Papel | Tamanho | Peso | Cor | Forma |
 |---|---|---|---|---|
 | Título da tela (h1) | `--mx-tamanho-h1` (20) | `--mx-peso-titulo` (700) | `--mx-cor-azul-noite` | normal |
-| **Título de bloco**, fora da caixa | `--mx-tamanho-titulo-cartao` (13) | `--mx-peso-titulo` (700) | `--mx-cor-rotulo-destaque` | caixa-alta, `letter-spacing: .05em`, 6 px até a caixa |
+| **Título de bloco**, fora da caixa | `--mx-tamanho-titulo-cartao` (13) | `--mx-peso-titulo` (700) | `--mx-cor-rotulo-destaque` | caixa-alta, `letter-spacing: var(--mx-letras-caixa-alta)` (.04em), 6 px até a caixa |
 | **Rótulo de dado** (`dt`, rótulo de campo) | `--mx-tamanho-rotulo-dado` (12) | `--mx-peso-rotulo-dado` (600) | `--mx-cor-rotulo-destaque` | normal |
 | **Valor**, campo e célula | `--mx-tamanho-texto` (13) | `--mx-peso-normal` (400) | `--mx-cor-grafite` | normal; números com `--mx-fonte-numeros` |
 | Cabeçalho de tabela (`th`) | `--mx-tamanho-rotulo-dado` (12) | `--mx-peso-cabecalho-tabela` (700) | `--mx-cor-rotulo-destaque` | caixa-alta sobre `nevoa`, 34 px, linha azul-noite de 2 px; linhas de 36 px com zebra `linhaAlternada` |
@@ -69,10 +69,10 @@ O rótulo e o cabeçalho ficam **visivelmente diferentes do valor**; o valor fic
 - Contraste: azul-noite `#1E3350` sobre branco 12,77:1, sobre pérola 11,82:1 e sobre névoa (fundo do `th`) 10,99:1 (mínimo 4,5:1).
 
 ```css
-.dados { display: grid; gap: 12px 24px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); margin: 0; }
-.dados dt { font-size: var(--mx-tamanho-rotulo-dado); font-weight: var(--mx-peso-rotulo-dado); color: var(--mx-cor-rotulo-destaque); text-transform: uppercase; letter-spacing: .04em; margin: 0 0 2px; }
+.dados { display: grid; gap: var(--mx-espaco-md) var(--mx-espaco-xl); grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); margin: 0; }
+.dados dt { font-size: var(--mx-tamanho-rotulo-dado); font-weight: var(--mx-peso-rotulo-dado); color: var(--mx-cor-rotulo-destaque); text-transform: uppercase; letter-spacing: var(--mx-letras-caixa-alta); margin: 0 0 2px; }
 .dados dd { font-size: var(--mx-tamanho-base); font-weight: var(--mx-peso-normal); color: var(--mx-cor-grafite); margin: 0; overflow-wrap: anywhere; min-width: 0; }
-.bloco h2 { font-size: var(--mx-tamanho-titulo-cartao); font-weight: var(--mx-peso-titulo); color: var(--mx-cor-rotulo-destaque); margin: 0 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--mx-cor-borda-tabela); }
+.bloco h2 { font-size: var(--mx-tamanho-titulo-cartao); font-weight: var(--mx-peso-titulo); color: var(--mx-cor-rotulo-destaque); margin: 0 0 var(--mx-espaco-md); padding-bottom: var(--mx-espaco-sm); border-bottom: 1px solid var(--mx-cor-borda-tabela); }
 ```
 
 ## 3. Exemplos do `/config` (dado fictício)

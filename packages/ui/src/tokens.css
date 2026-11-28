@@ -59,5 +59,12 @@
   --mx-medida-altura-campo: 34px;
   --mx-medida-altura-linha-tabela: 36px;
   --mx-medida-canto-cartao: 8px;
+  --mx-espaco-xs: 4px;
+  --mx-espaco-sm: 8px;
+  --mx-espaco-md: 12px;
+  --mx-espaco-lg: 16px;
+  --mx-espaco-xl: 24px;
+  --mx-espaco-vao-cartoes: var(--mx-espaco-md);
+  --mx-espaco-cartao: var(--mx-espaco-lg);
   --mx-letras-caixa-alta: .04em;
 }

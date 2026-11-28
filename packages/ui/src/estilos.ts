@@ -1,13 +1,13 @@
 import type { CSSProperties } from 'react';
 import type { Cor, aliasCores, escala, papeis, pesos } from './tokens.js';
-import { cores } from './tokens.js';
+import { cores, espaco } from './tokens.js';
 
 /** Cor do token da marca como `var()`; nunca literal (T-0028). */
 export const cor = (nome: Cor | keyof typeof aliasCores): string =>
   `var(--mx-cor-${nome.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)})`;
 
-/** Espaçamentos em múltiplos de 4px (a marca ainda não tem tokens de espaço; ver RD no doc de design). */
-export const espaco = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 } as const;
+/** Espaçamentos (fonte: tokens.ts, MC-0218); reexportado para os componentes. */
+export { espaco };
 
 type Kebab<S extends string> = S extends `${infer A}${infer R}` ? `${A extends Lowercase<A> ? A : `-${Lowercase<A>}`}${Kebab<R>}` : S;
 type TamanhoTexto = Kebab<keyof typeof escala | keyof typeof papeis>;

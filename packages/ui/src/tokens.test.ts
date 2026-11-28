@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { aliasCores, cores, escala, fontes, gerarCss, grade, letras, medidas, papeis, pesos, variaveisCss } from './tokens.js';
+import { aliasCores, cores, escala, espaco, fontes, gerarCss, grade, letras, medidas, papeis, papeisEspaco, pesos, variaveisCss } from './tokens.js';
 
 const css = readFileSync(new URL('./tokens.css', import.meta.url), 'utf8');
 
@@ -83,6 +83,15 @@ describe('tokens da marca', () => {
     expect(v['--mx-cor-linha-alternada']).toBe('#FBFAF8');
     expect(letras.caixaAlta).toBe('.04em');
     expect(v['--mx-letras-caixa-alta']).toBe('.04em');
+  });
+  it('espaços (MC-0218): escala de 4 px, vão entre cartões 12 e padding do cartão 16', () => {
+    expect(espaco).toEqual({ xs: 4, sm: 8, md: 12, lg: 16, xl: 24 });
+    expect(papeisEspaco).toEqual({ vaoCartoes: 'md', cartao: 'lg' });
+    const v = variaveisCss();
+    expect(v['--mx-espaco-md']).toBe('12px');
+    expect(v['--mx-espaco-lg']).toBe('16px');
+    expect(v['--mx-espaco-vao-cartoes']).toBe('var(--mx-espaco-md)');
+    expect(v['--mx-espaco-cartao']).toBe('var(--mx-espaco-lg)');
   });
   it('tokens.css é exatamente o gerado do TS', () => {
     expect(css).toBe(gerarCss());

@@ -108,7 +108,7 @@ export const pesos = {
   titulo: 700,
 } as const;
 
-/** Grade de blocos, em px: largura mínima de um cartão (quebras 390/768/1280/1440, colunas e vão de 16 px só em docs/design/telas-horizontais.md: media query não lê token). */
+/** Grade de blocos, em px: largura mínima de um cartão (quebras 390/768/1280/1440 e colunas só em docs/design/telas-horizontais.md: media query não lê token). */
 export const grade = {
   cartaoMinimo: 280,
 } as const;
@@ -118,9 +118,20 @@ export const medidas = {
   /** Campo, select, todo botão e o th. */
   alturaCampo: 34,
   alturaLinhaTabela: 36,
-  /** Cartão e diálogo. O espaço de 12 px é `espaco.md` (estilos.ts). */
+  /** Cartão e diálogo. */
   cantoCartao: 8,
 } as const;
+
+/** Espaçamentos em múltiplos de 4 px (MC-0218): `--mx-espaco-*`. */
+export const espaco = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 } as const;
+
+/** Espaço por papel (MC-0218): a tela usa o papel, não o número. */
+export const papeisEspaco = {
+  /** Vão entre cartões da grade de blocos. */
+  vaoCartoes: 'md',
+  /** Padding interno do cartão. */
+  cartao: 'lg',
+} as const satisfies Record<string, keyof typeof espaco>;
 
 /** Espaçamento de letra único da caixa-alta (MC-0211, auditoria de 27/11): th, rótulo em caixa-alta e título de bloco. */
 export const letras = {
@@ -140,6 +151,8 @@ export function variaveisCss(): Record<string, string> {
   for (const [k, x] of Object.entries(pesos)) v[`--mx-peso-${kebab(k)}`] = String(x);
   for (const [k, x] of Object.entries(grade)) v[`--mx-grade-${kebab(k)}`] = `${x}px`;
   for (const [k, x] of Object.entries(medidas)) v[`--mx-medida-${kebab(k)}`] = `${x}px`;
+  for (const [k, x] of Object.entries(espaco)) v[`--mx-espaco-${kebab(k)}`] = `${x}px`;
+  for (const [k, x] of Object.entries(papeisEspaco)) v[`--mx-espaco-${kebab(k)}`] = `var(--mx-espaco-${x})`;
   for (const [k, x] of Object.entries(letras)) v[`--mx-letras-${kebab(k)}`] = x;
   return v;
 }
