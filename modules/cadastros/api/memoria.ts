@@ -235,7 +235,15 @@ export function repositoriosEmMemoria() {
       let l = (await repoEstoque.saldos(q)).map((s) => {
         const k = `${s.filial_id}|${s.produto_id}`;
         if (!idsSaldo.has(k)) idsSaldo.set(k, randomUUID());
-        return { ...s, id: idsSaldo.get(k) as string };
+        const pr = produtos.linhas.find((x) => x.id === s.produto_id);
+        const fi = filiais.linhas.find((x) => x.id === s.filial_id);
+        const fantasia = String(fi?.nome_fantasia ?? '').trim();
+        return {
+          ...s,
+          id: idsSaldo.get(k) as string,
+          ...(pr ? { produto_codigo: String(pr.codigo), produto_descricao: String(pr.descricao) } : {}),
+          ...(fi ? { filial_nome: fantasia || String(fi.razao_social) } : {}),
+        };
       });
       if (busca) l = l.filter((s) => casa(produtos.linhas, ['codigo', 'descricao'], s.produto_id) || casa(filiais.linhas, ['razao_social', 'nome_fantasia'], s.filial_id));
       return paginar(depoisDoCursor(l, q.cursor), q.limite);

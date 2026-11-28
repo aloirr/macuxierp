@@ -18,3 +18,4 @@ export * from './zeragem';
 export * from './pre-cadastro-fdv';
 export * from './entrada';
 export * from './propagacao-cnpj';
+export * from './oficial';

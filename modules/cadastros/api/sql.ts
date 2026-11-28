@@ -10,6 +10,7 @@ import type {
 } from '../contracts';
 import { CLASSE_FORMA } from '../contracts';
 import { MOTIVO_PARCELAS_FORMA } from '../domain/condicao';
+import { limparDescricaoOficial } from '../domain/oficial';
 import type {
   FilhoGravado, RepoChaves, TabelaChave, ItemPrecoGravado, RepoCarga, RepoSubstituicao, TabelaSubstituivel, TabelaFilha, ConsultaGravada, FiltroLista, MovimentoGravado, RepoFilho, RepoOficiais, RepoSimples, Repositorios, TipoConsulta,
 } from './portas';
@@ -353,13 +354,13 @@ export function repositoriosSql(tx: Transacao): Repositorios {
     async listar(q: EstoqueConsulta): Promise<Pagina<SaldoEstoqueItem>> {
       const p: unknown[] = [];
       const par = (v: unknown) => `$${p.push(v)}`;
-      const w = filtroSaldo(q, par);
+      const w = filtroSaldo(q, par).map((c) => `e.${c}`);
       if (q.busca) {
         const b = par(`%${q.busca}%`);
-        w.push(`(produto_id IN (SELECT id FROM cadastros.produto WHERE deleted_at IS NULL AND (codigo ILIKE ${b} OR descricao ILIKE ${b})) OR filial_id IN (SELECT id FROM cadastros.filial WHERE deleted_at IS NULL AND (razao_social ILIKE ${b} OR nome_fantasia ILIKE ${b})))`);
+        w.push(`(e.produto_id IN (SELECT id FROM cadastros.produto WHERE deleted_at IS NULL AND (codigo ILIKE ${b} OR descricao ILIKE ${b})) OR e.filial_id IN (SELECT id FROM cadastros.filial WHERE deleted_at IS NULL AND (razao_social ILIKE ${b} OR nome_fantasia ILIKE ${b})))`);
       }
-      if (q.cursor) w.push(`id > ${par(q.cursor)}`);
-      const linhas = await executar<SaldoEstoqueItem>(tx, `SELECT id, filial_id, produto_id, ${N('quantidade')} FROM cadastros.estoque_saldo WHERE ${w.join(' AND ')} ORDER BY id LIMIT ${par(q.limite + 1)}`, p);
+      if (q.cursor) w.push(`e.id > ${par(q.cursor)}`);
+      const linhas = await executar<SaldoEstoqueItem>(tx, `SELECT e.id, e.filial_id, e.produto_id, e.quantidade::float8 AS quantidade, pr.codigo AS produto_codigo, pr.descricao AS produto_descricao, coalesce(nullif(btrim(fi.nome_fantasia), ''), fi.razao_social) AS filial_nome FROM cadastros.estoque_saldo e LEFT JOIN cadastros.produto pr ON pr.id = e.produto_id LEFT JOIN cadastros.filial fi ON fi.id = e.filial_id WHERE ${w.join(' AND ')} ORDER BY e.id LIMIT ${par(q.limite + 1)}`, p);
       return paginar(linhas, q.limite);
     },
     saldosDe: (filialId: string, produtoIds: readonly string[]) =>
@@ -644,13 +645,13 @@ function oficiaisSql(tx: Transacao): RepoOficiais {
       if (q.busca) w.push(`(${cfg.busca.map((c) => `o.${c} ILIKE $${p.push(`%${q.busca}%`)}`).join(' OR ')})`);
       if (q.uf && cfg.uf) w.push(`o.${cfg.uf} = $${p.push(q.uf)}`);
       if (q.tipo && cfg.tipo) w.push(`o.tipo = $${p.push(q.tipo)}`);
-      if (q.cursor) w.push(`o.id > $${p.push(q.cursor)}`);
+      if (q.cursor) w.push(`(o.codigo, o.id) > (SELECT c.codigo, c.id FROM ${cfg.tabela} c WHERE c.id = $${p.push(q.cursor)})`);
       const linhas = await executar<{ id: string } & Dict>(
         tx,
-        `SELECT o.id, ${cfg.colunas.split(', ').map((c) => `o.${c}`).join(', ')}, to_char(o.vigencia_inicio, 'YYYY-MM-DD') AS vigencia_inicio, to_char(o.vigencia_fim, 'YYYY-MM-DD') AS vigencia_fim FROM ${cfg.tabela} o WHERE ${w.join(' AND ')} ORDER BY o.id LIMIT $${p.push(q.limite + 1)}`,
+        `SELECT o.id, ${cfg.colunas.split(', ').map((c) => `o.${c}`).join(', ')}, to_char(o.vigencia_inicio, 'YYYY-MM-DD') AS vigencia_inicio, to_char(o.vigencia_fim, 'YYYY-MM-DD') AS vigencia_fim FROM ${cfg.tabela} o WHERE ${w.join(' AND ')} ORDER BY o.codigo, o.id LIMIT $${p.push(q.limite + 1)}`,
         p,
       );
-      return paginar(linhas, q.limite);
+      return paginar(linhas.map((l) => (typeof l.descricao === 'string' ? { ...l, descricao: limparDescricaoOficial(l.descricao) } : l)), q.limite);
     },
     async municipiosDaUf(uf, data) {
       return executar<{ ibge: string; nome: string }>(tx, `SELECT o.codigo AS ibge, o.nome FROM cadastros.municipio o WHERE o.uf = $1 AND ${VIGENTE('o').replaceAll('$D', '$2')}`, [uf, data]);

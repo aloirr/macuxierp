@@ -87,7 +87,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do cadastros (PostgreSQL real)', 
     expect(await a.chamar('POST', '/estoque/movimentos', { sessao: sessaoDe('faturista'), corpo: { filial_id: f.corpo.id, produto_id: prod.corpo.id, tipo: 'saida', quantidade: 20_0000, motivo: 'Venda' } })).toMatchObject({ status: 422, corpo: { codigo: 'RN-CAD-07' } });
     expect((await a.chamar('POST', '/estoque/movimentos', { sessao: adm, corpo: { filial_id: f.corpo.id, produto_id: prod.corpo.id, tipo: 'entrada', quantidade: 12_5000, motivo: 'Compra', external_id: 'm1' } })).status).toBe(200);
     const lista = (await a.chamar('GET', '/estoque', { sessao: adm })).corpo;
-    expect(lista).toEqual({ itens: [{ id: expect.any(String), filial_id: f.corpo.id, produto_id: prod.corpo.id, quantidade: 12_5000 }], proximo_cursor: null });
+    expect(lista).toEqual({ itens: [{ id: expect.any(String), filial_id: f.corpo.id, produto_id: prod.corpo.id, quantidade: 12_5000, produto_codigo: 'P001', produto_descricao: expect.any(String), filial_nome: expect.any(String) }], proximo_cursor: null });
     expect((await a.chamar('GET', '/estoque', { sessao: adm, consulta: { busca: 'refrigerante', limite: 1 } })).corpo.itens).toHaveLength(1); // D-05: busca pelo produto
     expect((await a.chamar('GET', '/estoque', { sessao: adm, consulta: { busca: 'nada-disso' } })).corpo.itens).toEqual([]);
     expect((await a.chamar('GET', '/estoque', { sessao: adm, consulta: { cursor: lista.itens[0].id } })).corpo.itens).toEqual([]);
@@ -100,6 +100,13 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do cadastros (PostgreSQL real)', 
     expect(oficiais.corpo).toMatchObject({ proximo_cursor: null, itens: [{ codigo: '1302603', nome: 'Manaus', uf: 'AM' }] });
     expect((await a.chamar('GET', '/oficiais/ncm', { sessao: adm, consulta: { busca: '22021000' } })).corpo.itens).toHaveLength(1);
     expect((await a.chamar('GET', '/oficiais/ncm', { sessao: adm, consulta: { busca: '99999999' } })).corpo.itens).toEqual([]); // o NCM vencido não aparece
+    // a lista das oficiais sai ordenada pelo código, com o cursor seguindo a mesma ordem, e sem tag HTML na descrição
+    const pg1 = (await a.chamar('GET', '/oficiais/ncm', { sessao: adm, consulta: { limite: 2 } })).corpo;
+    const pg2 = (await a.chamar('GET', '/oficiais/ncm', { sessao: adm, consulta: { limite: 2, cursor: pg1.proximo_cursor } })).corpo;
+    const codigos = [...pg1.itens, ...pg2.itens].map((i: { codigo: string }) => i.codigo);
+    expect(codigos).toEqual([...codigos].sort());
+    expect(new Set(codigos).size).toBe(codigos.length);
+    expect([...pg1.itens, ...pg2.itens].every((i: { descricao?: string }) => !/<\/?[a-z]/i.test(i.descricao ?? ''))).toBe(true);
 
     // carteira e inativação
     const v2 = await a.chamar('POST', '/vendedores', { sessao: gerente, corpo: { codigo: 'V2', nome: 'Beto', filial_id: f.corpo.id } });
