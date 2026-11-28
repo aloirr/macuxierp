@@ -14,26 +14,12 @@ import { z } from 'zod';
 import {
   EmailUsuario,
   Instante,
-  PADRAO_SLUG_EMPRESA,
   SessaoPlataformaResposta,
 } from './portal-config';
 import { SenhaInformada } from './senha';
 
 /** Rota do login único (tenant e superadmin). */
 export const CAMINHO_LOGIN = '/v1/auth/login';
-
-/**
- * @deprecated Transição da v0.3.30 (ADR 0021 §6): o login e o "esqueci" não pedem mais a empresa, e a API ignora o
- * campo. Fica só porque a apps/web ainda tem o campo (RD-2408, RD-2410, RD-2415); sai com ele. Formato do slug da 0002
- * (`PADRAO_SLUG_EMPRESA`), aparado e em maiúsculas.
- */
-export const CodigoEmpresaLogin = z
-  .string()
-  .trim()
-  .toUpperCase()
-  .refine((c) => PADRAO_SLUG_EMPRESA.test(c.toLowerCase()), 'Código da empresa inválido, ex.: AM2808');
-/** @deprecated Ver `CodigoEmpresaLogin`. */
-export type CodigoEmpresaLogin = z.infer<typeof CodigoEmpresaLogin>;
 
 /** Para onde a sessão aberta leva: o BKO da empresa ou o portal `/config` do superadmin. */
 export const DESTINOS_LOGIN = ['bko', 'config'] as const;

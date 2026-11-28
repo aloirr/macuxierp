@@ -197,11 +197,6 @@ describe('44 B e ADR 0021 §6 (RD-2404): o botão abre o login com o e-mail pree
     for (const parte of [e.texto, e.html]) expect(parte.match(/https:\/\/\S+/g)!.join(' ')).not.toContain('Segredo123');
   });
 
-  it('transição da v0.3.30: a forma antiga com o código ignora o código', () => {
-    expect(urlEntrarPreenchida('AM2808', 'a@b.co')).toBe(`${URL_MACUXI_ERP}/#email=a%40b.co`);
-    expect(urlEntrarPreenchida(null, 'a@b.co')).toBe(`${URL_MACUXI_ERP}/#email=a%40b.co`);
-  });
-
   it('ida e volta: lerPreenchimentoLogin devolve só o e-mail do link, normalizado como no login', () => {
     const url = urlEntrarPreenchida('Ana+Teste@Exemplo.invalid');
     expect(lerPreenchimentoLogin(new URL(url).hash)).toEqual({ email: 'ana+teste@exemplo.invalid' });
