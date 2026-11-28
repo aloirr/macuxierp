@@ -74,7 +74,13 @@ for (const { nome: larg, viewport } of LARGURAS_PRINT) {
     exigir((await aviso.getAttribute('role')) === 'status', 'ok: a prévia saiu como alerta');
     exigir((await aviso.innerText()).includes(esperadaOk), `ok: ${await aviso.innerText()}`);
     if (larg === '1280') {
-      await p.getByRole('button', { name: 'Salvar', exact: true }).click();
+      // O "Salvar" da ficha: o Módulos também tem um "Salvar" (#943), e o da ficha vai, por portal, para a barra do rodapé da
+      // página (regra 12), fora da <section>. É o botão de envio ligado ao formulário da ficha (atributo `form`).
+      const idForm = await p.locator('section[aria-labelledby="h-ficha"] form[aria-labelledby="h-ficha"]').getAttribute('id');
+      exigir(idForm, 'o formulário da ficha não tem id');
+      const salvar = p.locator(`button[type="submit"][form="${idForm}"]`).filter({ hasText: /^Salvar$/ });
+      exigir((await salvar.count()) === 1, `botões "Salvar" da ficha: ${await salvar.count()}`);
+      await salvar.click();
       const salvo = p.locator('[role="status"]').filter({ hasText: /Ficha salva\. Mudou:/ }).first();
       await salvo.waitFor();
       await salvo.scrollIntoViewIfNeeded();
