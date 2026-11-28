@@ -41,23 +41,25 @@ END $$;
 COMMENT ON FUNCTION plataforma.exigir_email_livre(text) IS
   'Interna (0079): 23505 email_em_uso se algum usuário não excluído, de qualquer empresa, já tem o e-mail (normalizado). T-0133.';
 
+DROP FUNCTION IF EXISTS plataforma.conta_por_email(text);
 CREATE OR REPLACE FUNCTION plataforma.conta_por_email(p_email text)
-  RETURNS TABLE (tipo text, tenant_id uuid, situacao_tenant text)
+  RETURNS TABLE (tipo text, tenant_id uuid, suspensa boolean)
   LANGUAGE sql STABLE SECURITY DEFINER
   SET search_path = pg_catalog, pg_temp
   AS $$
-  SELECT x.tipo, x.tenant_id, x.situacao_tenant FROM (
-    SELECT 'usuario'::text AS tipo, u.tenant_id, t.situacao AS situacao_tenant, 1 AS ordem
+  SELECT x.tipo, x.tenant_id, x.suspensa FROM (
+    SELECT 'usuario'::text AS tipo, u.tenant_id, t.situacao = 'suspenso' AS suspensa, 1 AS ordem
       FROM plataforma.usuario u JOIN plataforma.tenant t ON t.id = u.tenant_id
-     WHERE u.email = lower(btrim(p_email)) AND u.deleted_at IS NULL AND t.deleted_at IS NULL
+     WHERE u.email = lower(btrim(p_email)) AND u.deleted_at IS NULL
+       AND t.deleted_at IS NULL AND t.situacao IN ('ativo', 'suspenso')
     UNION ALL
-    SELECT 'superadmin', NULL, NULL, 2
+    SELECT 'superadmin', NULL, false, 2
       FROM plataforma.superadmin s
      WHERE s.email = lower(btrim(p_email)) AND s.deleted_at IS NULL
   ) x ORDER BY x.ordem
 $$;
 COMMENT ON FUNCTION plataforma.conta_por_email(text) IS
-  'Login sem o código da empresa (0079, T-0133): as contas do e-mail, o usuário da empresa antes do superadmin, só com {tipo, tenant_id, situacao_tenant} (sem hash, nome nem situação do usuário). No máximo uma de cada tipo. Para macuxierp_app.';
+  'Login sem o código da empresa (0079, T-0133, ADR 0021): as contas do e-mail, o usuário da empresa antes do superadmin, só com {tipo, tenant_id, suspensa} (sem hash, nome nem situação do usuário). Empresa encerrada, excluída ou de referência não devolve linha; ativa = suspensa false; suspensa = true; superadmin = tenant_id nulo e suspensa false. No máximo uma de cada tipo. Para macuxierp_app.';
 
 -- ---------------------------------------------------------------------------------------------------------------
 -- Criar usuário (0078) e 1º administrador (0036): o e-mail livre no sistema todo.

@@ -130,20 +130,26 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
       ).toMatch(/^[0-9a-f-]{36}$/);
     });
 
-    it('conta_por_email: usuário antes do superadmin, só tipo, tenant e situação; normaliza; excluído some', () => {
+    it('conta_por_email (ADR 0021): usuário antes do superadmin, só tipo, tenant e suspensa; encerrada sem linha; normaliza', () => {
       expect(conta(` ADM@${A.slug.toUpperCase()}.TESTE `)).toEqual([
-        { tipo: 'usuario', tenant_id: A.id, situacao_tenant: 'ativo' },
+        { tipo: 'usuario', tenant_id: A.id, suspensa: false },
       ]);
       expect(conta(SA_EMAIL)).toEqual([
-        { tipo: 'usuario', tenant_id: C.id, situacao_tenant: 'ativo' },
-        { tipo: 'superadmin', tenant_id: null, situacao_tenant: null },
+        { tipo: 'usuario', tenant_id: C.id, suspensa: false },
+        { tipo: 'superadmin', tenant_id: null, suspensa: false },
       ]);
       expect(conta('ninguem@nada.teste')).toEqual([]);
+      // Suspensa = true; encerrada não devolve linha (ADR 0021).
+      executar(banco.conexao, `UPDATE plataforma.tenant SET situacao = 'suspenso' WHERE id = '${A.id}';`);
+      expect(conta(`adm@${A.slug}.teste`)).toEqual([{ tipo: 'usuario', tenant_id: A.id, suspensa: true }]);
+      executar(banco.conexao, `UPDATE plataforma.tenant SET situacao = 'encerrado' WHERE id = '${A.id}';`);
+      expect(conta(`adm@${A.slug}.teste`)).toEqual([]);
+      executar(banco.conexao, `UPDATE plataforma.tenant SET situacao = 'ativo' WHERE id = '${A.id}';`);
       const [def] = consultar<{ colunas: string }>(
         banco.conexao,
         `SELECT pg_get_function_result('${CONTA}'::regprocedure) AS colunas`,
       );
-      expect(def?.colunas).toBe('TABLE(tipo text, tenant_id uuid, situacao_tenant text)');
+      expect(def?.colunas).toBe('TABLE(tipo text, tenant_id uuid, suspensa boolean)');
     });
 
     it('a checagem aborta sem mudar nada quando há e-mail repetido, e só mostra a contagem', () => {
