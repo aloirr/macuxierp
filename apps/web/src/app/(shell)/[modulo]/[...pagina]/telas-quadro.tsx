@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
-import { quadroEmpresaFiscal } from '@macuxierp/core/web';
+import { fichaEmpresa, quadroEmpresaFiscal } from '@macuxierp/core/web';
 import { Empresa, ListaAmbientes, PerfilComAcoes } from '@macuxierp/core/contracts';
 import { ConfiguracaoFilialResposta } from '@macuxierp/faturamento/contracts';
 import { urlDaConfiguracaoDaFilial } from '@macuxierp/faturamento/web';
@@ -11,7 +11,7 @@ import { RespostaFonte, opcoesDaResposta } from '@/lib/descritor/fontes';
 import { cartoesDaBandeira } from '@/lib/telas/bandeira';
 import { ambientesComPadrao } from '@/lib/telas/ambiente';
 import { matrizDePerfis } from '@/lib/telas/core';
-import { VistaAmbienteFiscal, VistaPerfis } from '@/components/core/vistas';
+import { VistaAmbienteFiscal, VistaEmpresa, VistaPerfis } from '@/components/core/vistas';
 import { VistaBandeira } from '@/components/faturamento/vista-bandeira';
 import { TEXTO_SEM_PERMISSAO } from '@/lib/telas/comum';
 import { FalhaIndisponivel } from '@/components/falha-indisponivel';
@@ -62,6 +62,20 @@ export async function TelaAmbienteFiscal({ acesso, perfil }: { acesso: string; p
       nomesDasFiliais(acesso, perfil),
     ]);
     return <VistaAmbienteFiscal quadro={quadroEmpresaFiscal(empresa, ambientesComPadrao(ambientes.itens, Object.keys(nomes)), nomes)} />;
+  } catch (e) {
+    return falhaDoQuadro(e);
+  }
+}
+
+/** Empresa (T-0125): dados da empresa e o Ambiente fiscal na mesma página, pela `fichaEmpresa()` do core. */
+export async function TelaEmpresa({ acesso, perfil }: { acesso: string; perfil: Perfil }) {
+  try {
+    const [empresa, ambientes, nomes] = await Promise.all([
+      getValidado('/v1/core/empresa', Empresa, acesso, 'empresa', true),
+      getValidado('/v1/core/ambientes-fiscais', ListaAmbientes, acesso, 'ambientes', true),
+      nomesDasFiliais(acesso, perfil),
+    ]);
+    return <VistaEmpresa ficha={fichaEmpresa(empresa, ambientesComPadrao(ambientes.itens, Object.keys(nomes)), nomes)} />;
   } catch (e) {
     return falhaDoQuadro(e);
   }

@@ -162,6 +162,8 @@ export interface AcaoVista {
   ambiente?: { texto: string; tom: 'neutro' | 'alerta' | 'ok' | 'erro' };
   /** Limites do texto (cancelar, CC-e, inutilizar): mostra o contador do módulo abaixo do campo. */
   limitesTexto?: { min: number; max: number };
+  /** Ação que só navega (ex.: "Editar" abre a tela de edição): o clique leva a esta rota, sem diálogo nem escrita. */
+  rota?: string;
   /** Botão visível porém desabilitado, com o motivo (ex.: aprovar com pendência bloqueante). */
   desabilitada?: string;
   /** Ação principal da tela (uma só): as demais saem como botão secundário. */
@@ -243,6 +245,8 @@ export interface CampoFormulario {
   ajuda?: string;
   /** Largura do campo na grade de 12 colunas do formulário (regra 11). Ausente = a heurística de larguraDoCampo. */
   colunas?: ColunasCampo;
+  /** Largura que depende do que foi digitado (ex.: IPI da Filial ocupa 6 com CRT ≠ 3, quando o vizinho some); sem ela vale `colunas`. Roda no navegador a cada digitação. */
+  colunasSe?: (valores: Readonly<Record<string, string>>) => ColunasCampo;
   /** Começa linha nova na grade (coluna 1), mesmo que a linha anterior tenha sobra (ex.: CEP quando o PIS/COFINS some). Ausente = segue o fluxo. */
   inicioLinha?: boolean;
   /** Mostra o campo só quando a condição vale (ex.: regime de PIS/COFINS só com CRT 3). É função: roda no navegador, nunca atravessa do servidor como dado. */
@@ -268,6 +272,8 @@ export interface TelaFormulario {
     erroItem?: (item: ItemLinha) => string | null;
     /** Linha da tela para o texto que o módulo valida. */
     paraTexto: (item: ItemLinha) => ItemFormulario;
+    /** Inverso de `paraTexto`: linha da tela a partir do texto do módulo (abre a edição com os itens preenchidos). */
+    daTexto?: (item: ItemFormulario, chave: string) => ItemLinha;
     formatarCentavos: (centavos: number) => string;
     /** Total do pedido já formatado, pela regra do módulo, mostrado acima do botão de envio. */
     totalTexto?: (itens: readonly ItemFormulario[]) => string;
@@ -278,12 +284,23 @@ export interface TelaFormulario {
   validar: (valores: ValoresFormulario, itens: readonly ItemFormulario[], perfil?: Perfil) => ErrosFormulario;
   /** Corpo do POST, a partir dos valores. */
   montar: (valores: ValoresFormulario, itens: readonly ItemFormulario[], perfil?: Perfil) => unknown;
-  /** Edição do registro (`PATCH` em `api/:id`): a tela abre com os valores do registro e envia só o que mudou. Ausente = formulário de criação. */
+  /**
+   * Edição do registro em `api/:id`: a tela abre com os valores do registro. Por padrão envia `PATCH` só com o que mudou; com
+   * `metodo: 'PUT'` envia o corpo inteiro de `montar`, com `If-Match` = `versao` do registro aberto. Ausente = formulário de criação.
+   */
   edicao?: {
+    /** Padrão `PATCH`. `PUT` troca o corpo inteiro (de `montar`) e leva a `versao` no `If-Match`. */
+    metodo?: 'PATCH' | 'PUT';
+    /** Rota para onde Cancelar volta, a partir do id; ausente = `voltar`. */
+    voltarPara?: (id: string) => string;
+    /** Texto do botão que recarrega o registro quando a versão ficou velha (`falha(...).recarregar`). */
+    rotuloRecarregar?: string;
+    /** Falha do envio em texto para a tela e se ela oferece recarregar. Ausente = a mensagem da API. */
+    falha?: (r: { status?: number; codigo?: string; mensagem: string; desatualizado?: boolean }) => { mensagem: string; recarregar: boolean };
     /** Caminho GET do registro. */
     ler: (id: string) => string;
     /** Valores iniciais e o registro original (para o diff), a partir da resposta da API. */
-    abrir: (corpo: unknown) => { valores: ValoresFormulario; original: unknown };
+    abrir: (corpo: unknown) => { valores: ValoresFormulario; original: unknown; /** `If-Match` do `PUT`. */ versao?: string; /** Itens do registro, em texto do módulo. */ itens?: readonly ItemFormulario[] };
     /** Corpo do PATCH com só o que mudou; `null` = nada mudou (nada a enviar). */
     montarPatch: (valores: ValoresFormulario, original: unknown, perfil: Perfil) => unknown | null;
   };

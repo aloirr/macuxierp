@@ -11,14 +11,14 @@ import { TelaGenerica } from '@/components/descritor/tela-generica';
 import { TelaIntegracaoFdv } from './tela-integracao-fdv';
 import { PAGINAS_INTEGRACAO_FDV } from '@macuxierp/integracao-fdv/web';
 import { ROTA_BANDEIRA } from '@/lib/telas/bandeira';
-import { ROTA_AMBIENTE_FISCAL, ROTA_PERFIS } from '@/lib/telas/core';
+import { ROTA_AMBIENTE_FISCAL, ROTA_EMPRESA, ROTA_PERFIS } from '@/lib/telas/core';
 import { ROTA_ITENS_PRECO, rotaDosItens } from '@/lib/telas/cadastros-outros/itens-preco';
 import { ROTA_TABELA_PRECO } from '@macuxierp/cadastros/web';
 import { TelaItensPreco } from '@/components/cadastros-outros/itens-preco';
-import { TelaAmbienteFiscal, TelaBandeira, TelaPerfis } from './telas-quadro';
+import { TelaAmbienteFiscal, TelaBandeira, TelaEmpresa, TelaPerfis } from './telas-quadro';
 
 /** Páginas que têm componente próprio (não passam pelo renderizador genérico nem mostram "Disponível em breve"). */
-const QUADROS: ReadonlySet<string> = new Set([ROTA_PERFIS, ROTA_AMBIENTE_FISCAL, ROTA_BANDEIRA, ROTA_ITENS_PRECO]);
+const QUADROS: ReadonlySet<string> = new Set([ROTA_PERFIS, ROTA_EMPRESA, ROTA_AMBIENTE_FISCAL, ROTA_BANDEIRA, ROTA_ITENS_PRECO]);
 
 /** Título da aba do navegador: o mesmo da página (e do botão da seção), não o nome do item de menu. */
 export async function generateMetadata({ params }: { params: Promise<{ modulo: string; pagina: string[] }> }): Promise<Metadata> {
@@ -69,6 +69,7 @@ export default async function PaginaDoModulo({ params, searchParams }: { params:
       )}
       {/* Quadros com componente próprio (T-0087, T-0088): só leitura, exceto a bandeira (Ligar/Desligar do administrador, pelo executor do quadro). */}
       {declarada?.rota === ROTA_PERFIS && <TelaPerfis acesso={acesso} />}
+      {declarada?.rota === ROTA_EMPRESA && <TelaEmpresa acesso={acesso} perfil={perfil} />}
       {declarada?.rota === ROTA_AMBIENTE_FISCAL && <TelaAmbienteFiscal acesso={acesso} perfil={perfil} />}
       {declarada?.rota === ROTA_ITENS_PRECO && <TelaItensPreco id={resolvida.params?.id ?? ''} rota={rota} busca={busca} perfil={perfil} acesso={acesso} />}
       {/* Itens de preço (T-0123, lote C): a barra do rodapé da tabela leva à grade (a ação fica junto das demais da página). */}

@@ -7,7 +7,7 @@ import { recomecarLista } from '@macuxierp/platform-sdk/listas';
 import type { TelaDescrita } from '@/lib/descritor/tipos';
 import { z } from 'zod';
 import { DetalheGenerico } from './detalhe-generico';
-import { FormularioGenerico } from './formulario-generico';
+import { FormularioGenerico, type Aberto } from './formulario-generico';
 import { ListaGenerica } from './lista-generica';
 import { TEXTO_SEM_PERMISSAO } from '@/lib/telas/comum';
 import { FalhaIndisponivel } from '@/components/falha-indisponivel';
@@ -60,7 +60,7 @@ export async function TelaGenerica({ tela, titulo, rotaDaPagina, rota, params, b
     const todos = tela.camposDoPerfil?.(perfil) ?? tela.campos;
     const campos = todos.filter((c) => c.tipo === 'cadastro' && c.fonte);
     // Edição: abre com o registro (valores iniciais e original para o diff do PATCH); sem registro, 404.
-    let aberto: { valores: Readonly<Record<string, string>>; original: unknown; id: string } | undefined;
+    let aberto: Aberto | undefined;
     if (tela.edicao) {
       const id = params.id ?? '';
       if (!UUID.safeParse(id).success) notFound();
@@ -76,7 +76,7 @@ export async function TelaGenerica({ tela, titulo, rotaDaPagina, rota, params, b
       Promise.all(campos.map((c) => opcoes(c.fonte ?? '', acesso, perfil))),
       tela.itens ? opcoes(tela.itens.fonte, acesso, perfil) : Promise.resolve([]),
     ]);
-    return <FormularioGenerico rota={rotaDaPagina} opcoes={Object.fromEntries(campos.map((c, i) => [c.nome, listas[i] ?? []]))} produtos={produtos} perfil={perfil} campos={todos.map(({ mostrarSe: _m, ...c }) => c)} aberto={aberto} />;
+    return <FormularioGenerico rota={rotaDaPagina} opcoes={Object.fromEntries(campos.map((c, i) => [c.nome, listas[i] ?? []]))} produtos={produtos} perfil={perfil} campos={todos.map(({ mostrarSe: _m, colunasSe: _c, ...c }) => c)} aberto={aberto} />;
   } catch (e) {
     if (e instanceof NaoAutenticado) redirect('/sessao/renovar');
     if (e instanceof TrocarSenhaPendente) redirect(ROTA_SENHA);

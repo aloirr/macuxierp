@@ -5,6 +5,7 @@
 - **Dono:** engenheiro-software
 - **Tarefa:** T-0050, etapa E1 da v0.3.0 (caminho crítico): libera o banco-dados (E2, migração 0033) e o modulo-core (E3)
 - **Base:** decisões do PO e do Alexandre de 22 e 23/11/2026 retransmitidas pelo gerente-projetos (portal em `/config` no mesmo domínio, com login, sessão e cookie próprios; superadmin como identidade de plataforma, fora dos tenants, sem impersonação; MFA/TOTP na versão seguinte; 1º superadmin pelo `operador.sh`); `CLAUDE.md` (regras 1, 3, 5, 6, 8 e 9); RN-CORE-01, RN-CORE-02 e RN-CORE-09 (`docs/produto/03`); RF-CAD-11 (`docs/produto/02`); desenho T-0002 (D1, D2, D12); `db/migrations/0002_plataforma.sql` (`plataforma.tenant`, `tenant_modulo`, `usuario`, `sessao`, `auditoria`, `tenant_por_slug`); `scripts/deploy/producao/operador.sh` e `empresa.mjs` (`criar-empresa`, T-0024); `scripts/plataforma/licenca.mjs` (D12).
+- **Emendada em:** 26/11 (§6), 27/11 (§1-A) e 28/11 (§7-A: TOTP obrigatório e papel `macuxierp_config` com login próprio, T-0090).
 - **Muda:** o D12 da T-0002 (licença só pelo script do operador) ganha um segundo caminho, o portal, com a mesma auditoria. O script continua valendo.
 
 ## Contexto
@@ -159,6 +160,8 @@ A identidade e as rotas de plataforma não são de módulo: ficam fora do `/v1/<
 - Log pino com `request_id` e `superadmin_id` (depois do login), nunca e-mail, senha, cookie ou token (a redação de `cookie` e `set-cookie` já existe na apps/api).
 
 ### 7. TOTP (versão seguinte, só o encaixe)
+> Substituída pela "Emenda §7-A" (28/11/2026, T-0090), no fim desta ADR. O texto abaixo fica como histórico.
+
 Nada disso entra na 0033 nem no código da v0.3.0:
 - **Colunas** (migração da versão seguinte) em `plataforma.superadmin`: `totp_segredo_cifrado bytea` (AES-256-GCM pelo `cifra.ts` do SDK, com chave própria `MACUXIERP_CHAVE_TOTP` no secret do servidor, nunca a do A1), `totp_ativado_em timestamptz`, `totp_ultimo_passo bigint` (anti-reuso do mesmo código) e `recuperacao_hashes text[]` (10 códigos de uso único, argon2id). Em `plataforma.sessao_superadmin`: `segundo_fator_em timestamptz`.
 - **Login em dois passos:** `entrar` com senha certa e TOTP ativo abre a sessão com `segundo_fator_em` nulo; só `POST /v1/plataforma/auth/segundo-fator` (código de 6 dígitos ou de recuperação) e `sair` respondem até ele ser preenchido. O `exigir_superadmin()` passa a exigir `segundo_fator_em` quando `totp_ativado_em` não é nulo. As falhas do segundo fator contam na mesma trava da seção 6.
@@ -229,3 +232,122 @@ Pedido do Alexandre, pelo PO, em 26/11 às 21h21: "quando eu clicar em esquecer 
   - desativar o superadmin ou revogar a sessão do BKO corta o caminho na hora.
   Sair do BKO **não** derruba a sessão do `/config` já aberta (ela vence pelo próprio teto ou pelo "Sair" do portal).
 - **Versão seguinte:** com o TOTP (§7), este caminho passa a pedir o segundo fator. Exigir uma sessão do BKO recente (login há menos de N minutos) fica junto com o TOTP.
+
+## Emenda §7-A (28/11/2026, 07h20, Manaus): TOTP obrigatório e papel `macuxierp_config` com login próprio (decisão 130 A, T-0090, v0.3.32)
+
+- **Base:** decisão 130 do Alexandre (28/11, ~05h50, R-20261128-054925-gerente-projetos): "130 · Macuxi ERP, MFA do superadmin (T-0090): A (vai para a v0.3.32 e entra assim que a senha do papel macuxierp_config existir)". Também a T-0090 (critérios 1 a 4) e a "Correção" do "Risco aberto (decisão do PO, 23/11)", obrigatória antes da 2ª empresa.
+- **Substitui:** a §7 ("só o encaixe"). Muda também a §4, para o papel com login próprio, e a §1-A, que passa a pedir o segundo fator. A "sessão do BKO recente" da §1-A continua fora: o segundo fator já cobre o roubo da sessão do BKO.
+- **Banco:** migração **0084** (banco-dados), reservada pelo gerente. Ela depende só da 0033 e da 0076 e é independente da 0083 (planos, ADR 0022).
+
+### 1. Um interruptor só: a senha do papel
+- O que liga tudo é a **`MACUXIERP_SENHA_CONFIG`** (64 hex), no `/opt/macuxierp/.env` da VM. **Só o Alexandre a cria**, à mão na VM (regra 9). O `preparar-vm.sh` nunca a gera nem a regrava, e ela nunca vai para o git, recado, chat ou log. O `env.modelo` lista só o nome.
+- **Sem a variável**, que é o padrão e o estado de hoje:
+  - a API segue como hoje: `SET LOCAL ROLE macuxierp_config` a partir do pool do `macuxierp_app`, dentro de `comPlataforma`;
+  - o TOTP fica desligado;
+  - as colunas da 0084 existem, mas ninguém as exige.
+- **Com a variável:**
+  - o `banco.sh` aplica a senha ao papel, como faz com os outros (verificador SCRAM), e confere o login;
+  - o compose entrega a senha só à api;
+  - a API abre um **segundo pool**, `criarPool('macuxierp-api-config')`, com `PGUSER=macuxierp_config`, e confere na partida (`conferirPapel('macuxierp_config')`, sem superusuário e sem BYPASSRLS);
+  - o `BancoPlataformaPg` passa a usar esse pool **sem `SET ROLE`**;
+  - o TOTP passa a ser obrigatório no `/config` (regra pela decisão 130 A do Alexandre; regra d da ADR 0022).
+- **Falha cedo:** com a `MACUXIERP_SENHA_CONFIG` e sem a `MACUXIERP_CHAVE_TOTP`, a API não sobe. O aviso cita só o nome da variável (T-0076).
+- **Chave do segredo TOTP:** é a `MACUXIERP_CHAVE_TOTP` (32 bytes, hex ou base64), gerada na VM pelo `preparar-vm.sh` se faltar e nunca trocada, como a `MACUXIERP_CHAVE_INTEGRACAO`. É separada da chave do A1 e da chave da integração: nunca reaproveitar.
+- **A membership sai depois:** o `GRANT macuxierp_config TO macuxierp_app` da 0033 só pode ser revogado depois de a produção rodar com o pool próprio. Revogar antes quebraria o `/config` enquanto a senha não existe. A revogação é a migração **0087** (banco-dados, reservada pelo gerente). Ela entra só depois disso, e é ela que fecha o "Risco aberto". Até ela entrar, vale a regra de operação de não criar a 2ª empresa (Risco aberto).
+
+### 2. Colunas e funções (0084)
+**Papel:** `ALTER ROLE macuxierp_config LOGIN`, sem senha na migração.
+- Sem senha, nenhum login por senha passa (pg_hba do DBaaS com SCRAM).
+- O papel continua sem BYPASSRLS, sem CREATEROLE e sem nenhum GRANT em tabela.
+- O papel ganha `CONNECT` no banco do ERP e `USAGE` no schema `plataforma`, e nada além disso.
+- Os EXECUTE são só os da lista fechada.
+
+**Em `plataforma.superadmin`** (sem GRANT de papel nenhum, como na 0033):
+
+| Coluna | O que guarda |
+|---|---|
+| `totp_segredo_cifrado bytea` | o segredo de 20 bytes, AES-256-GCM pelo `cifra.ts` do SDK com a `MACUXIERP_CHAVE_TOTP`. **Nunca em claro** no banco, no log ou na tela depois do cadastro |
+| `totp_ativado_em timestamptz` | quando o cadastro foi confirmado com um código certo; nulo = sem TOTP |
+| `totp_ultimo_passo bigint` | o último passo de 30 s aceito, para o mesmo código não valer duas vezes |
+| `totp_falhas integer NOT NULL DEFAULT 0 CHECK (>= 0)` | as falhas seguidas do segundo fator (§4) |
+| `recuperacao_hashes text[]` | 10 códigos de recuperação, **só o hash argon2id** de cada um; o código usado sai do array |
+
+**Em `plataforma.sessao_superadmin`:** `segundo_fator_em timestamptz`.
+
+**`exigir_superadmin()`**, com a sessão "sim", passa a recusar com `MXS01`:
+- a sessão com `segundo_fator_em` nulo de superadmin que tem TOTP ativo;
+- a sessão de superadmin sem TOTP ativo quando o TOTP é obrigatório.
+
+O "obrigatório" chega ao banco pela configuração local `macuxierp.totp_obrigatorio = 'on'`, que a API põe em `comPlataforma` e `antesDaSessao` só quando o pool próprio está ligado. Assim o banco não lê variável de ambiente, e a 0084 aplicada sem a senha não muda nada.
+
+**Funções novas da lista fechada** (§4; `SECURITY DEFINER`, `SET search_path = pg_catalog, pg_temp`, `REVOKE ALL ... FROM PUBLIC`, EXECUTE só do `macuxierp_config`). Elas criam uma classe nova de sessão, **"fator"**: sessão válida, com a senha conferida e o segundo fator pendente.
+
+| Função | Sessão | O que faz |
+|---|---|---|
+| `superadmin_totp_para_conferir()` | fator | o `totp_segredo_cifrado`, o `totp_ultimo_passo` e os `recuperacao_hashes` do superadmin da sessão corrente, e só dele |
+| `superadmin_totp_confirmar(passo)` | fator | o código certo: grava `segundo_fator_em`, zera `totp_falhas` e avança `totp_ultimo_passo`. Um passo igual ou anterior ao último é recusado com 22023 `CODIGO_REUSADO` |
+| `superadmin_totp_registrar_falha()` | fator | soma 1 em `totp_falhas`; na 5ª falha seguida, bloqueia a conta e revoga a sessão (§4) |
+| `superadmin_recuperacao_usar(indice)` | fator | tira do array o hash que a API conferiu, grava `segundo_fator_em` e zera `totp_falhas` |
+| `superadmin_totp_cadastrar(segredo_cifrado)` | fator | só sem TOTP ativo: grava o segredo pendente, que substitui um pendente anterior |
+| `superadmin_totp_ativar(passo, recuperacao_hashes)` | fator | confere que há segredo pendente, grava `totp_ativado_em`, o passo, os 10 hashes e `segundo_fator_em` |
+
+Mais duas mudanças:
+- `superadmin_abrir_sessao` e `superadmin_abrir_sessao_pelo_bko` abrem a sessão com `segundo_fator_em` nulo;
+- `superadmin_sessao_por_token` devolve também `segundo_fator_pendente` e `totp_ativo`, para a API escolher a tela.
+
+Cada função que muda estado grava a auditoria na mesma transação:
+- `plataforma.superadmin.totp_ativar`;
+- `.segundo_fator`, com `depois = {meio: 'totp' | 'recuperacao', recuperacao_restantes}`;
+- `.segundo_fator_falha`;
+- `.totp_zerar`.
+
+A auditoria nunca leva o código, o segredo ou o hash (regra 8).
+
+### 3. Fluxo e rotas (`/v1/plataforma/auth/*`)
+- **Entrar** (senha, pela tela única, ou pelo BKO, §1-A): a sessão abre com o segundo fator pendente. A resposta traz `proximo_passo`:
+  - `segundo_fator` quando há TOTP;
+  - `cadastrar_totp` quando não há TOTP e ele é obrigatório;
+  - `trocar_senha`, que vem antes dos dois.
+  Com a sessão "fator", só `sair` e as rotas abaixo respondem; o resto dá 401.
+- **`POST /segundo-fator`** `{ codigo }`:
+  - 6 dígitos: TOTP do RFC 6238 (HMAC-SHA1, passo de 30 s, janela de ±1 passo);
+  - 18 caracteres: código de recuperação (alfabeto do `senha-temporaria.ts`, RN-CORE-10).
+  O código errado dá 401 com a mensagem única "Código inválido.", conta a falha (§4) e soma no limite por IP (emenda de 26/11).
+- **`POST /totp/cadastro`:** gera o segredo com `crypto.randomBytes(20)`, cifra, grava pela `superadmin_totp_cadastrar` e devolve **uma vez só** a chave em base32 e a URI `otpauth://totp/Macuxi%20ERP?secret=…&issuer=Macuxi%20ERP`. A URI não leva o e-mail (LGPD).
+- **`POST /totp/ativar`** `{ codigo }`:
+  - confere o código contra o segredo pendente;
+  - gera os 10 códigos de recuperação, grava só os hashes argon2id e devolve os códigos **uma vez só**;
+  - a resposta vai com `Cache-Control: no-store`, como a senha provisória.
+- **TOTP no SDK:** a conta do RFC 6238 vira uma função pura no SDK (`totp.ts`, com o HMAC injetado), com os vetores de teste do apêndice B do RFC. O HMAC vem do `node:crypto` na API. **Nenhuma dependência nova no SDK nem na API.**
+- **QR code:** a apps/web desenha o QR a partir da URI. Se precisar de biblioteca, o pedido vem ao engenheiro-software antes, com o nome, o tamanho e a licença. Sem ela, a tela mostra só a chave para digitar no app.
+- **Log:** nunca o código, o segredo, a URI, a chave base32 ou os códigos de recuperação. A redação do pino ganha `codigo`, `segredo`, `otpauth` e `recuperacao`.
+
+### 4. Contagem de falhas
+- **Por conta:** `totp_falhas` conta só as falhas do segundo fator. São 5 seguidas, o mesmo `maxFalhas` do login.
+  - Na 5ª, a função bloqueia a conta sem prazo (`bloqueado_ate` = `BLOQUEIO_SEM_PRAZO`, emenda de 26/11) e revoga a sessão "fator". A resposta é 423 `CONTA_BLOQUEADA`, com o aviso da RN-CORE-15.
+  - O acerto zera `totp_falhas`.
+  - A falha de senha continua em `falhas_login`, como hoje. Os dois contadores não se somam, para que um erro de digitação do código não roube a conta de quem errou a senha uma vez.
+- **Saída do bloqueio:**
+  - a senha temporária (RN-CORE-13) desbloqueia a **senha**: zera `falhas_login`, `totp_falhas` e a trava, mas a sessão que ela abre continua pedindo o segundo fator. **A temporária nunca dispensa o TOTP**;
+  - o `operador.sh superadmin --destravar` também zera os dois contadores.
+- **Por IP:** a falha do segundo fator conta no limite por IP de 10 em 15 min (429 `MUITAS_TENTATIVAS`).
+- **Recuperação perdida:** `operador.sh superadmin --email … --zerar-totp --operador … [--confirmar]`, no molde do `--destravar`. Ele zera o segredo, `totp_ativado_em`, os hashes e `totp_falhas` e revoga as sessões; no próximo login, o superadmin cadastra de novo. É auditado (`plataforma.superadmin.totp_zerar`) e fica fora do `ACOES_PLATAFORMA`.
+
+### 5. Quem faz o quê (para o gerente disparar)
+Ordem: E1 → E2 (banco) → E3 (API, core e operador) → E4 (telas) → E5 (testes, corretor e revisão).
+
+| Etapa | Dono | Entrega | Pronto quando |
+|---|---|---|---|
+| E1 | engenheiro-software | esta emenda | merge no `main` |
+| E2 | banco-dados | migração **0084**: o `LOGIN` do papel (sem senha), `CONNECT` e `USAGE`; as colunas do §2; `exigir_superadmin()` com o segundo fator e o `macuxierp.totp_obrigatorio`; as seis funções novas e as três alteradas; a auditoria. `db/testes/superadmin-totp-0084.db.test.ts` prova: o papel tem LOGIN, não tem BYPASSRLS nem GRANT em tabela; o EXECUTE das funções novas é só do `macuxierp_config`; a sessão "fator" não passa no `exigir_superadmin()`; o passo repetido é recusado; a 5ª falha bloqueia e revoga; o código de recuperação vale uma vez; e, sem `totp_obrigatorio`, nada muda para o superadmin sem TOTP | testes de banco verdes com `MACUXI_PG_EXIGIR=1` |
+| E3 | engenheiro-software | SDK: `totp.ts` (função pura, vetores do RFC) e os contratos das rotas do §3 em `plataforma-rotas.ts`, depois do PR do SDK em andamento (T-0129). apps/api: o segundo pool atrás da `MACUXIERP_SENHA_CONFIG`, a falha cedo sem a `MACUXIERP_CHAVE_TOTP`, as rotas do §3, a redação do pino e o `erros.ts`. Deploy: `env.modelo`, `banco.sh` (aplicar e conferir a senha só se ela existir), `compose.yml` (só a api) e `preparar-vm.sh` (a chave TOTP). `operador.sh superadmin --zerar-totp`. Revisão final | unitários e de banco da API verdes; `deploy-operador.test.ts` verde |
+| E3 | modulo-core | o plugin de plataforma: nenhuma rota de empresa responde com a sessão "fator" (teste citando RN-CORE-12); o `entrar_pelo_bko` devolve o `proximo_passo` | testes do core verdes |
+| E4 | engenheiro-apps | `/config`: as telas "Código de verificação" (6 dígitos, com o link "Usar um código de recuperação"), "Cadastrar o autenticador" (QR ou chave, e o código para confirmar) e "Códigos de recuperação" (mostrados uma vez, com "Copiar" e "Já guardei"), seguindo o `proximo_passo` também na entrada pelo BKO. Os textos vêm do designer-ux. Grade de 12 colunas, tokens do `packages/ui`, botões no rodapé (regras 11 e 12); prints em 1366 e 1920 px | prints validados pelo `design-de-marca` |
+| E5 | testes, corretor-redundancias e engenheiro-software | `tests/`: sem TOTP não entra (critério 1); a recuperação vale uma vez (critério 2); o papel só alcança as funções do portal (critério 3); a temporária não dispensa o TOTP; nada de código ou segredo em log | suíte verde; revisão sem 🔴 |
+| E6 (depois da produção com o pool próprio) | banco-dados | migração **0087**: `REVOKE macuxierp_config FROM macuxierp_app`; o teste (a) de `db/testes/superadmin-0033.db.test.ts` passa a provar que o `macuxierp_app` **não** consegue `SET ROLE macuxierp_config`. A API sem `MACUXIERP_SENHA_CONFIG` deixa de abrir o `/config`, e isso fica escrito na nota da versão | testes de banco verdes; a produção já rodando com o pool próprio |
+
+**Do Alexandre, depois do deploy da v0.3.32:**
+1. Criar a `MACUXIERP_SENHA_CONFIG` na VM (64 hex, `openssl rand -hex 32`) e reiniciar a api.
+2. Cadastrar o autenticador no primeiro login do `/config`.
+
+Até a variável existir, o `/config` funciona como hoje (decisão 130 A). O critério 4 da T-0090 ("pronto antes da 2ª empresa") só fecha com a variável criada e com a 0087, que revoga a membership.
