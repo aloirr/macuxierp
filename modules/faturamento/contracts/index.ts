@@ -13,6 +13,7 @@ export const TenantId = z.string().uuid();
 /** Tipos de campo vindos de cadastros (o faturamento já depende dele). */
 export { Centavos, Qtd4, Uuid } from '@macuxierp/cadastros/contracts';
 import { Centavos, Qtd4, Uuid } from '@macuxierp/cadastros/contracts';
+import { ImpostoCalculado, RegraAplicada, TotalImpostoCalculado } from '@macuxierp/fiscal/contracts';
 
 export const Ambiente = z.enum(['homologacao', 'producao']);
 export type Ambiente = z.infer<typeof Ambiente>;
@@ -67,6 +68,10 @@ export const ItemNotaEvento = z.object({
   valor_centavos: Centavos,
   produto_id: Uuid.optional(),
   filial_id: Uuid.optional(),
+  /** RN-FIS-05 (aditivo no @1): ICMS-ST e IPI do item por regra do fiscal. Omitidos sem regra; 0 só com regra. O XML da NF-e não os usa (segue o Manual, com 0). */
+  regra_aplicada: RegraAplicada.optional(),
+  calc_st: ImpostoCalculado.optional(),
+  calc_ipi: ImpostoCalculado.optional(),
 });
 export type ItemNotaEvento = z.infer<typeof ItemNotaEvento>;
 
@@ -81,6 +86,8 @@ const BaseEventoNota = z.object({
   itens: z.array(ItemNotaEvento).min(1),
   vendedor_id: Uuid.nullable(),
   quantidade_itens: z.number().int().min(1),
+  /** RN-FIS-05 (aditivo no @1): total de ST e de IPI da nota; cada um só se TODOS os itens têm regra; sem nenhum, `totais` é omitido. */
+  totais: z.object({ calc_st: TotalImpostoCalculado.optional(), calc_ipi: TotalImpostoCalculado.optional() }).optional(),
   /** Acréscimo opcional: `true` só quando a filial liga "faturamento real com NF-e simulada" e a nota é de homologação (o FDV a conta como faturamento real). Ausente = como sempre. */
   conta_como_real: z.boolean().optional(),
 });

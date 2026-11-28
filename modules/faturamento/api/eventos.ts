@@ -2,24 +2,28 @@
  * Quem chama a SEFAZ é o worker (`processador-eventos.ts`); o fluxo está em docs/modulos/faturamento/eventos.md. */
 import { violacao, type Transacao, type Violacao } from '@macuxierp/platform-sdk';
 import type { CancelarNotaEntrada, CartaCorrecaoEntrada, InutilizarEntrada } from '../contracts';
-import { avisosCartaCorrecao, instanteManaus, proximaSequenciaCce, validarCancelamento, validarCartaCorrecao, validarInutilizacao, type AvisoCartaCorrecao } from '../domain';
+import { avisosCartaCorrecao, instanteManaus, proximaSequenciaCce, totaisImpostosEvento, validarCancelamento, validarCartaCorrecao, validarInutilizacao, type AvisoCartaCorrecao } from '../domain';
 import type { AmbienteFiscalDaFilial, ConsultaA1Ativo, ConsultaCadastrosFaturamento, EventoRegistro, InutilizacaoRegistro, NotaRegistro, RepositorioEventos } from './portas';
 
 export const EVENTO_NOTA_CANCELADA = 'faturamento.nota.cancelada@1' as const;
 
 /** Base dos payloads de `nota.*@1` (agregado = nota.id): pedido, ambiente, nota, itens e vendedor. */
-export const baseEventoDaNota = (n: NotaRegistro, protocolo: string | null, comoReal = false): Record<string, unknown> => ({
+export const baseEventoDaNota = (n: NotaRegistro, protocolo: string | null, comoReal = false): Record<string, unknown> => {
+  const totais = totaisImpostosEvento(n.itens);
+  return {
   pedido_id: n.pedido_id,
   ambiente: n.ambiente,
   nota: {
     id: n.id, filial_id: n.filial_id, cliente_id: n.cliente_id, serie: n.serie, numero: n.numero, chave_acesso: n.chave_acesso,
     emitida_em: n.emitida_em, total_centavos: n.total_centavos, protocolo,
   },
-  itens: n.itens.map((i) => ({ sequencia: i.sequencia, quantidade: i.quantidade, valor_centavos: i.valor_centavos, ...(i.produto_id ? { produto_id: i.produto_id, filial_id: n.filial_id } : {}) })),
+  itens: n.itens.map((i) => ({ sequencia: i.sequencia, quantidade: i.quantidade, valor_centavos: i.valor_centavos, ...(i.regra_aplicada ? { regra_aplicada: i.regra_aplicada } : {}), ...(i.calc_st ? { calc_st: i.calc_st } : {}), ...(i.calc_ipi ? { calc_ipi: i.calc_ipi } : {}), ...(i.produto_id ? { produto_id: i.produto_id, filial_id: n.filial_id } : {}) })),
   vendedor_id: n.vendedor_id,
   quantidade_itens: n.itens.length,
+  ...(totais ? { totais } : {}),
   ...(comoReal ? { conta_como_real: true } : {}),
-});
+  };
+};
 
 /** Texto livre da SEFAZ: sem espaço nas pontas nem repetido (o emissor recusa), quebra de linha vira espaço. */
 const normalizarTexto = (t: string): string => t.replace(/\s+/g, ' ').trim();

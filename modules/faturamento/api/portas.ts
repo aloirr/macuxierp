@@ -3,7 +3,7 @@
  * fiscal, core, o `@macuxierp/nfe-emissor` (porta `EmissorNFe`, o ÚNICO montador do XML), o `@macuxierp/nfe-sefaz` e o repositório SQL deste módulo, sobre a migração 0013).
  * A SEFAZ é a porta real `SefazTransporte` do `@macuxierp/nfe-sefaz`, entregue pronta pelo worker (seletor com a trava do simulador).
  */
-import type { CalculoSaida, ErroFiscal } from '@macuxierp/fiscal/contracts';
+import type { CalculoSaida, ErroFiscal, ImpostoCalculado, RegraAplicada } from '@macuxierp/fiscal/contracts';
 import type { CertificadoA1EmMemoria } from '@macuxierp/nfe-emissor';
 import type { CredencialA1EmMemoria } from '@macuxierp/nfe-sefaz';
 import type { A1ValidoDaFilial } from '@macuxierp/core/contracts';
@@ -182,7 +182,7 @@ export interface NotaRegistro {
   epec_autorizada_em?: string | null;
   /** Itens como o pedido os solicitou (nulo = nota total do saldo): o reenvio da rejeitada refaz a nota com os mesmos itens. */
   itens_solicitados: { sequencia: number; quantidade?: number }[] | null;
-  itens: { sequencia: number; produto_id?: string; quantidade: number; valor_centavos: number }[];
+  itens: { sequencia: number; produto_id?: string; quantidade: number; valor_centavos: number; regra_aplicada?: RegraAplicada; calc_st?: ImpostoCalculado; calc_ipi?: ImpostoCalculado }[];
 }
 export type NovaNota = Omit<NotaRegistro, 'id' | 'status' | 'protocolo' | 'autorizada_em' | 'recibo' | 'itens' | 'vai_ao_fdv' | 'revisao'>;
 
