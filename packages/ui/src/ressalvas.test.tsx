@@ -53,7 +53,7 @@ describe('canto e campoBase', () => {
     expect(campoBase.borderRadius).toBe('6px');
     expect(form()).toMatch(/<input[^>]*border-radius:6px/);
     expect(dialogo()).toMatch(/<textarea[^>]*border-radius:6px/);
-    expect(dialogo()).toMatch(/<textarea[^>]*font-size:var\(--mx-tamanho-pequeno\)/);
+    expect(dialogo()).toMatch(/<textarea[^>]*font-size:var\(--mx-tamanho-texto\)/);
   });
 });
 

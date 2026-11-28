@@ -72,11 +72,11 @@ export function Dialogo({ titulo, aoFechar, rodape, children, descricaoId, aviso
         aria-labelledby={`${id}-t`}
         aria-describedby={descritoPor}
         onKeyDown={teclado}
-        style={{ ...texto('base'), background: cor('branco'), padding: espaco.xl, width: 'min(480px, 92vw)', boxSizing: 'border-box', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: espaco.md, maxHeight: alturaMax, overflow: 'hidden', position: 'relative' }}
+        style={{ ...texto('texto'), background: cor('branco'), padding: espaco.xl, width: 'min(480px, 92vw)', boxSizing: 'border-box', borderRadius: 'var(--mx-medida-canto-cartao)', display: 'flex', flexDirection: 'column', gap: espaco.md, maxHeight: alturaMax, overflow: 'hidden', position: 'relative' }}
       >
         <h2 id={`${id}-t`} style={{ ...texto('titulo-dialogo', 'titulo'), margin: 0, flex: 'none' }}>{titulo}</h2>
         {aviso ? (
-          <div id={avisoId} data-aviso-dialogo="" style={{ ...texto('base', 'rotulo-campo'), ...tons[tomAviso], padding: espaco.sm, borderRadius: canto, flex: 'none', marginBottom: espaco.sm }}>{aviso}</div>
+          <div id={avisoId} data-aviso-dialogo="" style={{ ...texto('texto', 'rotulo-campo'), ...tons[tomAviso], padding: espaco.sm, borderRadius: canto, flex: 'none', marginBottom: espaco.sm }}>{aviso}</div>
         ) : null}
         <div data-corpo-dialogo="" style={{ padding: '4px', overflowY: 'auto', flex: '1 1 auto', minHeight: 0, display: 'grid', gap: espaco.md, alignContent: 'start' }}>{children}</div>
         {rodape ? <div style={{ display: 'flex', gap: espaco.sm, justifyContent: 'flex-end', flex: 'none' }}>{rodape}</div> : null}

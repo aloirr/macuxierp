@@ -44,13 +44,16 @@ const olho = (riscado: boolean) => (
   </svg>
 );
 
-/** Olho: 44×44 colado à direita, só ícone, sem fundo nem borda própria (hover e foco em `.mx-olho`, `botoes.css`). */
+/** Olho: quadrado da altura do campo (`alturaCampo`, 34 px) colado à direita, só ícone, sem fundo nem borda própria (hover e foco em `.mx-olho`, `botoes.css`). */
 const botaoOlho: CSSProperties = {
   position: 'absolute',
   top: 0,
   right: 0,
-  width: 44,
-  height: 44,
+  width: 'var(--mx-medida-altura-campo)',
+  height: 'var(--mx-medida-altura-campo)',
+  /** MC-0204: a fonte do botão, e não a do navegador (13,33 px). */
+  fontFamily: 'var(--mx-fonte-texto)',
+  fontSize: 'var(--mx-tamanho-texto)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -67,8 +70,8 @@ export function CampoSenha({ id, rotulo, valor, aoMudar, visivel, aoAlternar, fi
   const rotuloOlho = visivel ? ROTULOS_OLHO_SENHA.ocultar : ROTULOS_OLHO_SENHA.mostrar;
   const descricao = [descrito, erro ? `${id}-erro` : null].filter(Boolean).join(' ') || undefined;
   return (
-    <div style={{ ...texto('base') }}>
-      <label htmlFor={id} style={{ ...texto('pequeno', 'rotulo-campo'), display: 'block', marginBottom: espaco.xs }}>{rotulo}</label>
+    <div style={{ ...texto('texto') }}>
+      <label htmlFor={id} style={{ ...texto('rotulo-dado', 'rotulo-campo'), display: 'block', marginBottom: espaco.xs }}>{rotulo}</label>
       <div style={{ position: 'relative' }}>
         <input
           id={id}
@@ -86,11 +89,11 @@ export function CampoSenha({ id, rotulo, valor, aoMudar, visivel, aoAlternar, fi
           aria-describedby={descricao}
           style={{
             ...campoBase,
-            ...texto('base'),
+            ...texto('texto'),
             boxSizing: 'border-box',
             width: '100%',
-            height: 44,
-            padding: `0 ${aoAlternar ? 48 : espaco.md}px 0 ${espaco.md}px`,
+            height: 'var(--mx-medida-altura-campo)',
+            padding: `0 ${aoAlternar ? 40 : espaco.md}px 0 ${espaco.md}px`,
             background: cor('branco'),
             ...(erro ? { borderColor: cor('erroTexto') } : {}),
           }}

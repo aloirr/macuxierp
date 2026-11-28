@@ -28,7 +28,7 @@ export interface ResultadoAcaoProps {
 const regiao: CSSProperties = { flexBasis: '100%', width: '100%', minWidth: 0 };
 
 const caixa = (tom: TomResultado): CSSProperties => ({
-  ...texto('base'),
+  ...texto('texto'),
   display: 'grid',
   gap: espaco.xs,
   marginTop: espaco.sm,

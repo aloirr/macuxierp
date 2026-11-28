@@ -1,36 +1,57 @@
 /* Gerado de estilos.ts (gerarCssBotoes). Não edite à mão: o teste exige igualdade. */
 .mx-botao {
   font-family: var(--mx-fonte-texto);
-  font-size: var(--mx-tamanho-base);
+  font-size: var(--mx-tamanho-texto);
   font-weight: var(--mx-peso-botao-principal);
   color: var(--mx-cor-branco);
-  padding: 8px 16px;
+  height: var(--mx-medida-altura-campo);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  text-decoration: none;
+  padding: 0 14px;
   border-radius: 6px;
-  line-height: 1.5;
+  line-height: calc(var(--mx-medida-altura-campo) - 2px);
+  white-space: nowrap;
   cursor: pointer;
   background: var(--mx-cor-azul-noite);
   border: 1px solid var(--mx-cor-azul-noite);
 }
 .mx-botao-secundario {
   font-family: var(--mx-fonte-texto);
-  font-size: var(--mx-tamanho-base);
+  font-size: var(--mx-tamanho-texto);
   font-weight: var(--mx-peso-medio);
   color: var(--mx-cor-grafite);
-  padding: 8px 16px;
+  height: var(--mx-medida-altura-campo);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  text-decoration: none;
+  padding: 0 14px;
   border-radius: 6px;
-  line-height: 1.5;
+  line-height: calc(var(--mx-medida-altura-campo) - 2px);
+  white-space: nowrap;
   cursor: pointer;
   background: var(--mx-cor-branco);
   border: 1px solid var(--mx-cor-borda-campo);
 }
 .mx-botao-destrutivo {
   font-family: var(--mx-fonte-texto);
-  font-size: var(--mx-tamanho-base);
+  font-size: var(--mx-tamanho-texto);
   font-weight: var(--mx-peso-botao-principal);
   color: var(--mx-cor-branco);
-  padding: 8px 16px;
+  height: var(--mx-medida-altura-campo);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  text-decoration: none;
+  padding: 0 14px;
   border-radius: 6px;
-  line-height: 1.5;
+  line-height: calc(var(--mx-medida-altura-campo) - 2px);
+  white-space: nowrap;
   cursor: pointer;
   background: var(--mx-cor-erro-texto);
   border: 1px solid var(--mx-cor-erro-texto);
@@ -95,6 +116,9 @@
 .mx-fundo-escuro :focus-visible {
   outline: 2px solid var(--mx-cor-branco);
   outline-offset: 2px;
+}
+h1 {
+  color: var(--mx-cor-azul-noite);
 }
 .mx-botao:disabled, .mx-botao-secundario:disabled, .mx-botao-destrutivo:disabled, .mx-botao[aria-disabled="true"], .mx-botao-secundario[aria-disabled="true"], .mx-botao-destrutivo[aria-disabled="true"] {
   opacity: 0.55;

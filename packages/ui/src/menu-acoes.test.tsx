@@ -224,3 +224,21 @@ describe('MenuAcoes (v0.3.15): motivo do item desligado', () => {
     expect(h).not.toMatch(/<button[^>]*role="menuitem"[^>]*\sdisabled/);
   });
 });
+
+describe('MC-0212 (decisão 52 A): "Ações ▾" das tabelas', () => {
+  it('o item de perigo (Excluir) vai para o fim, depois do separador; oculto some do menu', () => {
+    const f = () => {};
+    const r = ordenarAcoes([
+      { chave: 'excluir', rotulo: 'Excluir', aoAcionar: f, perigo: true },
+      { chave: 'editar', rotulo: 'Editar', aoAcionar: f },
+      { chave: 'senha', rotulo: 'Redefinir senha', aoAcionar: f },
+    ]);
+    expect(r.normais.map((a) => a.chave)).toEqual(['editar', 'senha']);
+    expect(r.perigos.map((a) => a.chave)).toEqual(['excluir']);
+    const ultimoAdmin = ordenarAcoes([
+      { chave: 'editar', rotulo: 'Editar', aoAcionar: f },
+      { chave: 'excluir', rotulo: 'Excluir', aoAcionar: f, perigo: true, oculto: true },
+    ]);
+    expect(ultimoAdmin.perigos).toEqual([]);
+  });
+});

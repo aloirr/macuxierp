@@ -27,11 +27,12 @@ describe('bordaCampo (#232) nos componentes', () => {
 });
 
 describe('botões (MC-0008): um principal e um secundário', () => {
-  it('mesmo tamanho (15), canto e espaçamento; diferem só em cor e peso', () => {
+  it('mesmo tamanho (13), altura de 34 px (decisão 45), canto e espaçamento; diferem só em cor e peso', () => {
     const p = botaoPrincipal();
     const s = botaoSecundario();
-    for (const k of ['fontSize', 'borderRadius', 'padding', 'lineHeight'] as const) expect(p[k]).toBe(s[k]);
-    expect(p.fontSize).toBe('var(--mx-tamanho-base)');
+    for (const k of ['fontSize', 'borderRadius', 'padding', 'lineHeight', 'height'] as const) expect(p[k]).toBe(s[k]);
+    expect(p.fontSize).toBe('var(--mx-tamanho-texto)');
+    expect(p.height).toBe('var(--mx-medida-altura-campo)');
     expect(p.fontWeight).toBe('var(--mx-peso-botao-principal)');
     expect(s.fontWeight).toBe('var(--mx-peso-medio)');
     expect(p.background).toBe('var(--mx-cor-azul-noite)');
@@ -39,7 +40,7 @@ describe('botões (MC-0008): um principal e um secundário', () => {
   });
   it('o diálogo usa os dois estilos da ui', () => {
     const d = dialogo();
-    expect(d.match(/<button[^>]*font-size:var\(--mx-tamanho-base\)[^>]*border-radius:6px/g)?.length).toBe(2);
+    expect(d.match(/<button[^>]*font-size:var\(--mx-tamanho-texto\)[^>]*border-radius:6px/g)?.length).toBe(2);
   });
   it('botoes.css (para o shell) é exatamente o gerado dos mesmos estilos', () => {
     const css = readFileSync(new URL('./botoes.css', import.meta.url), 'utf8');
@@ -134,11 +135,11 @@ describe('🟡 da marca nas telas do pedido', () => {
     expect(h).toMatch(/<th style="[^"]*width:[^"]*">Qtd\.<\/th>/);
     expect(h).not.toMatch(/<th style="[^"]*width:[^"]*">Produto<\/th>/);
   });
-  it('legenda em 15 px e 600, na tabela e no formulário de itens', () => {
+  it('legenda em 13 px (texto) e 600, na tabela e no formulário de itens', () => {
     const f = form({ legenda: 'Itens do pedido' });
     const t = renderToStaticMarkup(<TabelaDensa colunas={cols} linhas={[]} chaveLinha={(l) => l.id} legenda="Notas" />);
-    expect(f).toMatch(/<caption[^>]*font-size:var\(--mx-tamanho-base\)[^>]*>Itens do pedido</);
-    expect(t).toMatch(/<caption[^>]*font-size:var\(--mx-tamanho-base\)/);
+    expect(f).toMatch(/<caption[^>]*font-size:var\(--mx-tamanho-texto\)[^>]*>Itens do pedido</);
+    expect(t).toMatch(/<caption[^>]*font-size:var\(--mx-tamanho-texto\)/);
     expect(f).toMatch(/<caption[^>]*font-weight:var\(--mx-peso-rotulo-campo\)[^>]*>Itens do pedido</);
     expect(t).toMatch(/<caption[^>]*font-weight:var\(--mx-peso-rotulo-campo\)/);
   });
