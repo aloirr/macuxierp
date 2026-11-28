@@ -191,7 +191,7 @@ export const CST_IPI_ENTRADA = ['00', '01', '02', '03', '04', '05', '49'] as con
  *  - linha única (formato do banco): `tributo` = 'icms' e, além do ICMS, os campos de IPI/PIS/COFINS preenchidos; a linha vale
  *    para cada tributo cujo `cst_*` não é nulo.
  */
-const RegraBase = z.object({
+export const CamposRegra = z.object({
   id: z.string().uuid(),
   tributo: TributoRegra.default('icms'),
   /** Prefixo de NCM de 2 a 8 dígitos (8 = exato); null = todos. */
@@ -210,7 +210,8 @@ const RegraBase = z.object({
   mva_original: Aliquota.nullable().default(null),
   /** MVA ajustada já cadastrada; se ausente e ajustar_mva = true, o motor calcula pela fórmula (interestadual). */
   mva_ajustada: Aliquota.nullable().default(null),
-  ajustar_mva: z.boolean().default(false),
+  /** Sem default de propósito (fail-closed): null = "não informado". ST interestadual com null é CODIGO_NAO_SUPORTADO (RN-FIS-05); o false é uma decisão explícita de não ajustar. */
+  ajustar_mva: z.boolean().nullable(),
   reducao_bc_st: Percentual.nullable().default(null),
   /** Alíquota interna da UF de destino para o ST. */
   aliquota_interna_destino: Percentual.nullable().default(null),
@@ -267,7 +268,7 @@ const RegraBase = z.object({
   vigencia_fim: DataCivil.nullable(),
 });
 /** O código de ICMS é obrigatório na linha de ICMS (espelha o CHECK do banco: tributo <> 'icms' OR codigo IS NOT NULL). */
-export const RegraTributaria = RegraBase.refine((r) => r.tributo !== 'icms' || r.codigo !== null, { message: "codigo é obrigatório quando tributo = 'icms'", path: ['codigo'] });
+export const RegraTributaria = CamposRegra.refine((r) => r.tributo !== 'icms' || r.codigo !== null, { message: "codigo é obrigatório quando tributo = 'icms'", path: ['codigo'] });
 export type RegraTributaria = z.infer<typeof RegraTributaria>;
 
 export const CalculoEntrada = z.object({
@@ -532,3 +533,87 @@ export const CalculoResultado = z.discriminatedUnion('ok', [
   z.object({ ok: z.literal(false), erros: z.array(ErroFiscal).min(1) }),
 ]);
 export type CalculoResultado = z.infer<typeof CalculoResultado>;
+
+/* ===================== Regras no BKO e catálogo base (T-0127, RF-FIS-01) =====================
+ * `/v1/fiscal/regras` (CRUD da regra do tenant) e `/v1/fiscal/catalogo` (regras-modelo `fiscal.regra_base`: o fiscal valida, o administrador aplica;
+ * a carga base nunca é aplicada sozinha). Evento publicado: `fiscal.regra.alterada@1`. Não há regra de ST interestadual no catálogo.
+ */
+const codigoDoIcms = (r: { tributo: string; codigo: string | null }) => r.tributo !== 'icms' || r.codigo !== null;
+const MSG_CODIGO = { message: "codigo é obrigatório quando tributo = 'icms'", path: ['codigo'] };
+
+/** Corpo do POST e do PUT (a API sempre revalida no domínio: `validarRegraParaCadastro`). `ajustar_mva` segue sem default. */
+export const RegraEntrada = CamposRegra.omit({ id: true }).refine(codigoDoIcms, MSG_CODIGO);
+export type RegraEntrada = z.infer<typeof RegraEntrada>;
+
+export const SituacaoRegra = z.enum(['vigente', 'futura', 'encerrada']);
+export type SituacaoRegra = z.infer<typeof SituacaoRegra>;
+
+/** Regra completa como a API devolve (detalhe): os campos do contrato + carimbos. `updated_at` é o token do `If-Match`. */
+export const RegraDetalhe = CamposRegra.extend({ updated_at: z.string(), situacao: SituacaoRegra }).refine(codigoDoIcms, MSG_CODIGO);
+export type RegraDetalhe = z.infer<typeof RegraDetalhe>;
+
+/** Linha da tabela densa do BKO (e do CSV): só o que ajuda a achar a regra. */
+export const RegraLinha = z.object({
+  id: z.string().uuid(),
+  tributo: TributoRegra,
+  ncm_prefixo: z.string().nullable(),
+  uf_origem: Uf.nullable(),
+  uf_destino: Uf.nullable(),
+  tipo_cliente: TipoContribuinte.nullable(),
+  crt: Crt.nullable(),
+  cfop: z.string().nullable(),
+  codigo: z.string().nullable(),
+  aliquota_icms: Percentual.nullable(),
+  mva_original: Aliquota.nullable(),
+  ajustar_mva: z.boolean().nullable(),
+  fonte: FonteRegra.nullable(),
+  versao: z.string(),
+  vigencia_inicio: z.string(),
+  vigencia_fim: z.string().nullable(),
+  situacao: SituacaoRegra,
+  updated_at: z.string(),
+});
+export type RegraLinha = z.infer<typeof RegraLinha>;
+
+/** Item do catálogo (`fiscal.regra_base`, 0082): linha no tenant de referência, lida por todo tenant, com as colunas de negócio da regra (inclusive a vigência) mais chave, título e descrição. Vigência nova = linha nova com a mesma chave. */
+export const CatalogoRegra = CamposRegra.extend({ chave: z.string().min(1).max(80), titulo: z.string().min(1).max(120), descricao: z.string().min(1).max(1000).nullable() })
+  .refine(codigoDoIcms, MSG_CODIGO);
+export type CatalogoRegra = z.infer<typeof CatalogoRegra>;
+
+/** Linha da lista do catálogo no BKO: `aplicavel` já vem calculado pelo domínio (`catalogoAplicavel`), com o motivo quando não. */
+export const CatalogoLinha = z.object({
+  id: z.string().uuid(),
+  chave: z.string(),
+  titulo: z.string(),
+  tributo: TributoRegra,
+  codigo: z.string().nullable(),
+  crt: Crt.nullable(),
+  uf_origem: Uf.nullable(),
+  uf_destino: Uf.nullable(),
+  ncm_prefixo: z.string().nullable(),
+  fonte: FonteRegra.nullable(),
+  versao: z.string(),
+  vigencia_inicio: z.string(),
+  vigencia_fim: z.string().nullable(),
+  aplicavel: z.boolean(),
+  motivo_nao_aplicavel: z.string().nullable(),
+});
+export type CatalogoLinha = z.infer<typeof CatalogoLinha>;
+
+/** Aplicar uma regra do catálogo ao tenant: copia a linha (com a vigência dela) e guarda `regra_base_id`; `confirmo` evita aplicação por engano. */
+export const AplicarCatalogoEntrada = z.object({ confirmo: z.literal(true) });
+export type AplicarCatalogoEntrada = z.infer<typeof AplicarCatalogoEntrada>;
+
+/** `fiscal.regra.alterada@1`: sem dado pessoal; o consumidor relê a regra pela API se precisar do conteúdo. */
+export const NOME_EVENTO_REGRA_ALTERADA = 'fiscal.regra.alterada' as const;
+export const RegraAlteradaV1 = z.object({
+  regra_id: z.string().uuid(),
+  acao: z.enum(['criada', 'alterada', 'excluida', 'aplicada_do_catalogo']),
+  tributo: TributoRegra,
+  ncm_prefixo: z.string().nullable(),
+  versao: z.string(),
+  vigencia_inicio: DataCivil,
+  vigencia_fim: DataCivil.nullable(),
+  catalogo_id: z.string().uuid().nullable(),
+});
+export type RegraAlteradaV1 = z.infer<typeof RegraAlteradaV1>;

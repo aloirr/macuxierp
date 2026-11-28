@@ -5,3 +5,4 @@
 2026-11-28 — T-0132 — contrato fiscal.calculo@1: ST e IPI por regra opcionais (RN-FIS-05), fixtures e testes
 2026-11-28 — T-0132 — passo 2: motor preenche regra_aplicada, calc_st e calc_ipi (63 A), API revalida; 206 testes do fiscal verdes
 2026-11-28 — T-0128 — DIFAL/ICMSUFDest (RN-FIS-06): calcularDifal no domain, grupo icms_uf_dest e totais no contrato (aditivo), fail-closed só nos CST/CSOSN sem fonte
+2026-11-28 — T-0127 — regras fiscais no BKO: contrato do catálogo e CRUD (ajustar_mva sem default), domain (validação, catálogo sem ST interestadual, resolução), rotas /v1/fiscal/regras e /catalogo com fiscal.regra.alterada@1, descritores web; 245 testes do fiscal verdes

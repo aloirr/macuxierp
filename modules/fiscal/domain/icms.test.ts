@@ -265,9 +265,11 @@ describe('ST: recusas até existir pauta e ajuste explícito da MVA (RN-FIS-05)'
     expect(rodar({ mod_bc_st: 4 })).toMatchObject({ ok: true, icms: { mod_bc_st: 4, v_bc_st: 140000 } });
     expect(rodar({})).toMatchObject({ ok: true, icms: { mod_bc_st: 4 } });
   });
-  it('RN-FIS-05: interestadual com ajustar_mva ausente/nulo e sem MVA ajustada é recusado (REGRA_INCOMPLETA); false explícito do contrato segue com a MVA original', () => {
-    expect(rodar({}, true, { ajustar_mva: null })).toMatchObject({ ok: false, codigo: 'REGRA_INCOMPLETA' });
-    expect(rodar({}, true, { ajustar_mva: undefined })).toMatchObject({ ok: false, codigo: 'REGRA_INCOMPLETA' });
+  it('RN-FIS-05: interestadual com ajustar_mva nulo/ausente e sem MVA ajustada é CODIGO_NAO_SUPORTADO (fail-closed, sem default); false explícito segue com a MVA original', () => {
+    expect(rodar({}, true, { ajustar_mva: null })).toMatchObject({ ok: false, codigo: 'CODIGO_NAO_SUPORTADO' });
+    expect(rodar({}, true, { ajustar_mva: undefined })).toMatchObject({ ok: false, codigo: 'CODIGO_NAO_SUPORTADO' });
+    expect(rodar({ ajustar_mva: null }, true)).toMatchObject({ ok: false, codigo: 'CODIGO_NAO_SUPORTADO' });
+    expect(rodar({ ajustar_mva: null }, false)).toMatchObject({ ok: true }); // intraestadual não ajusta MVA
     expect(rodar({ ajustar_mva: false }, true)).toMatchObject({ ok: true, icms: { p_mva_st: 400000 } });
     expect(rodar({ mva_ajustada: 500000 }, true, { ajustar_mva: null })).toMatchObject({ ok: true, icms: { p_mva_st: 500000 } });
   });
