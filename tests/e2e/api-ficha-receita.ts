@@ -6,7 +6,6 @@
  */
 import { randomUUID } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
-import { CODIGO_SUPERADMIN_LOGIN } from '../../packages/platform-sdk/src/index';
 import { criarBancoEfemero, criarTenant } from '../../packages/platform-sdk/src/pg-testes';
 import { RepositorioCoreSql } from '../../modules/core/api/index';
 import { fontesHttp } from '../../modules/cadastros/api/index';
@@ -61,7 +60,7 @@ const porta = Number(argumento('porta', '3203'));
 await app.listen({ port: porta, host: '127.0.0.1' });
 const pronto = argumento('pronto', '');
 if (pronto) {
-  writeFileSync(pronto, JSON.stringify({ superadmin: { empresa: CODIGO_SUPERADMIN_LOGIN, email: EMAIL_SA, senha: SENHA_SA }, empresas, cnpjs: CASOS, marcaDoCorpo: MARCA_DO_CORPO }));
+  writeFileSync(pronto, JSON.stringify({ superadmin: { email: EMAIL_SA, senha: SENHA_SA }, empresas, cnpjs: CASOS, marcaDoCorpo: MARCA_DO_CORPO }));
 }
 console.error(`[api-ficha-receita] ouvindo na porta ${porta} (banco ${b.nome})`);
 for (const sinal of ['SIGTERM', 'SIGINT'] as const) {

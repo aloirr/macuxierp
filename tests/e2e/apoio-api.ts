@@ -11,7 +11,6 @@ import {
   CABECALHO_CSRF_CONFIG,
   CAMINHOS_CARGAS_PLATAFORMA,
   CAMPO_ARQUIVO_CARGA_PORTAL,
-  CODIGO_SUPERADMIN_LOGIN,
   COOKIE_CONFIG,
   PREFIXO_PLATAFORMA,
 } from '../../packages/platform-sdk/src/index';
@@ -81,7 +80,7 @@ export async function subirApiE2e(o: OpcoesApiE2e) {
   const dados = {
     url,
     empresa: { id: tenant, slug: o.slug, nome: o.nome },
-    superadmin: { empresa: CODIGO_SUPERADMIN_LOGIN, email: o.sa.email, senha: SENHA_SA },
+    superadmin: { email: o.sa.email, senha: SENHA_SA },
     administrador: { empresa: o.slug, email: o.adm, senha: SENHA_DE_TESTE },
     ...(o.extra ? o.extra({ b, tenant, url }) : {}),
   };

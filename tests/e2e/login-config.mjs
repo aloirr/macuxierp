@@ -34,7 +34,7 @@ mkdirSync(SAIDA, { recursive: true });
 
 const dados = JSON.parse(readFileSync(DADOS, 'utf8'));
 const { administrador: adm, superadmin: sa } = dados;
-/** Código da empresa como o login o guarda (maiúsculo, `CodigoEmpresaLogin`). */
+/** Código da empresa em maiúsculas, como o link antigo do e-mail o trazia. */
 const CODIGO_EMPRESA = adm.empresa.toUpperCase();
 /** Texto fictício posto no link para provar que a senha nunca sai dele. */
 const SENHA_NO_LINK = 'Senha-ficticia-no-link-9';
