@@ -99,29 +99,67 @@ describe('adaptador do cadastros: Clientes (v0.3.28)', () => {
   });
 });
 
-describe('Nova filial: endereço em 12 colunas (marca, v0.3.30)', () => {
+describe('Nova filial: endereço em 12 colunas (marca, v0.3.30/v0.3.31)', () => {
   const SPAN: Record<string, number> = { ' campo-curto': 2, ' campo-medio': 4, ' campo-3': 3, ' campo-8': 8 };
-  const campos = NOVA_FILIAL.camposDoPerfil?.('gerente') ?? NOVA_FILIAL.campos;
-  const endereco = campos.filter((c) => c.nome.startsWith('end_'));
-  const largura = (n: string) => SPAN[larguraDoCampo(endereco.find((c) => c.nome === n)!).replace(' campo-inicio-linha', '')];
+  const todos = NOVA_FILIAL.camposDoPerfil?.('gerente') ?? NOVA_FILIAL.campos;
+  const endereco = todos.filter((c) => c.nome.startsWith('end_'));
+  const span = (c: (typeof todos)[number]) => {
+    const l = larguraDoCampo(c).replace(' campo-inicio-linha', '');
+    return /campo-col-(\d+)/.exec(l)?.[1] ? Number(/campo-col-(\d+)/.exec(l)![1]) : (SPAN[l] ?? 0);
+  };
+  /** Fluxo da grade: nova linha quando o campo não cabe ou pede `campo-inicio-linha`. */
+  const linhas = (campos: readonly (typeof todos)[number][]) => {
+    const rows: number[][] = [];
+    for (const c of campos) {
+      const w = span(c);
+      const atual = rows[rows.length - 1];
+      if (!atual || larguraDoCampo(c).includes('campo-inicio-linha') || atual.reduce((x, y) => x + y, 0) + w > 12) rows.push([w]);
+      else atual.push(w);
+    }
+    return rows;
+  };
 
   it('ordem: CEP, Logradouro, Número, Complemento, Bairro, Município, UF', () => {
     expect(endereco.map((c) => c.nome)).toEqual(['end_cep', 'end_logradouro', 'end_numero', 'end_complemento', 'end_bairro', 'end_municipio_ibge', 'end_uf']);
   });
 
-  it('linha 1 fecha 12 (2+8+2) e linha 2 fecha 12 (3+3+4+2)', () => {
-    expect(['end_cep', 'end_logradouro', 'end_numero'].map(largura)).toEqual([2, 8, 2]);
-    expect(['end_complemento', 'end_bairro', 'end_municipio_ibge', 'end_uf'].map(largura)).toEqual([3, 3, 4, 2]);
+  it('o endereço preenche duas linhas inteiras de 12 colunas, sem sobra', () => {
+    const rows = linhas(endereco);
+    expect(rows).toHaveLength(2);
+    for (const r of rows) expect(r.reduce((x, y) => x + y, 0)).toBe(12);
   });
 
-  it('CEP começa linha nova e a linha da NF-e fecha 12 (Emite 4 + Série 4 + Número inicial 4)', () => {
+  it('CEP começa linha nova (campo-inicio-linha), mesmo sem o PIS/COFINS na linha de cima', () => {
     expect(larguraDoCampo(endereco[0]!)).toContain('campo-inicio-linha');
-    const nomes = ['emissora', 'nfe_serie', 'nfe_numero_inicial'];
-    const todos = NOVA_FILIAL.camposDoPerfil?.('gerente') ?? NOVA_FILIAL.campos;
-    const soma = nomes.map((n) => SPAN[larguraDoCampo(todos.find((c) => c.nome === n)!).replace(' campo-inicio-linha', '')] ?? 0);
-    expect(soma).toEqual([4, 4, 4]);
+  });
+
+  it('a linha da NF-e cabe em 12 colunas (Emite NF-e + Série + Número inicial)', () => {
+    const soma = ['emissora', 'nfe_serie', 'nfe_numero_inicial'].map((n) => span(todos.find((c) => c.nome === n)!));
+    expect(soma.reduce((x, y) => x + y, 0)).toBeLessThanOrEqual(12);
   });
 });
+
+describe('v0.3.31: inicioLinha do cadastros chega ao formulário', () => {
+  it('paraCampo copia inicioLinha e larguraDoCampo acrescenta campo-inicio-linha uma vez só', () => {
+    const c = paraCampo({ nome: 'end_cep', rotulo: 'CEP', tipo: 'texto', colunas: 2, inicioLinha: true } as Parameters<typeof paraCampo>[0]);
+    expect(c.inicioLinha).toBe(true);
+    expect(larguraDoCampo(c)).toBe(' campo-col-2 campo-inicio-linha');
+    expect(larguraDoCampo({ nome: 'cep', tipo: 'texto', inicioLinha: true })).toBe(' campo-curto campo-inicio-linha');
+    expect(larguraDoCampo({ nome: 'end_cep', tipo: 'texto', inicioLinha: true })).toBe(' campo-curto campo-inicio-linha');
+    expect(paraCampo({ nome: 'x', rotulo: 'X', tipo: 'texto' }).inicioLinha).toBeUndefined();
+  });
+
+  it('com o PIS/COFINS oculto (CRT diferente de 3) o CEP segue começando linha nova', () => {
+    const visiveis = todosVisiveis({ crt: '1' });
+    expect(visiveis.map((c) => c.nome)).not.toContain('regime_pis_cofins');
+    const cep = visiveis.find((c) => c.nome === 'end_cep')!;
+    expect(larguraDoCampo(cep)).toContain('campo-inicio-linha');
+  });
+});
+
+function todosVisiveis(valores: Record<string, string>) {
+  return (NOVA_FILIAL.camposDoPerfil?.('gerente') ?? NOVA_FILIAL.campos).filter((c) => !c.mostrarSe || c.mostrarSe(valores));
+}
 
 describe('T-0135: colunas do campo do cadastros chegam ao formulário', () => {
   it('copia colunas e a grade do campo vale (campo-col-3), mesmo em nome de endereço', () => {

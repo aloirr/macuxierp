@@ -23,7 +23,12 @@ export const LARGURA_ENDERECO: Readonly<Record<string, string>> = {
 export const LARGURA_NFE: Readonly<Record<string, string>> = { nfe_serie: ' campo-medio', nfe_numero_inicial: ' campo-medio' };
 
 /** Largura do campo na grade de 12 colunas do formulário (regra 11): curto (2), 3, médio (4), longo (6, padrão), 8 ou largo (12). */
-export function larguraDoCampo(c: { nome: string; tipo: string; colunas?: number }): string {
+export function larguraDoCampo(c: { nome: string; tipo: string; colunas?: number; inicioLinha?: boolean }): string {
+  const base = larguraBase(c);
+  return c.inicioLinha && !base.includes('campo-inicio-linha') ? `${base} campo-inicio-linha` : base;
+}
+
+function larguraBase(c: { nome: string; tipo: string; colunas?: number }): string {
   if (c.colunas) return ` campo-col-${c.colunas}`;
   if (c.nome in LARGURA_ENDERECO) return LARGURA_ENDERECO[c.nome] as string;
   if (c.nome in LARGURA_NFE) return LARGURA_NFE[c.nome] as string;
