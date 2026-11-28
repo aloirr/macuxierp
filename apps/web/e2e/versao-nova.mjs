@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * v0.3.26 (R-20261127-172927): aba aberta de um build anterior chama uma Server Action que o servidor novo não conhece.
- * Esperado: o login recarrega UMA vez sozinho (empresa e e-mail voltam, a senha não), e na segunda falha mostra "Há uma versão nova
+ * Esperado: o login recarrega UMA vez sozinho (o e-mail volta, a senha não), e na segunda falha mostra "Há uma versão nova
  * do Macuxi ERP. Recarregue a página." com o botão Recarregar. Nunca "Serviço indisponível".
  *
  * Reprodutível sem segredo: três `next build` do mesmo commit, cada um com uma NEXT_SERVER_ACTIONS_ENCRYPTION_KEY fictícia diferente
@@ -83,7 +83,6 @@ try {
   // 1. build A: a página abre e fica parada
   await subir('a');
   await p.goto(`${BASE}/`, { waitUntil: 'networkidle' });
-  await p.getByLabel('Código da empresa').fill('macuxi');
   await p.getByLabel('E-mail').fill('ana@exemplo.com.br');
   await p.getByLabel('Senha', { exact: true }).fill('senha-do-teste-123');
   const cargasAntes = cargas;
@@ -108,10 +107,9 @@ try {
   const recarregou = p.waitForEvent('load', { timeout: 15000 }).then(() => true, () => false);
   await p.getByRole('button', { name: 'Entrar', exact: true }).click();
   confere(await recarregou, 'versão nova: a página recarregou sozinha');
-  await p.getByLabel('Código da empresa').waitFor();
+  await p.getByLabel('E-mail').waitFor();
   await pausa(500);
   confere(cargas === cargasAntes + 1, `recarregou uma vez só (cargas ${cargas - cargasAntes})`);
-  confere((await p.getByLabel('Código da empresa').inputValue()) === 'macuxi', 'empresa voltou preenchida');
   confere((await p.getByLabel('E-mail').inputValue()) === 'ana@exemplo.com.br', 'e-mail voltou preenchido');
   confere((await p.getByLabel('Senha', { exact: true }).inputValue()) === '', 'senha NÃO voltou');
   const storage = await p.evaluate(() => JSON.stringify({ s: { ...sessionStorage }, l: { ...localStorage } }));

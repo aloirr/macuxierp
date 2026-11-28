@@ -38,7 +38,7 @@ const config: NextConfig = {
   poweredByHeader: false,
   // Os manifestos dos módulos e os pacotes do workspace são TypeScript puro.
   transpilePackages: doWorkspace,
-  /** Login único na raiz (v0.3.27, decisão 42 = A): as rotas antigas do login passam a '/' em 308; o fragmento do link do e-mail (`#codigo=…&email=…`) o navegador mantém. */
+  /** Login único na raiz (v0.3.27, decisão 42 = A): as rotas antigas do login passam a '/' em 308; o fragmento do link do e-mail (`#email=…`) o navegador mantém. */
   async redirects() {
     return ROTAS_ANTIGAS_DO_LOGIN.map((source) => ({ source, destination: '/', permanent: true }));
   },

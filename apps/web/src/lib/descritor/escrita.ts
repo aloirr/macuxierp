@@ -1,6 +1,7 @@
 /** Regras puras da escrita pelo shell: que caminho de API uma tela pode chamar e como a resposta vira texto (sem dado pessoal). */
-import type { EuResposta, ManifestoModulo, ModuloId } from '@macuxierp/platform-sdk';
+import { type EuResposta, type ManifestoModulo, type ModuloId } from '@macuxierp/platform-sdk';
 import { ehRespostaDefinitiva } from './idempotencia';
+import { erroEmailEmUso } from '../email-em-uso';
 import { FALHA, SESSAO_EXPIRADA } from '../textos';
 
 const CAMINHO_ESCRITA = /^\/v1\/([a-z][a-z0-9-]*)\/[A-Za-z0-9/_-]*$/;
@@ -55,11 +56,14 @@ const FIXAS: Readonly<Record<number, string>> = {
 
 /** Lê `mensagem` e `campos` do corpo de erro da API, sem repassar nada fora do esperado. */
 export function resultadoDaResposta(status: number, ok: boolean, corpo: unknown, campoSegredo?: string): ResultadoEscrita {
-  const c = (corpo && typeof corpo === 'object' ? corpo : {}) as { id?: unknown; mensagem?: unknown; campos?: unknown } & Record<string, unknown>;
+  const c = (corpo && typeof corpo === 'object' ? corpo : {}) as { id?: unknown; mensagem?: unknown; campos?: unknown; detalhes?: { codigo?: unknown } } & Record<string, unknown>;
   if (ok) {
     const segredo = campoSegredo ? c[campoSegredo] : undefined;
     return { ok: true, mensagem: 'Feito.', ...(typeof c.id === 'string' ? { id: c.id } : {}), ...(typeof segredo === 'string' && segredo !== '' ? { segredo } : {}) };
   }
+  // ADR 0021 §1: 409 email_em_uso (cadastro ou troca de e-mail de usuário): texto e campo do SDK; não é versão velha, a tela não recarrega.
+  const emailEmUso = erroEmailEmUso(status, c.detalhes);
+  if (emailEmUso) return { ok: false, mensagem: emailEmUso.mensagem, campos: emailEmUso.campos, ...(ehRespostaDefinitiva(status) ? { definitivo: true } : {}) };
   const mensagem = typeof c.mensagem === 'string' && c.mensagem.trim() && status < 500 ? c.mensagem.trim() : (FIXAS[status] ?? FALHA);
   const campos: Record<string, string> = {};
   if (c.campos && typeof c.campos === 'object') for (const [k, v] of Object.entries(c.campos)) if (typeof v === 'string') campos[k] = v;
