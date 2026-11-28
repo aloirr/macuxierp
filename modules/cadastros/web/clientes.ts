@@ -40,18 +40,18 @@ export const paginaClientes = definirPaginaLista({
 });
 
 export const CAMPOS_CLIENTE: readonly CampoEdicao[] = [
-  { nome: 'tipo_pessoa', rotulo: 'Tipo de pessoa', tipo: 'selecao', obrigatorio: true, opcoes: [{ valor: 'PJ', rotulo: 'Pessoa jurídica' }, { valor: 'PF', rotulo: 'Pessoa física' }] },
-  { nome: 'documento', rotulo: 'CNPJ/CPF', tipo: 'texto', obrigatorio: true },
-  { nome: 'razao_social', rotulo: 'Razão social', tipo: 'texto', obrigatorio: true },
-  { nome: 'nome_fantasia', rotulo: 'Nome fantasia', tipo: 'texto' },
-  { nome: 'ind_ie_dest', rotulo: 'Contribuinte ICMS', tipo: 'selecao', obrigatorio: true, opcoes: opcoes(ROTULO_IND_IE) },
-  { nome: 'ie', rotulo: 'Inscrição estadual', tipo: 'texto', ajuda: 'Contribuinte: número válido para a UF. Isento: "ISENTO" ou vazio. Não contribuinte: vazio.' },
-  { nome: 'email_nfe', rotulo: 'E-mail da NF-e', tipo: 'texto' },
-  { nome: 'filial_id', rotulo: 'Filial', tipo: 'cadastro', obrigatorio: true, fonte: '/v1/cadastros/filiais' },
-  { nome: 'vendedor_id', rotulo: 'Vendedor', tipo: 'cadastro', fonte: '/v1/cadastros/vendedores' },
-  { nome: 'condicao_pagamento_id', rotulo: 'Condição de pagamento', tipo: 'cadastro', fonte: '/v1/cadastros/condicoes-pagamento' },
-  { nome: 'tabela_preco_id', rotulo: 'Tabela de preço', tipo: 'cadastro', fonte: '/v1/cadastros/tabelas-preco' },
-  { nome: 'limite_credito_centavos', rotulo: 'Limite de crédito (R$)', tipo: 'dinheiro', exige: 'cadastros.cliente.credito' },
+  { nome: 'tipo_pessoa', rotulo: 'Tipo de pessoa', tipo: 'selecao', obrigatorio: true, opcoes: [{ valor: 'PJ', rotulo: 'Pessoa jurídica' }, { valor: 'PF', rotulo: 'Pessoa física' }], colunas: 2 },
+  { nome: 'documento', rotulo: 'CNPJ/CPF', tipo: 'texto', obrigatorio: true, colunas: 3 },
+  { nome: 'razao_social', rotulo: 'Razão social', tipo: 'texto', obrigatorio: true, colunas: 4 },
+  { nome: 'nome_fantasia', rotulo: 'Nome fantasia', tipo: 'texto', colunas: 3 },
+  { nome: 'ind_ie_dest', rotulo: 'Contribuinte ICMS', tipo: 'selecao', obrigatorio: true, opcoes: opcoes(ROTULO_IND_IE), colunas: 3 },
+  { nome: 'ie', rotulo: 'Inscrição estadual', tipo: 'texto', ajuda: 'Contribuinte: número válido para a UF. Isento: "ISENTO" ou vazio. Não contribuinte: vazio.', colunas: 3 },
+  { nome: 'email_nfe', rotulo: 'E-mail da NF-e', tipo: 'texto', colunas: 3 },
+  { nome: 'filial_id', rotulo: 'Filial', tipo: 'cadastro', obrigatorio: true, fonte: '/v1/cadastros/filiais', colunas: 3 },
+  { nome: 'vendedor_id', rotulo: 'Vendedor', tipo: 'cadastro', fonte: '/v1/cadastros/vendedores', colunas: 3 },
+  { nome: 'condicao_pagamento_id', rotulo: 'Condição de pagamento', tipo: 'cadastro', fonte: '/v1/cadastros/condicoes-pagamento', colunas: 3 },
+  { nome: 'tabela_preco_id', rotulo: 'Tabela de preço', tipo: 'cadastro', fonte: '/v1/cadastros/tabelas-preco', colunas: 3 },
+  { nome: 'limite_credito_centavos', rotulo: 'Limite de crédito (R$)', tipo: 'dinheiro', exige: 'cadastros.cliente.credito', colunas: 3 },
   ...[...CAMPOS_ENDERECO, ...CAMPOS_LOCALIZACAO].map((c) => ({ ...c, soCriacao: true })),
 ];
 
