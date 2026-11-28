@@ -5,7 +5,7 @@
 import { CAMINHOS_INTEGRACAO_FDV_PLATAFORMA, MENSAGEM_SEM_CREDENCIAL_FDV, ENTIDADES_ENVIO_FDV, decifrarCampo, type ContextoPlataforma, type PluginPlataforma, type Transacao } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { MSG_SEM_LICENCA } from '../contracts';
-import { criarPluginPlataformaIntegracaoFdv, type EstadoPortal, type InsumosLogPortal, type InsumosMonitorPortal, type RepositorioPortalIntegracaoFdv } from './plataforma';
+import { criarPluginPlataformaIntegracaoFdv, type EstadoPortal, type InsumosLigacoesPortal, type InsumosLogPortal, type InsumosMonitorPortal, type RepositorioPortalIntegracaoFdv } from './plataforma';
 
 const TENANT = '11111111-1111-4111-8111-111111111111';
 const CRED = '22222222-2222-4222-8222-222222222222';
@@ -28,6 +28,13 @@ const estado = (o: Partial<EstadoPortal> = {}, comCredencial = true, habilitadas
 });
 
 const monitorBruto: InsumosMonitorPortal = { credencial_ativa: true, conector_id: 'erp-1', habilitadas: 2, ultimo_sinal_aceito_em: AGORA, fila: { lotes: 1, linhas: 40 } };
+const ligacoesBruto = (o: Partial<InsumosLigacoesPortal['contato']> = {}): InsumosLigacoesPortal => ({
+  contato: { credencial_ativa: true, conector_id: 'erp-1', ambiente: 'teste', chave_prefixo: 'chave-do', habilitadas: 2, ultimo_contato_em: AGORA, ...o },
+  contadores: { enviados: 150, aceitos: 145 },
+  envios: [{ id: CRED, entidade: 'produto', estado: 'concluido_com_erros', registros: 50, aceitos: 45, com_erro: 5, enviado_em: AGORA, concluido_em: AGORA }],
+  envios_cortados: false,
+});
+let ligacoesLido: InsumosLigacoesPortal = ligacoesBruto();
 let logBruto: InsumosLogPortal = { envios: [], erros: [], total_erros: 0, pausada_motivo: null };
 
 function dubleDoRepo(lido: EstadoPortal) {
@@ -40,6 +47,7 @@ function dubleDoRepo(lido: EstadoPortal) {
     async cargaCompleta(_tx, p) { chamadas.push({ fn: 'cargaCompleta', p }); },
     async retomar(_tx, p) { chamadas.push({ fn: 'retomar', p }); return { retomada: true }; },
     async monitor() { chamadas.push({ fn: 'monitor', p: {} }); return monitorBruto; },
+    async ligacoes(_tx, tenant) { chamadas.push({ fn: 'ligacoes', p: { tenant } }); return ligacoesLido; },
     async log(_tx, p) { chamadas.push({ fn: 'log', p }); return logBruto; },
     async reprocessar(_tx, p) { chamadas.push({ fn: 'reprocessar', p }); return { falhas: 2, pendentes: 3, pedido_em: new Date(AGORA) }; },
   };
@@ -56,10 +64,11 @@ const chamar = (plugin: PluginPlataforma, metodo: string, modelo: string, o: { c
   return r.executar(ctx(), { corpo, params: { id: TENANT, ...o.params } } as never);
 };
 const C = CAMINHOS_INTEGRACAO_FDV_PLATAFORMA;
+const LIGACOES = '/empresas/:id/integracao-fdv/ligacoes';
 const ENTRADA = { conector_id: 'erp-1', chave: CHAVE, ambiente: 'teste' };
 
 describe('plugin de plataforma da Integração FDV (T-0056)', () => {
-  it('ADR 0013 seção 2: declara as 9 rotas com as ações ver, configurar e operar (T-0086: monitor, log e reprocessar)', () => {
+  it('ADR 0013 seção 2: declara as 10 rotas com as ações ver, configurar e operar (T-0086: monitor, log, reprocessar e ligações)', () => {
     const p = criarPluginPlataformaIntegracaoFdv({ chaveIntegracao: MESTRA, repo: dubleDoRepo(estado()).repo });
     expect(p.rotas.map((r) => `${r.metodo} ${r.caminho} ${r.acao} ${r.idempotencia ?? '-'}`).sort()).toEqual([
       `GET ${C.ler} plataforma.integracao_fdv.ver -`,
@@ -71,6 +80,7 @@ describe('plugin de plataforma da Integração FDV (T-0056)', () => {
       `GET ${C.monitor} plataforma.integracao_fdv.ver -`,
       `GET ${C.log} plataforma.integracao_fdv.ver -`,
       `POST ${C.reprocessar} plataforma.integracao_fdv.operar obrigatoria`,
+      `GET ${LIGACOES} plataforma.integracao_fdv.ver -`,
     ].sort());
   });
 
@@ -324,6 +334,42 @@ describe('plugin de plataforma da Integração FDV (T-0056)', () => {
       const sem = plugin(estado({}, false));
       await expect(chamar(sem.p, 'POST', C.reprocessar, { params: { entidade: 'produto' } })).rejects.toMatchObject({ status: 409 });
       expect(sem.d.escritas()).toHaveLength(0);
+    });
+  });
+
+  describe('T-0131: Ligação ERP → Macuxi FDV no /config', () => {
+    const plugin = (lido = estado()) => {
+      const d = dubleDoRepo(lido);
+      return { d, p: criarPluginPlataformaIntegracaoFdv({ chaveIntegracao: MESTRA, repo: d.repo }) };
+    };
+
+    it('RN-INF-13: devolve a saída no contrato, com a situação do Contato pelo SDK (em dia, atrasada e desativada)', async () => {
+      const { p } = plugin();
+      ligacoesLido = ligacoesBruto();
+      expect((await chamar(p, 'GET', LIGACOES)).corpo).toEqual({
+        saida: {
+          contato: { conector_id: 'erp-1', ambiente: 'teste', chave_prefixo: 'chave-do', situacao: 'em_dia', ultimo_contato_em: AGORA },
+          contadores: { enviados: 150, aceitos: 145 },
+          envios: ligacoesLido.envios,
+          envios_cortados: false,
+        },
+      });
+      ligacoesLido = ligacoesBruto({ ultimo_contato_em: null });
+      expect(((await chamar(p, 'GET', LIGACOES)).corpo as { saida: { contato: { situacao: string } } }).saida.contato.situacao).toBe('atrasado');
+      ligacoesLido = ligacoesBruto({ credencial_ativa: false, conector_id: null, ambiente: null, chave_prefixo: null, habilitadas: 0, ultimo_contato_em: null });
+      expect(((await chamar(p, 'GET', LIGACOES)).corpo as { saida: { contato: unknown } }).saida.contato).toEqual({ conector_id: null, ambiente: null, chave_prefixo: null, situacao: 'desativado', ultimo_contato_em: null });
+    });
+
+    it('perfil, tenant e licença: pede `ver`, lê a empresa ALVO, :id inválido é 400 e sem o módulo é 422 RN-CORE-02', async () => {
+      ligacoesLido = ligacoesBruto();
+      const { d, p } = plugin();
+      expect(p.rotas.find((x) => x.caminho === LIGACOES)!.acao).toBe('plataforma.integracao_fdv.ver');
+      await chamar(p, 'GET', LIGACOES);
+      expect(d.chamadas.find((c) => c.fn === 'ligacoes')!.p.tenant).toBe(TENANT);
+      await expect(chamar(p, 'GET', LIGACOES, { params: { id: 'x' } })).rejects.toMatchObject({ status: 400 });
+      const sem = plugin(estado({ modulo_licenciado: false }));
+      await expect(chamar(sem.p, 'GET', LIGACOES)).rejects.toMatchObject({ status: 422, codigo: 'RN-CORE-02' });
+      expect(sem.d.chamadas.map((c) => c.fn)).toEqual(['ler']);
     });
   });
 });

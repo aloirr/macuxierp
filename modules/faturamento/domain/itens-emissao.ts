@@ -1,12 +1,12 @@
 /**
  * Item da nota (cálculo do `fiscal.calculo@1`) no formato do item da `NotaParaEmissao` do `@macuxierp/nfe-emissor` (ADR 0002, T-0018:
  * o ÚNICO montador do XML). Função pura, em centavos. O que o emissor não monta (CST de ICMS 10/20/30/51/60/70/90, CSOSN 500/900, FCP,
- * IPI, PIS/COFINS por quantidade) vira violação ANTES da reserva do número (RF-FAT-01): nenhum número é queimado por nota que a SEFAZ
+ * PIS/COFINS por quantidade) vira violação ANTES da reserva do número (RF-FAT-01): nenhum número é queimado por nota que a SEFAZ
  * rejeitaria. Os totais NÃO entram: o emissor os calcula e confere (vProd e tributos, tolerância de R$ 0,01).
  */
 import type { IcmsItem, ItemResultado } from '@macuxierp/fiscal/contracts';
 import type { NotaParaEmissaoEntrada } from '@macuxierp/nfe-emissor';
-import { pisCofinsComValor, valoresFiscais, type NotaItemMontado } from './nota';
+import { ipiPorRegra, pisCofinsComValor, type NotaItemMontado } from './nota';
 import { violacao, type Violacao } from './violacao';
 
 type ItemEmissao = NotaParaEmissaoEntrada['itens'][number];
@@ -137,6 +137,40 @@ function rtcDe(r: ItemResultado, campo: (f: string) => string, v: Violacao[]): P
   return saida;
 }
 
+const CST_IPI_TRIB = ['00', '49', '50', '99'] as const;
+const CST_IPI_NT = ['01', '02', '03', '04', '05', '51', '52', '53', '54', '55'] as const;
+
+/**
+ * Grupo IPI (O01) a partir do `calc_ipi` do fiscal (T-0132, RN-FIS-05: v_bc → vBC, p_aliq → pIPI em %, v_valor → vIPI), com a CST e o
+ * cEnq do `ipi` do cálculo; sem cEnq, "999" (sem enquadramento específico, Manual NF-e, O06). Sem regra de IPI não há grupo: o fiscal
+ * já recusa a emissão com REGRA_NAO_ENCONTRADA quando o emitente é industrial e falta a regra.
+ */
+function ipiDe(r: ItemResultado, campo: string, v: Violacao[]): Imposto['IPI'] | undefined {
+  const regra = ipiPorRegra(r);
+  const cst = r.ipi?.cst;
+  if (!regra) {
+    if ((r.ipi?.v_ipi ?? 0) > 0) v.push(violacao('RF-FAT-01', campo, 'IPI com valor exige calc_ipi com regra_aplicada.ipi = true (fiscal.calculo@1).'));
+    return undefined;
+  }
+  if (!cst) {
+    v.push(violacao('RF-FAT-01', campo, 'IPI com regra exige a cst do grupo ipi (fiscal.calculo@1).'));
+    return undefined;
+  }
+  const cEnq = r.ipi?.c_enq && /^\d{3}$/.test(r.ipi.c_enq) ? r.ipi.c_enq : '999';
+  if ((CST_IPI_TRIB as readonly string[]).includes(cst)) {
+    return { cEnq, IPITrib: { CST: cst as (typeof CST_IPI_TRIB)[number], vBC: regra.v_bc, pIPI: pct(regra.p_aliq), vIPI: regra.v_valor } };
+  }
+  if ((CST_IPI_NT as readonly string[]).includes(cst)) {
+    if (regra.v_valor > 0) {
+      v.push(violacao('RF-FAT-01', campo, `IPI CST ${cst} (não tributado) não leva valor.`));
+      return undefined;
+    }
+    return { cEnq, IPINT: { CST: cst as (typeof CST_IPI_NT)[number] } };
+  }
+  v.push(violacao('RF-FAT-01', campo, `IPI CST ${cst} inválida (só 00, 49, 50, 99, 01 a 05 e 51 a 55).`));
+  return undefined;
+}
+
 export type ResultadoItemEmissao = { ok: true; item: ItemEmissao } | { ok: false; violacoes: Violacao[] };
 
 export function itemParaEmissao(i: NotaItemMontado): ResultadoItemEmissao {
@@ -144,7 +178,7 @@ export function itemParaEmissao(i: NotaItemMontado): ResultadoItemEmissao {
   const r = i.calculo.resultado;
   const campo = (f: string): string => `itens.${i.sequencia}.${f}`;
   if (!/^\d{4}$/.test(i.calculo.cfop)) v.push(violacao('RF-FAT-01', campo('cfop'), 'CFOP ausente ou inválido.'));
-  if (valoresFiscais(r).vIPI > 0) v.push(violacao('RF-FAT-01', campo('ipi'), 'IPI com valor sem suporte no emissor: a NotaParaEmissao não traz o grupo IPI.'));
+  const IPI = ipiDe(r, campo('ipi'), v);
   const ICMS = icmsDe(r.icms, campo('icms'), v);
   const PIS = pisCofinsDe('pis', 'PIS', r.pis, campo, v);
   const COFINS = pisCofinsDe('cofins', 'COFINS', r.cofins, campo, v);
@@ -165,7 +199,7 @@ export function itemParaEmissao(i: NotaItemMontado): ResultadoItemEmissao {
       ...(i.frete_centavos > 0 ? { vFrete: i.frete_centavos } : {}),
       ...(i.desconto_centavos > 0 ? { vDesc: i.desconto_centavos } : {}),
       ...(i.outras_centavos > 0 ? { vOutro: i.outras_centavos } : {}),
-      imposto: { ICMS, PIS, COFINS, ...rtc },
+      imposto: { ICMS, ...(IPI ? { IPI } : {}), PIS, COFINS, ...rtc },
     },
   };
 }

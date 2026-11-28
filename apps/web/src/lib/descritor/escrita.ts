@@ -35,6 +35,9 @@ export interface ResultadoEscrita {
   id?: string;
   /** Campo -> mensagem, quando a API aponta. */
   campos?: Record<string, string>;
+  /** Status HTTP da falha e `codigo` do corpo de erro da API (o texto da tela é do módulo; nunca dado do registro). */
+  status?: number;
+  codigo?: string;
   /** 412/409: a versão mudou; a tela recarrega. */
   desatualizado?: boolean;
   /** 4xx definitivo (a API guardou a resposta da Idempotency-Key): corpo novo pede chave nova. */
@@ -63,9 +66,10 @@ export function resultadoDaResposta(status: number, ok: boolean, corpo: unknown,
   }
   // ADR 0021 §1: 409 email_em_uso (cadastro ou troca de e-mail de usuário): texto e campo do SDK; não é versão velha, a tela não recarrega.
   const emailEmUso = erroEmailEmUso(status, c.detalhes);
-  if (emailEmUso) return { ok: false, mensagem: emailEmUso.mensagem, campos: emailEmUso.campos, ...(ehRespostaDefinitiva(status) ? { definitivo: true } : {}) };
+  if (emailEmUso) return { ok: false, mensagem: emailEmUso.mensagem, status, campos: emailEmUso.campos, ...(ehRespostaDefinitiva(status) ? { definitivo: true } : {}) };
   const mensagem = typeof c.mensagem === 'string' && c.mensagem.trim() && status < 500 ? c.mensagem.trim() : (FIXAS[status] ?? FALHA);
   const campos: Record<string, string> = {};
   if (c.campos && typeof c.campos === 'object') for (const [k, v] of Object.entries(c.campos)) if (typeof v === 'string') campos[k] = v;
-  return { ok: false, mensagem, ...(Object.keys(campos).length ? { campos } : {}), ...(status === 409 || status === 412 ? { desatualizado: true } : {}), ...(ehRespostaDefinitiva(status) ? { definitivo: true } : {}) };
+  const codigo = typeof c.codigo === 'string' ? { codigo: c.codigo } : {};
+  return { ok: false, mensagem, status, ...codigo, ...(Object.keys(campos).length ? { campos } : {}), ...(status === 409 || status === 412 ? { desatualizado: true } : {}), ...(ehRespostaDefinitiva(status) ? { definitivo: true } : {}) };
 }

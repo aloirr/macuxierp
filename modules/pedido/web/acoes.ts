@@ -4,6 +4,7 @@
  */
 import { pode, type Perfil } from '@macuxierp/platform-sdk';
 import { possiveis } from '../domain/transicao';
+import { podeEditarPedido } from '../domain/edicao';
 import { errosPorCampo } from './erros';
 import { AprovarEntrada, CancelarEntrada, RecusarEntrada, type CatalogoMotivos, type OrigemPedido, type PendenciaDetalhada, type StatusPedido } from '../contracts';
 
@@ -25,7 +26,7 @@ export interface AcoesDoPedido {
   cancelar: boolean;
   /** Pedido bko em análise; adm, gerente e faturista. */
   revalidar: boolean;
-  /** Sempre `false` até a tela "Editar pedido" existir no BKO (decisão do PO, v0.3.30); o PUT `/pedidos/:id` continua na API. */
+  /** Pedido bko em análise (RN-PED-02); adm, gerente e faturista (`pedido.pedido.lancar`). Leva a `/pedido/pedidos/:id/editar`. */
   editar: boolean;
 }
 
@@ -41,9 +42,12 @@ export function acoesDoPedido(perfil: Perfil, p: PedidoParaAcao): AcoesDoPedido 
     recusar: aprova,
     cancelar: possiveis(p.status).includes('cancelado') && pode(perfil, 'pedido.pedido.cancelar'),
     revalidar: lanca,
-    editar: false,
+    editar: podeEditarPedido(p.status, p.origem) && pode(perfil, 'pedido.pedido.lancar'),
   };
 }
+
+/** Rota da edição do pedido (a mesma tela do "Novo", preenchida e enviada por PUT com `If-Match`). */
+export const rotaDeEdicao = (id: string): string => `/pedido/pedidos/${encodeURIComponent(id)}/editar`;
 
 /** Quem pode abrir "Novo pedido" (botão da lista). */
 export const podeLancar = (perfil: Perfil): boolean => pode(perfil, 'pedido.pedido.lancar');

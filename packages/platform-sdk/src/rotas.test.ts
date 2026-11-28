@@ -69,6 +69,13 @@ describe('multipart (upload do A1)', () => {
     expect(() => definirPlugin(manifesto, [rota({ multipart: { arquivos: [arq, arq] } })])).toThrow(PluginInvalido);
     expect(() => definirPlugin(manifesto, [rota({ multipart: { arquivos: [{ campo: 'arquivo', tamanhoMaximo: TAMANHO_MAXIMO_MULTIPART + 1 }] } })])).toThrow(PluginInvalido);
   });
+
+  it('T-0129: semPermissao é frase de 1 a 200 caracteres, sem espaço nas pontas', () => {
+    expect(definirPlugin(manifesto, [rota({ semPermissao: 'Só o administrador envia o certificado.' })]).rotas).toHaveLength(1);
+    for (const ruim of ['', ' Só o administrador.', 'x'.repeat(201)]) expect(() => definirPlugin(manifesto, [rota({ semPermissao: ruim })])).toThrow(PluginInvalido);
+    expect(erros.perfilSemPermissao('Só o administrador envia o certificado.')).toMatchObject({ status: 403, codigo: 'PERFIL_SEM_PERMISSAO', message: 'Só o administrador envia o certificado.' });
+    expect(erros.perfilSemPermissao().message).toBe('Seu perfil não permite esta ação');
+  });
 });
 
 describe('multipart com vários arquivos, limite total, Idempotency-Key e tempo por rota (T-0026)', () => {
