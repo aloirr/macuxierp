@@ -1,4 +1,4 @@
-import { ROTULOS_ACAO_USUARIO, ROTULOS_SITUACAO_USUARIO, ROTULO_ULTIMO_ADMIN, type AcaoUsuario, type UsuarioConfig } from '@macuxierp/core/contracts';
+import { ROTULOS_ACAO_USUARIO, ROTULOS_SITUACAO_USUARIO, ROTULO_ULTIMO_ADMIN, type AcaoUsuario, type FilialConfig, type UsuarioConfig } from '@macuxierp/core/contracts';
 import { semAcento } from '../texto-busca';
 import { tomAmarelo } from '../usuarios-textos';
 import { TOM_SITUACAO_USUARIO } from '@macuxierp/core/web';
@@ -36,3 +36,13 @@ export const filtrarUsuarios = (itens: readonly UsuarioConfig[], busca: string):
   const b = semAcento(busca);
   return b === '' ? [...itens] : itens.filter((u) => semAcento(`${u.nome} ${u.email_mascarado}`).includes(b));
 };
+
+/** T-0130: filiais marcadas ao abrir o formulário. Usuário novo: só a padrão. Edição: as do usuário que a empresa ainda lista. */
+export const filiaisIniciais = (filiais: readonly FilialConfig[], atuais: readonly string[] | null): string[] =>
+  atuais === null ? filiais.filter((f) => f.padrao).map((f) => f.id) : filiais.filter((f) => atuais.includes(f.id)).map((f) => f.id);
+
+/** Marca ou desmarca uma filial, mantendo a ordem da lista da empresa. */
+export const alternarFilial = (filiais: readonly FilialConfig[], marcadas: readonly string[], id: string, marcar: boolean): string[] =>
+  filiais.filter((f) => (f.id === id ? marcar : marcadas.includes(f.id))).map((f) => f.id);
+
+export const mesmasFiliais = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((x) => b.includes(x));

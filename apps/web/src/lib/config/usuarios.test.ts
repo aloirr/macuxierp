@@ -1,8 +1,8 @@
-import { MENSAGEM_ULTIMO_ADMIN, type UsuarioConfig } from '@macuxierp/core/contracts';
+import { MENSAGEM_ULTIMO_ADMIN, type FilialConfig, type UsuarioConfig } from '@macuxierp/core/contracts';
 import { CODIGO_EMAIL_EM_USO, MENSAGEM_EMAIL_EM_USO } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { ErroPlataforma, SENHA_JA_EXIBIDA, USUARIO_CONFLITO, USUARIO_NAO_ENCONTRADO, mensagemDoErro } from './erros';
-import { etiquetaUltimoAdmin, filtrarUsuarios, itensDoMenuUsuario, seloDoUsuario, textoUltimoAcesso } from './usuarios';
+import { alternarFilial, etiquetaUltimoAdmin, filiaisIniciais, filtrarUsuarios, mesmasFiliais, itensDoMenuUsuario, seloDoUsuario, textoUltimoAcesso } from './usuarios';
 
 const ID = '3f1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c70';
 const u = (extra: Partial<UsuarioConfig> = {}): UsuarioConfig => ({
@@ -61,5 +61,27 @@ describe('Usuários da Config: mensagens de erro (ctx "usuario")', () => {
   it('404 → usuário fora da empresa; 400 → campos', () => {
     expect(erro(404, 'NAO_ENCONTRADO').texto).toBe(USUARIO_NAO_ENCONTRADO);
     expect(erro(400, 'VALIDACAO', '', { nome: 'curto' })).toMatchObject({ campos: { nome: 'curto' } });
+  });
+});
+
+describe('Filiais do usuário (T-0130)', () => {
+  const A = '11111111-1111-4111-8111-111111111111';
+  const B = '22222222-2222-4222-8222-222222222222';
+  const filiais: FilialConfig[] = [{ id: A, nome: 'Matriz', padrao: true }, { id: B, nome: 'Filial Norte', padrao: false }];
+  it('usuário novo começa com a filial padrão marcada; sem padrão, nada marcado', () => {
+    expect(filiaisIniciais(filiais, null)).toEqual([A]);
+    expect(filiaisIniciais([{ id: B, nome: 'Filial Norte', padrao: false }], null)).toEqual([]);
+  });
+  it('edição parte das filiais do usuário, sem ids que a empresa não lista', () => {
+    expect(filiaisIniciais(filiais, [B, '33333333-3333-4333-8333-333333333333'])).toEqual([B]);
+  });
+  it('alternar marca e desmarca, na ordem da lista', () => {
+    expect(alternarFilial(filiais, [A], B, true)).toEqual([A, B]);
+    expect(alternarFilial(filiais, [B], A, true)).toEqual([A, B]);
+    expect(alternarFilial(filiais, [A, B], A, false)).toEqual([B]);
+  });
+  it('mesmasFiliais ignora a ordem', () => {
+    expect(mesmasFiliais([A, B], [B, A])).toBe(true);
+    expect(mesmasFiliais([A], [A, B])).toBe(false);
   });
 });
