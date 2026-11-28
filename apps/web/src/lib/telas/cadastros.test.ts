@@ -103,7 +103,7 @@ describe('Nova filial: endereço em 12 colunas (marca, v0.3.30)', () => {
   const SPAN: Record<string, number> = { ' campo-curto': 2, ' campo-medio': 4, ' campo-3': 3, ' campo-8': 8 };
   const campos = NOVA_FILIAL.camposDoPerfil?.('gerente') ?? NOVA_FILIAL.campos;
   const endereco = campos.filter((c) => c.nome.startsWith('end_'));
-  const largura = (n: string) => SPAN[larguraDoCampo(endereco.find((c) => c.nome === n)!)];
+  const largura = (n: string) => SPAN[larguraDoCampo(endereco.find((c) => c.nome === n)!).replace(' campo-inicio-linha', '')];
 
   it('ordem: CEP, Logradouro, Número, Complemento, Bairro, Município, UF', () => {
     expect(endereco.map((c) => c.nome)).toEqual(['end_cep', 'end_logradouro', 'end_numero', 'end_complemento', 'end_bairro', 'end_municipio_ibge', 'end_uf']);
@@ -112,5 +112,13 @@ describe('Nova filial: endereço em 12 colunas (marca, v0.3.30)', () => {
   it('linha 1 fecha 12 (2+8+2) e linha 2 fecha 12 (3+3+4+2)', () => {
     expect(['end_cep', 'end_logradouro', 'end_numero'].map(largura)).toEqual([2, 8, 2]);
     expect(['end_complemento', 'end_bairro', 'end_municipio_ibge', 'end_uf'].map(largura)).toEqual([3, 3, 4, 2]);
+  });
+
+  it('CEP começa linha nova e a linha da NF-e fecha 12 (Emite 4 + Série 4 + Número inicial 4)', () => {
+    expect(larguraDoCampo(endereco[0]!)).toContain('campo-inicio-linha');
+    const nomes = ['emissora', 'nfe_serie', 'nfe_numero_inicial'];
+    const todos = NOVA_FILIAL.camposDoPerfil?.('gerente') ?? NOVA_FILIAL.campos;
+    const soma = nomes.map((n) => SPAN[larguraDoCampo(todos.find((c) => c.nome === n)!).replace(' campo-inicio-linha', '')] ?? 0);
+    expect(soma).toEqual([4, 4, 4]);
   });
 });
