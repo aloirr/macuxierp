@@ -13,7 +13,7 @@
 # /opt/macuxierp → versão em uso guardada (imagens.env + compose.yml → *.anterior) → compose novo e imagens.env → pull →
 # banco.sh (banco, migrações, senhas e conferência dos papéis) → troca sem parada da api e do web (troca.sh: a réplica nova
 # ao lado da velha, saúde, a velha sai do túnel e drena; ADR 0003, adendo 48 A) → worker → conferência de dentro dos
-# contêineres (/v1/saude com banco ok e a versão nova; /login) → limpeza das imagens SÓ do ERP.
+# contêineres (/v1/saude com banco ok e a versão nova; a raiz "/" do web) → limpeza das imagens SÓ do ERP.
 # Saída 0 = publicado. Falha ANTES do up (trava, arquivos, pull, banco): nada da aplicação mudou; saída 1 (2 = argumento).
 # Falha DEPOIS do up: VOLTA ATRÁS para a versão anterior (imagens e compose; pelo mesmo caminho sem parada), confere de
 # novo e sai com 3. Se a réplica nova não fica saudável, ela sai e a velha nem deixou o túnel. Migração aplicada
@@ -162,7 +162,7 @@ source "$ORIGEM/troca.sh"
 VERSAO_ALVO=""
 api_da_versao_alvo() { api_na_versao "$1" "$VERSAO_ALVO"; }
 
-conferir() { # 0 = cada api com banco ok e a versão esperada, e cada web respondendo o /login (de dentro do contêiner)
+conferir() { # 0 = cada api com banco ok e a versão esperada, e cada web respondendo a raiz "/" (de dentro do contêiner)
   local i
   for i in $(seq 1 45); do
     todas_ok macuxierp-api api_na_versao "$1" && { log "api: /v1/saude ok (banco ok, versão $1)"; break; }
@@ -170,10 +170,10 @@ conferir() { # 0 = cada api com banco ok e a versão esperada, e cada web respon
     sleep 2
   done
   for i in $(seq 1 30); do
-    todas_ok macuxierp-web web_responde && { log "web: /login ok"; return 0; }
+    todas_ok macuxierp-web web_responde && { log "web: / ok"; return 0; }
     sleep 2
   done
-  echo "[implantar] BKO /login não respondeu" >&2
+  echo "[implantar] BKO / (raiz, login) não respondeu" >&2
   return 1
 }
 
