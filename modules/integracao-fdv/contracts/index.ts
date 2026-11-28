@@ -15,6 +15,7 @@ export const TenantId = z.string().uuid();
 export * from './credencial';
 export * from './eventos';
 export * from './hub';
+export * from './ligacoes';
 export * from './monitor';
 export * from './pausa';
 
