@@ -3,7 +3,7 @@
  * (RN-CORE-03), quantidade em escala 4. A API revalida com a situação lida com `FOR SHARE` na transação que reserva o número.
  */
 import { centavos, ratear, valorItem } from '@macuxierp/platform-sdk';
-import type { ItemResultado } from '@macuxierp/fiscal/contracts';
+import type { ImpostoCalculado, ItemResultado, RegraAplicada, TotalImpostoCalculado } from '@macuxierp/fiscal/contracts';
 import type { PedidoAprovadoV1, SituacaoPedidoParaFaturar } from '@macuxierp/pedido/contracts';
 import type { Ambiente, ItemEmissao } from '../contracts';
 import { violacao, type Violacao } from './violacao';
@@ -56,6 +56,33 @@ export function valoresFiscais(r: ItemResultado): {
     vCBS: r.ibs_cbs?.g_cbs?.v_cbs ?? r.cbs?.v_cbs ?? r.ibs?.v_cbs ?? 0,
     vIS: r.is?.v_is ?? 0,
   };
+}
+
+/** ST e IPI por regra de um item nos eventos e na consulta da nota (RN-FIS-05, regra 63 A). Campo ausente = sem regra. */
+export interface ImpostosEventoItem { regra_aplicada?: RegraAplicada; calc_st?: ImpostoCalculado; calc_ipi?: ImpostoCalculado }
+export interface TotaisImpostosEvento { calc_st?: TotalImpostoCalculado; calc_ipi?: TotalImpostoCalculado }
+
+/**
+ * RN-FIS-05: `calc_st`/`calc_ipi` só saem com `regra_aplicada.<imposto> = true` (o indicador manda; nunca se deduz de v_st/v_ipi).
+ * Só o retorno ao FDV omite: o XML da NF-e segue o Manual e continua com vST/vIPI em 0 (`valoresFiscais`).
+ */
+export function impostosDoItemEvento(r: ItemResultado): ImpostosEventoItem {
+  return {
+    ...(r.regra_aplicada ? { regra_aplicada: r.regra_aplicada } : {}),
+    ...(r.regra_aplicada?.st === true && r.calc_st ? { calc_st: r.calc_st } : {}),
+    ...(r.regra_aplicada?.ipi === true && r.calc_ipi ? { calc_ipi: r.calc_ipi } : {}),
+  };
+}
+
+/** RN-FIS-05: o total de um imposto só existe se TODOS os itens têm regra dele; sem nenhum total, `undefined` (o campo `totais` é omitido). */
+export function totaisImpostosEvento(itens: readonly ImpostosEventoItem[]): TotaisImpostosEvento | undefined {
+  const somar = (k: 'calc_st' | 'calc_ipi'): TotalImpostoCalculado | undefined => {
+    if (itens.length === 0 || !itens.every((i) => i[k] !== undefined)) return undefined;
+    return itens.reduce((a, i) => ({ v_bc: a.v_bc + (i[k]?.v_bc ?? 0), v_valor: a.v_valor + (i[k]?.v_valor ?? 0) }), { v_bc: 0, v_valor: 0 });
+  };
+  const calc_st = somar('calc_st');
+  const calc_ipi = somar('calc_ipi');
+  return calc_st || calc_ipi ? { ...(calc_st ? { calc_st } : {}), ...(calc_ipi ? { calc_ipi } : {}) } : undefined;
 }
 
 /** CFOP do item: o do `ItemResultado.cfop` do fiscal (lote 3); sem ele, o que a porta do cálculo devolveu à parte. */
@@ -329,3 +356,6 @@ export function montarNota(e: EntradaMontagem): ResultadoMontagem {
     },
   };
 }
+
+/** Resumo do item com ST e IPI por regra (omitidos sem regra): o que a nota guarda para os eventos e a consulta. */
+export const resumoDoItemMontado = (i: NotaItemMontado): ReturnType<typeof resumoDoItem> & ImpostosEventoItem => ({ ...resumoDoItem(i), ...impostosDoItemEvento(i.calculo.resultado) });

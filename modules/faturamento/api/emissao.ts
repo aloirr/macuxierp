@@ -40,7 +40,7 @@ import {
   filaAceitaNota,
   podeEditar,
   ratearItens,
-  resumoDoItem,
+  resumoDoItemMontado,
   validarTransicao,
   type ConteudoNota,
   type DestinatarioNota,
@@ -473,7 +473,7 @@ export function criarServicoEmissao(deps: DepsEmissao) {
     // Total e itens refeitos entram na nota ANTES de transmitir: o evento autorizado leva o mesmo total do vNF do XML (RN-FAT-07).
     // O status NÃO muda: o worker remonta, reassina (nfe_assinada versão = max+1, a 0020 exige rejeitada ou rascunho) e só então vai a em_autorizacao.
     await deps.notas.atualizarConteudo(tx, nota.id, conteudo);
-    const itens = conteudo.itens.map(resumoDoItem);
+    const itens = conteudo.itens.map(resumoDoItemMontado);
     return { ok: true, nota: { ...nota, total_centavos: p.nota.totais.vNF, itens, recibo: null, revisao: nota.revisao + 1 }, repetida: false };
   }
 

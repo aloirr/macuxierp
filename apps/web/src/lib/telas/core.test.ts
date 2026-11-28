@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PerfilComAcoes } from '@macuxierp/core/contracts';
+import { ROTULO_MODULO } from '@macuxierp/core/web';
 import type { Perfil } from '@macuxierp/platform-sdk';
 import { PERFIS, PERMISSOES } from '@macuxierp/platform-sdk';
 import { montarMenu, resolverPagina } from '../menu';
@@ -47,6 +48,17 @@ describe('registro das telas do core (T-0087)', () => {
   it('só o administrador recebe ações e botão "Novo usuário"', () => {
     for (const perfil of PERFIS.filter((p): p is Perfil => p !== 'administrador')) expect(acoesDoUsuario(usuario(), perfil), perfil).toEqual([]);
     expect(LISTA_USUARIOS.novo).toMatchObject({ rota: ROTA_USUARIO_NOVO, criar: 'core.usuario.gerir' });
+  });
+});
+
+describe('usuários: um botão por linha e filtro da auditoria (T-0135)', () => {
+  it('sem botão solto: todas as ações da linha, o Editar entre elas, ficam no "Ações ▾"', () => {
+    const a = LISTA_USUARIOS.acaoDaLinha!;
+    expect(a.acao(usuario() as never, 'administrador')).toBeNull();
+    expect(a.maisAcoes?.(usuario() as never, 'administrador').map((x) => x.id)).toEqual(['editar', 'redefinir-senha', 'inativar', 'excluir']);
+  });
+  it('o filtro da auditoria se chama "Usuário"', () => {
+    expect(LISTA_AUDITORIA.filtrosTela.find((f) => f.chave === 'usuario_id')?.rotulo).toBe('Usuário');
   });
 });
 
@@ -172,7 +184,7 @@ describe('perfis e permissões (RF-CORE-02)', () => {
     const m = matrizDePerfis(itens);
     expect(m.perfis.map((p) => p.rotulo)).toContain('Administrador');
     expect(m.grupos[0]?.modulo).toBe('cadastros'); // ordem alfabética
-    expect(m.grupos.find((g) => g.modulo === 'core')?.rotulo).toBe('Plataforma');
+    expect(m.grupos.find((g) => g.modulo === 'core')?.rotulo).toBe(ROTULO_MODULO.core);
     const gerir = m.grupos.flatMap((g) => g.linhas).find((l) => l.acao === 'core.usuario.gerir');
     expect(gerir?.por_perfil).toEqual(m.perfis.map((p) => p.perfil === 'administrador'));
     for (const g of m.grupos) for (const l of g.linhas) expect(l.por_perfil).toHaveLength(m.perfis.length);

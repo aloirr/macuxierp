@@ -6,7 +6,7 @@
  */
 import { erros, type Transacao } from '@macuxierp/platform-sdk';
 import { ORIGEM_CERTIFICADO_PADRAO } from '@macuxierp/platform-sdk/certificado-origem';
-import { ehEmailEmUso } from './erro-pg';
+import { ehEmailEmUso, ehExternalIdEmUso } from './erro-pg';
 import type {
   LinhaAmbiente,
   LinhaAuditoria,
@@ -20,6 +20,9 @@ import type {
   NovoUsuario,
   RepositorioCore,
 } from './portas';
+
+/** RN-CORE-05: texto fixo, sem eco do external_id. */
+export const MENSAGEM_EXTERNAL_ID_EM_USO = 'O identificador externo já pertence a um usuário desta empresa (inclusive excluído)';
 
 const COLUNAS_USUARIO = 'id, nome, email::text AS email, perfil, filial_ids, ativo, external_id, ultimo_acesso_em, bloqueado_ate, updated_at';
 const COLUNAS_CERTIFICADO = 'id, filial_id, titular, cnpj::text AS cnpj, valido_de, valido_ate, impressao_digital::text AS impressao_digital, ativo, origem';
@@ -85,7 +88,10 @@ export class RepositorioCoreSql implements RepositorioCore {
     )
       .catch((e: unknown) => {
         // RN-CORE-18 (0079): o índice global pega o e-mail de outra empresa, que a RLS esconde da busca da rota.
-        throw ehEmailEmUso(e) ? erros.emailEmUso() : e;
+        if (ehEmailEmUso(e)) throw erros.emailEmUso();
+        // RN-CORE-05: o external_id de usuário excluído continua no índice; o reenvio é 409 (não reativa, não vira 500).
+        if (ehExternalIdEmUso(e)) throw erros.conflito(MENSAGEM_EXTERNAL_ID_EM_USO);
+        throw e;
       });
     if (!linha) throw new Error('plataforma.usuario: insert sem retorno');
     return linha;

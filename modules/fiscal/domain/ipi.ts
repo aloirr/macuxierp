@@ -1,4 +1,4 @@
-import { CST_IPI_ENTRADA, CST_IPI_SEM_VALOR, CST_IPI_TRIBUTADO, type IpiItem, type ItemCalculo, type RegraTributaria } from '../contracts';
+import { CST_IPI_ENTRADA, CST_IPI_SEM_VALOR, CST_IPI_TRIBUTADO, type ImpostoCalculado, type IpiItem, type ItemCalculo, type RegraTributaria } from '../contracts';
 import { aplicarPercentual, valorOperacao, valorPorUnidade } from './dinheiro';
 import type { CodigoErroCalculo } from './erros';
 
@@ -31,4 +31,13 @@ export function calcularIpiItem(item: ItemCalculo, regra: RegraTributaria): Resu
   if (bc < 0) return { ok: false, codigo: 'BASE_NEGATIVA', mensagem: 'O desconto é maior que o valor do item: base de cálculo do IPI negativa.' };
   const v = aplicarPercentual(bc, regra.aliquota_ipi);
   return { ok: true, ipi: { cst, c_enq: regra.c_enq, v_bc: bc, p_ipi: regra.aliquota_ipi, v_ipi: v }, v_ipi: v };
+}
+
+/**
+ * RN-FIS-05 (63 A): IPI calculado por regra. Há regra sempre que o motor montou o grupo IPI a partir de uma regra de IPI (inclusive CST 51..55, valor 0).
+ * Alíquota nunca é inventada: ad valorem usa a da regra; por unidade (pauta) e CST sem valor não têm alíquota ad valorem e saem com v_bc e p_aliq 0.
+ */
+export function calcIpiDoGrupo(ipi: IpiItem | undefined): ImpostoCalculado | undefined {
+  if (!ipi) return undefined;
+  return { v_bc: ipi.v_bc ?? 0, p_aliq: ipi.p_ipi ?? 0, v_valor: ipi.v_ipi ?? 0 };
 }

@@ -57,6 +57,7 @@ describe('grade de 12 colunas do formulário (T-0121, regra 11)', () => {
     expect(larguraDoCampo({ nome: 'serie', tipo: 'texto' })).toBe(' campo-curto');
     expect(larguraDoCampo({ nome: 'end_numero', tipo: 'texto' })).toBe(' campo-curto');
     expect(larguraDoCampo({ nome: 'numeroso', tipo: 'texto' })).toBe('');
+    expect(larguraDoCampo({ nome: 'cep', tipo: 'texto', colunas: 3 })).toBe(' campo-col-3');
     const css = readFileSync(`${__dirname}/../../app/globals.css`, 'utf8');
     expect(css).not.toMatch(/\.conteudo \{[^}]*max-width/);
     expect(css).toMatch(/\.conteudo h1 \{[^}]*azul-noite[^}]*margin: 0 0 4px/);

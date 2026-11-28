@@ -4,7 +4,7 @@
  */
 import type { Transacao } from '@macuxierp/platform-sdk';
 import { Uf } from '@macuxierp/cadastros/contracts';
-import { CalculoEntrada, type CalculoSaida, type ErroFiscal, type ItemCalculo, type ResultadoCalculoFiscal } from '../contracts';
+import { CalculoEntrada, CalculoSaida as CalculoSaidaSchema, type CalculoSaida, type ErroFiscal, type ItemCalculo, type ResultadoCalculoFiscal } from '../contracts';
 import { calcularDocumento, cfopBase, cfopPeloIcms, destinatarioPeloIndIe, type EntradaCfop } from '../domain';
 import type { ConsultaEmitenteFiscal, RepositorioFiscal } from './portas';
 import { repositorioFiscalSql } from './sql';
@@ -40,6 +40,8 @@ export interface DepsCalculoFiscal {
   emitentes: ConsultaEmitenteFiscal;
   /** Padrão: leitura SQL de `fiscal.regra_tributaria` e `fiscal.carga_aproximada`. */
   repositorio?: RepositorioFiscal;
+  /** Padrão 'emissao' (é o `calculo` do faturamento: industrial sem regra de IPI dá REGRA_NAO_ENCONTRADA). 'previa' é para quem calcular fora da emissão (hoje ninguém chama). */
+  modo?: 'emissao' | 'previa';
 }
 
 const falha = (codigo: ErroFiscal['codigo'], mensagem: string, rn = 'RN-FIS-01'): ResultadoCalculoFiscal => ({ ok: false, erros: [{ rn, codigo, mensagem }] });
@@ -103,7 +105,7 @@ export function criarCalculoFiscal(deps: DepsCalculoFiscal): CalculoFiscalDoFisc
       for (let passada = 0; passada < 2; passada++) {
         const e = montar(cfops);
         if (!e.success) return falha('ENTRADA_INVALIDA', `Entrada do cálculo inválida: ${e.error.issues[0]?.path.join('.') ?? ''}.`);
-        const r = calcularDocumento(e.data);
+        const r = calcularDocumento(e.data, { modo: deps.modo ?? 'emissao' });
         if (!r.ok) return { ok: false, erros: r.erros };
         const novos: Record<number, string> = {};
         for (const it of r.valor.itens) {
@@ -115,6 +117,9 @@ export function criarCalculoFiscal(deps: DepsCalculoFiscal): CalculoFiscalDoFisc
         const diverge = entrada.itens.find((i) => novos[i.sequencia] !== cfops[i.sequencia]);
         if (!diverge) {
           const saida: CalculoSaida = { ...r.valor, itens: r.valor.itens.map((it) => ({ ...it, cfop: cfops[Number(it.item_id)] })) };
+          // A API revalida (RN-FIS-05, 63 A): calc_* só com regra_aplicada e total só se todos os itens têm regra.
+          const v = CalculoSaidaSchema.safeParse(saida);
+          if (!v.success) return falha('ENTRADA_INVALIDA', `Saída do cálculo incoerente: ${v.error.issues[0]?.message ?? ''}`, 'RN-FIS-05');
           return { ok: true, saida, cfops };
         }
         if (passada === 1) {

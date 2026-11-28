@@ -9,12 +9,13 @@ import { definirPaginaLista, type ColunaLista, type ValorCsv } from '@macuxierp/
 import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
 import { ROTULOS_PERFIL, type Perfil } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
+import { TEXTO_SEM_PRAZO } from './textos-licenca';
 import { AuditoriaItemLista, Id, Licenca, ROTULOS_SITUACAO_USUARIO, Usuario, type SituacaoUsuario } from '../contracts';
 
 const Instante = z.string().datetime();
 
 export const ROTULO_MODULO: Readonly<Record<string, string>> = {
-  core: 'Plataforma',
+  core: 'Empresa',
   cadastros: 'Cadastros',
   pedido: 'Pedidos',
   faturamento: 'Faturamento',
@@ -55,7 +56,7 @@ export const COLUNAS_USUARIOS: readonly ColunaCore<Usuario>[] = [
 export const COLUNAS_LICENCAS: readonly ColunaLista<Licenca>[] = [
   { id: 'modulo', titulo: 'Módulo', valor: (l) => ROTULO_MODULO[l.modulo] ?? l.modulo },
   { id: 'ativo', titulo: 'Ativo', valor: (l) => sim(l.ativo) },
-  { id: 'valido_ate', titulo: 'Válido até', valor: (l) => l.valido_ate ?? 'Sem prazo' },
+  { id: 'valido_ate', titulo: 'Válido até', valor: (l) => l.valido_ate ?? TEXTO_SEM_PRAZO },
 ];
 
 export const COLUNAS_AUDITORIA: readonly ColunaCore<AuditoriaItemLista>[] = [

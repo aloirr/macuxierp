@@ -2,7 +2,8 @@
 import { AlterarModulosEntrada, CriarEmpresaEntrada, SituacaoEmpresaEntrada } from '@macuxierp/platform-sdk';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { alterarModulos, alterarSituacao, criarEmpresa, listarEmpresas } from '@/lib/config/api';
+import { alterarModulos, alterarSituacao, criarEmpresa, listarEmpresas, redefinirSenhaPrimeiroAdmin } from '@/lib/config/api';
+import { EMPRESA_NAO_ENCONTRADA } from '@/lib/config/erros';
 import { executarConfig, falha, type Resultado } from '@/lib/config/executar';
 import { MOTIVO_INVALIDO, traduzirCriarEmpresa } from '@/lib/config/formularios';
 
@@ -38,6 +39,14 @@ export async function situacaoAcao(id: string, situacao: string, motivo: string,
   const r = await executarConfig('situacao', (t) => alterarSituacao(t, id, p.data, chave));
   if (r.ok) atualizar(id);
   return r.ok ? ({ ok: true, valor: null } as const) : r;
+}
+
+/** Redefine a senha do 1º administrador pela lista (T-0134). A senha provisória sai só no `valor`: nada de log, URL ou armazenamento. */
+export async function redefinirSenhaAdminAcao(id: string, chave: string) {
+  if (!UUID.test(id)) return falha(EMPRESA_NAO_ENCONTRADA);
+  const r = await executarConfig('usuario_senha', (t) => redefinirSenhaPrimeiroAdmin(t, id, chave));
+  if (r.ok) atualizar(id);
+  return r;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

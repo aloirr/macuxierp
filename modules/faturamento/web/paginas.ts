@@ -41,7 +41,7 @@ const colunasPedidos: Fabrica<PedidoAFaturarResumo> = (fuso) => [
   { id: 'numero', titulo: 'Pedido', tipo: 'numero', valor: (p) => p.numero },
   { id: 'cliente', titulo: 'Cliente', valor: (p) => ou(p.cliente_razao_social) },
   { id: 'total', titulo: 'Total', tipo: 'dinheiro', valor: (p) => valor(p.total_centavos) },
-  { id: 'status', titulo: 'Status', tipo: 'status', valor: (p) => ROTULO_STATUS_PEDIDO[p.status], selos: (p) => [seloDoPedido(p.status)] },
+  { id: 'status', titulo: 'Situação', tipo: 'status', valor: (p) => ROTULO_STATUS_PEDIDO[p.status], selos: (p) => [seloDoPedido(p.status)] },
   colunaAmbiente(),
   // O contrato só tem `recebido_em` (a fila grava quando recebe o evento de aprovação); não há `aprovado_em`.
   { id: 'recebido_em', titulo: 'Recebido em', tipo: 'data', valor: (p) => hora(fuso)(p.recebido_em) },
@@ -52,7 +52,7 @@ const colunasNotas: Fabrica<NotaResumo> = (fuso) => [
   { id: 'pedido', titulo: 'Pedido', tipo: 'numero', valor: (n) => ou(n.pedido_numero == null ? null : String(n.pedido_numero)) },
   { id: 'filial', titulo: 'Filial', valor: (n) => ou(n.filial_nome) },
   { id: 'cliente', titulo: 'Cliente', valor: (n) => ou(n.cliente_razao_social) },
-  { id: 'status', titulo: 'Status', tipo: 'status', valor: (n) => ROTULO_STATUS_NOTA[n.status].texto, selos: (n) => [ROTULO_STATUS_NOTA[n.status]] },
+  { id: 'status', titulo: 'Situação', tipo: 'status', valor: (n) => ROTULO_STATUS_NOTA[n.status].texto, selos: (n) => [ROTULO_STATUS_NOTA[n.status]] },
   colunaAmbiente(),
   { id: 'total', titulo: 'Total', tipo: 'dinheiro', valor: (n) => valor(n.total_centavos) },
   { id: 'emitida_em', titulo: 'Emitida em', tipo: 'data', valor: (n) => hora(fuso)(n.emitida_em) },

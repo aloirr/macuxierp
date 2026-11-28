@@ -404,6 +404,15 @@ export type PedidoCanceladoV1 = z.infer<typeof PedidoCanceladoV1>;
  */
 const CHAVE_ACESSO_REGEX = /^\d{6}[A-Z0-9]{12}\d{26}$/;
 
+/**
+ * ICMS-ST e IPI por regra (T-0132, RN-FIS-05, decisão 63 A), copiados do cálculo fiscal da nota; aditivo no @1.
+ * Centavos; alíquota com 4 casas (180000 = 18,0000%). Campo ausente = "sem regra"; zero COM regra é legítimo.
+ * Cópia local dos grupos de `modules/fiscal/contracts` (o pedido não depende do fiscal); mantenha iguais.
+ */
+export const ImpostoCalculadoPedido = z.object({ v_bc: Centavos, p_aliq: z.number().int().min(0).max(1_000_000), v_valor: Centavos });
+export const TotalImpostoCalculadoPedido = z.object({ v_bc: Centavos, v_valor: Centavos });
+export const RegraAplicadaPedido = z.object({ st: z.boolean(), ipi: z.boolean() });
+
 export const PedidoFaturadoV1 = PedidoEventoBase.extend({
   ambiente: z.enum(['homologacao', 'producao']),
   /** Faturamento real com NF-e simulada (T-0015): copiado da nota. Para o FDV tudo é real. */
@@ -415,8 +424,16 @@ export const PedidoFaturadoV1 = PedidoEventoBase.extend({
     chave: z.string().regex(CHAVE_ACESSO_REGEX),
     emitida_em: z.string().datetime(),
     total_centavos: Centavos,
+    /** Total de ST e de IPI por regra, só dos itens faturados nesta nota; omitido se algum deles não tem regra daquele imposto. */
+    calc_st: TotalImpostoCalculadoPedido.optional(),
+    calc_ipi: TotalImpostoCalculadoPedido.optional(),
   }),
-  itens_faturados: z.array(z.object({ sequencia: z.number().int().min(1), produto_id: Uuid, quantidade: Qtd4, valor_centavos: Centavos })),
+  itens_faturados: z.array(z.object({
+    sequencia: z.number().int().min(1), produto_id: Uuid, quantidade: Qtd4, valor_centavos: Centavos,
+    regra_aplicada: RegraAplicadaPedido.optional(),
+    calc_st: ImpostoCalculadoPedido.optional(),
+    calc_ipi: ImpostoCalculadoPedido.optional(),
+  })),
 });
 export type PedidoFaturadoV1 = z.infer<typeof PedidoFaturadoV1>;
 

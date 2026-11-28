@@ -75,7 +75,7 @@ export const PAGINAS_CORE: readonly PaginaCore[] = [
   {
     id: 'usuarios',
     rota: '/core/usuarios',
-    titulo: 'Usuários',
+    titulo: 'Usuários e perfis',
     menu: 'Usuários e perfis',
     rf: 'RF-CORE-02',
     ver: 'core.usuario.gerir',

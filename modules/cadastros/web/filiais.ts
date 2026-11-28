@@ -40,7 +40,7 @@ export const paginaFiliais = definirPaginaLista({
 });
 
 export const CAMPOS_FILIAL: readonly CampoEdicao[] = [
-  { nome: 'cnpj', rotulo: 'CNPJ', tipo: 'texto', obrigatorio: true, soCriacao: true, ajuda: 'Com ou sem pontuação.' },
+  { nome: 'cnpj', rotulo: 'CNPJ', tipo: 'texto', obrigatorio: true, soCriacao: true },
   { nome: 'razao_social', rotulo: 'Razão social', tipo: 'texto', obrigatorio: true },
   { nome: 'nome_fantasia', rotulo: 'Nome fantasia', tipo: 'texto' },
   { nome: 'ie', rotulo: 'Inscrição estadual', tipo: 'texto' },
@@ -80,7 +80,7 @@ const CAMPO_DO_FORMULARIO: Readonly<Record<string, string>> = { municipio_ibge: 
 
 export function validarFilialTela(v: Valores, modo: Modo, perfil: Perfil): Erros {
   const e = faltandoObrigatorios(camposDaFilial(perfil, modo), v);
-  if (modo === 'criar' && !e.cnpj && !FilialDados.shape.cnpj.safeParse(soDigitos(v.cnpj)).success) e.cnpj = 'CNPJ inválido';
+  if (modo === 'criar' && !e.cnpj && !FilialDados.shape.cnpj.safeParse(soDigitos(v.cnpj)).success) e.cnpj = 'Confira o CNPJ: ele não é válido';
   validarEnderecoTela(v, e);
   const serie = inteiroOuNulo(v.nfe_serie);
   const numero = inteiroOuNulo(v.nfe_numero_inicial);

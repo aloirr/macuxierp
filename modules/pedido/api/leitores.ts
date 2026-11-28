@@ -4,8 +4,16 @@
  */
 import { z } from 'zod';
 
-/** Item da nota: o pedido só usa sequência, quantidade e valor. */
-export const ItemNotaLido = z.object({ sequencia: z.number().int().min(1), quantidade: z.number().int(), valor_centavos: z.number().int() }).passthrough();
+/** ST e IPI por regra (RN-FIS-05, 63 A), como o cálculo fiscal os entrega: todos opcionais; ausente = sem regra. */
+const ImpostoLido = z.object({ v_bc: z.number().int().min(0), p_aliq: z.number().int().min(0), v_valor: z.number().int().min(0) });
+
+/** Item da nota: o pedido usa sequência, quantidade e valor, e repassa regra_aplicada e calc_st/calc_ipi quando vierem. */
+export const ItemNotaLido = z.object({
+  sequencia: z.number().int().min(1), quantidade: z.number().int(), valor_centavos: z.number().int(),
+  regra_aplicada: z.object({ st: z.boolean(), ipi: z.boolean() }).optional(),
+  calc_st: ImpostoLido.optional(),
+  calc_ipi: ImpostoLido.optional(),
+}).passthrough();
 
 export const NotaAutorizadaLida = z.object({
   /** Nota sem pedido (avulsa) não é do pedido: o consumidor a ignora. */

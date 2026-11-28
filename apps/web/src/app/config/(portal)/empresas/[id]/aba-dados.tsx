@@ -21,7 +21,7 @@ import {
 
 /**
  * Aba "Dados" da ficha da empresa (era "Cargas", T-0058; T-0086 v0.3.12; v0.3.24: dividida pelos dois sentidos das ligações,
- * "Sistema do cliente → ERP" com os cadastros recebidos e "ERP → Força de vendas" com os enviados, `SecaoEnvioFdv`): cargas recentes e importação numa tabela só, uma linha por
+ * "Sistema do cliente → ERP" com os cadastros recebidos e "ERP → Macuxi FDV" com os enviados, `SecaoEnvioFdv`): cargas recentes e importação numa tabela só, uma linha por
  * cadastro, com situação, última carga (data, hora e registros), Modelo, Importar e Carga completa (reenvia tudo ao FDV, com
  * confirmação; decisão do PO em 24/11: a carga completa fica aqui, não na aba Integração). "Importar" abre a conferência
  * automática (sem botão Validar), "Adicionar" acrescenta e atualiza, "Substituir tudo" pede uma frase. O "Zerar" saiu daqui: é por
@@ -72,15 +72,15 @@ export function AbaDados({ empresaId, dados, fuso, integracao = null, entrada = 
   };
   const colunas: ColunaTabela<LinhaCarga>[] = [
     // #840: em tela estreita a última carga sobe para sob o nome e a coluna dela some (só um dos dois aparece, por CSS).
-    { id: 'cadastro', titulo: 'Cadastro', celula: (l) => <>{l.rotulo}<span className="carga-sob-nome">Última carga: {l.ultima ?? AUSENTE}</span></> },
+    { id: 'cadastro', titulo: 'Cadastro', largura: '42%', celula: (l) => <>{l.rotulo}{l.ultima && <span className="carga-sob-nome">Última carga: {l.ultima}</span>}</> },
     { id: 'situacao', titulo: 'Situação', tipo: 'status', celula: (l) => <Chip tom={l.chip.tom}>{l.chip.texto}</Chip> },
     { id: 'ultima', titulo: 'Última carga', tipo: 'data', celula: (l) => l.ultima ?? AUSENTE },
     // "Registros" e "Com erro" são do último lote recebido pela ligação do sistema do cliente (a tabela "Lotes recebidos" saiu, RD-1103).
     { id: 'registros', titulo: 'Registros', tipo: 'numero', celula: (l) => lotes.get(l.cadastro)?.recebidos ?? '—' },
     { id: 'comErro', titulo: 'Com erro', tipo: 'numero', celula: (l) => lotes.get(l.cadastro)?.com_erro ?? '—' },
-    { id: 'acoes', titulo: 'Ações', celula: (l) => {
+    { id: 'acoes', titulo: 'Ações', largura: '1%', celula: (l) => {
       const c = estadoCargaCompleta(l.cadastro, integracao);
-      // Botão "Ações" (T-0099): Importar à vista; o Modelo (baixa o CSV) e a Carga completa ficam no menu.
+      // Um botão "Ações" só (T-0099, regra 12): Importar, o Modelo (baixa o CSV) e a Carga completa ficam no menu.
       const a = acoesDaCarga(c, pendente);
       const fazer: Record<string, () => void> = { importar: () => setImportar(l.cadastro), modelo: () => window.location.assign(enderecoModelo(empresaId, l.cadastro)), 'carga-completa': () => setCarga(l) };
       return <MenuAcoes rotuloLinha={l.rotulo} {...menuDaLinha(a, fazer)} />;

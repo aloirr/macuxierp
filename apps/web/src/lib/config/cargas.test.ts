@@ -35,13 +35,31 @@ describe('linhas da aba Cargas (T-0058)', () => {
     expect(l.ultima).toBeNull();
     expect(linhasCargas(null, 'America/Manaus').every((x) => x.situacao === 'nao_carregado')).toBe(true);
   });
+  it('os quatro selos: Carregado (com data), N com erro, Cadastro manual (neutro, sem data) e Não carregado', () => {
+    const d = situacoes({ filial: { situacao: 'carregado' }, produto: { situacao: 'com_erro', erros: 3 }, vendedor: { situacao: 'manual' } });
+    const por = (c: string) => linhasCargas(d, 'America/Manaus').find((x) => x.cadastro === c)!;
+    expect(por('filial').chip).toEqual({ tom: 'sucesso', texto: 'Carregado' });
+    expect(por('produto').chip).toEqual({ tom: 'aviso', texto: '3 com erro' });
+    expect(por('vendedor').chip).toEqual({ tom: 'neutro', texto: 'Cadastro manual' });
+    expect(por('vendedor').ultima).toBeNull();
+    expect(por('cliente').chip).toEqual({ tom: 'neutro', texto: 'Não carregado' });
+  });
+  it('"carregado" sem ultima_carga (a API manda quando há registro vindo do BKO): sem data não há selo Carregado', () => {
+    const d = situacoes({ filial: { situacao: 'carregado' } });
+    const sem = { ...d, cadastros: d.cadastros.map((c) => (c.cadastro === 'filial' ? { ...c, ultima_carga: null } : c)) };
+    const l = linhasCargas(sem, 'America/Manaus').find((x) => x.cadastro === 'filial')!;
+    expect(l.chip).toEqual({ tom: 'neutro', texto: 'Não carregado' });
+    expect(l.ultima).toBeNull();
+  });
   it('só as unidades são "(opcional)", sem ponto final', () => {
     expect(linhas.filter((l) => l.rotulo.includes('(opcional)')).map((l) => l.rotulo)).toEqual(['Unidades (opcional)']);
   });
   it('a situação do SDK: erros primeiro, depois ativos', () => {
     expect(situacaoCarga({ ativos: 5, erros: 1 })).toBe('com_erro');
-    expect(situacaoCarga({ ativos: 5, erros: 0 })).toBe('carregado');
+    expect(situacaoCarga({ ativos: 5, erros: 0, ultima_carga: { em: '2026-11-23T18:39:00.000Z' } })).toBe('carregado');
     expect(situacaoCarga({ ativos: 0, erros: 0 })).toBe('nao_carregado');
+    expect(situacaoCarga({ ativos: 2, erros: 0 })).toBe('manual');
+    expect(situacaoCarga({ ativos: 5, erros: 0 })).toBe('manual');
   });
   it('o endereço do modelo passa pelo portal, com a empresa', () => {
     expect(baseCargas(EMP)).toBe(`/config/empresas/${EMP}/cargas`);

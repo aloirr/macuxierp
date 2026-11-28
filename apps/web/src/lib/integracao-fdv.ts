@@ -58,7 +58,7 @@ export function colunasStatusFdv<T extends LinhaBaseFdv>(opcoes: { falhaSobreNom
       id: 'rotulo',
       titulo: 'Cadastro',
       celula: (l) => {
-        const envio = opcoes.envioSobreNome ? createElement('span', { className: 'envio-sob-nome' }, `Último envio: ${l.ultimoEnvio}`) : null;
+        const envio = opcoes.envioSobreNome && l.ultimoEnvio !== '—' ? createElement('span', { className: 'envio-sob-nome' }, `Último envio: ${l.ultimoEnvio}`) : null;
         const falha = opcoes.falhaSobreNome && l.falha ? createElement('span', { className: 'falha-sob-nome' }, `${l.falha.motivo} ${l.falha.acao}`.trim(), elementoProximaTentativa(l.proximaTentativa)) : null;
         return envio || falha ? createElement('span', null, l.rotulo, envio, falha) : l.rotulo;
       },

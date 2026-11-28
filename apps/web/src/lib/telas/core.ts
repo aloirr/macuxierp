@@ -6,7 +6,7 @@
  */
 import { AVISO_USUARIO, tomAmarelo } from '../usuarios-textos';
 import {
-  AVISO_SENHA_PROVISORIA, COLUNAS_USUARIOS, PAGINAS_CORE, ROTULO_MODULO, TOM_SITUACAO_USUARIO, linhaAuditoria, linhaLicenca, linhaUsuario, opcoesDePerfil, paginaAuditoria, paginaLicencas, paginaUsuarios, quadroEmpresaFiscal,
+  AVISO_SENHA_PROVISORIA, COLUNAS_USUARIOS, PAGINAS_CORE, ROTULO_MODULO, ROTULO_SITUACAO_LICENCA, situacaoDaLicenca, tomDaLicenca, TOM_SITUACAO_USUARIO, linhaAuditoria, linhaLicenca, linhaUsuario, opcoesDePerfil, paginaAuditoria, paginaLicencas, paginaUsuarios, quadroEmpresaFiscal,
 } from '@macuxierp/core/web';
 import { AuditoriaItemLista, Licenca, ROTULOS_SITUACAO_USUARIO, Usuario, UsuarioCriar, UsuarioEditar, type PerfilComAcoes } from '@macuxierp/core/contracts';
 import { PERFIS, ROTULOS_PERFIL, pode, type Perfil } from '@macuxierp/platform-sdk';
@@ -148,8 +148,9 @@ export const LISTA_USUARIOS: TelaLista = {
   },
   novo: { rota: ROTA_USUARIO_NOVO, rotulo: 'Novo usuário', criar: GERIR },
   acaoDaLinha: {
-    acao: (l, perfil) => acoesDoUsuario(l, perfil)[0] ?? null,
-    maisAcoes: (l, perfil) => acoesDoUsuario(l, perfil).slice(1),
+    // Um botão só por linha: o "Ações ▾" leva todas as ações, o Editar entre elas (T-0135, regra 12).
+    acao: () => null,
+    maisAcoes: (l, perfil) => acoesDoUsuario(l, perfil),
     validarAcao: validarAcaoUsuario,
     escritas: ESCRITAS_USUARIO,
     novaChave,
@@ -164,7 +165,11 @@ export const LISTA_LICENCAS: TelaLista = {
   filtrosTela: [],
   colunas: () => colunasDoModulo(paginaLicencas.colunas, { ativo: 'status' }),
   linha: (item, fuso) => linhaLicenca(item as unknown as Licenca, fuso),
-  selos: (item) => ({ ativo: [(item as unknown as Licenca).ativo ? { texto: 'Ativa', tom: 'ok' } : { texto: 'Inativa', tom: 'neutro' }] }),
+  // Ativa, Inativa ou Vencida (RN-CORE-02), com o vocabulário do core; "Vencida" é o único em âmbar.
+  selos: (item) => {
+    const s = situacaoDaLicenca(item as unknown as Licenca, new Date());
+    return { ativo: [{ texto: ROTULO_SITUACAO_LICENCA[s], tom: tomAmarelo(tomDaLicenca(s)) }] };
+  },
 };
 
 /** Entidades que o core audita, em português (mapa só do core; entidade de outro módulo aparece como veio). */
@@ -182,7 +187,7 @@ export const LISTA_AUDITORIA: TelaLista = {
   pagina: paginaAuditoria as unknown as TelaLista['pagina'],
   filtrosTela: [
     { chave: 'entidade', rotulo: 'Entidade', tipo: 'selecao', vazio: 'Todas', opcoes: Object.entries(ROTULO_ENTIDADE).map(([valor, rotulo]) => ({ valor, rotulo })) },
-    { chave: 'usuario_id', rotulo: 'Código do usuário', tipo: 'texto' },
+    { chave: 'usuario_id', rotulo: 'Usuário', tipo: 'texto' },
     { chave: 'de', rotulo: 'De', tipo: 'data', instante: 'inicio' },
     { chave: 'ate', rotulo: 'Até', tipo: 'data', instante: 'fim' },
   ],

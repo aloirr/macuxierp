@@ -22,7 +22,7 @@ type Pedido = { tipo: 'ligar' | 'desligar' | 'retomar'; linha: LinhaCadastroFdv 
 const LEGENDA_ENVIADOS = 'Cadastros enviados';
 
 /**
- * Aba Dados, seção "ERP → Força de vendas" (v0.3.24, docs/design/integracao-duas-ligacoes; era a parte de baixo da aba Integração):
+ * Aba Dados, seção "ERP → Macuxi FDV" (v0.3.24, docs/design/integracao-duas-ligacoes; era a parte de baixo da aba Integração):
  * Registros por lote, a tabela "Cadastros enviados" com o menu Ações (T-0099) e "Zerar pedidos não faturados". Os retornos seguem a
  * 36 A: cada um logo abaixo do seu botão.
  */
@@ -98,7 +98,8 @@ export function SecaoEnvioFdv({ empresaId, dados, fuso, barra }: { empresaId: st
   /** Uma barra só (regra 12): o Salvar dos registros por lote e, à direita e em vermelho, o Zerar pedidos. */
   const botoesDoBloco = (
     <>
-      <button className="mx-botao-secundario" type="submit" form={idLimite} disabled={bloqueado || semCredencial}>Salvar</button>
+      {/* Sem chave salva o único "Salvar" do cartão é o "Salvar chave" (regra 12): este só aparece com a ligação pronta. */}
+      {!semCredencial && <button className="mx-botao-secundario" type="submit" form={idLimite} disabled={bloqueado}>Salvar</button>}
       <button type="button" className="mx-botao-secundario botao-perigo-contorno botao-direita" disabled={bloqueado} onClick={() => setZerarPedidos(true)}>Zerar pedidos…</button>
     </>
   );

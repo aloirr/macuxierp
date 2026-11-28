@@ -26,7 +26,7 @@ describe('aba Dados (T-0058, T-0086)', () => {
   it('uma tabela só: uma linha por cadastro com situação, última carga (data, hora, registros) e Importar à vista (o Modelo vai ao menu "Ações")', () => {
     const h = aba();
     expect(h.match(/<tr[^>]*data-/g) ?? h.match(/<tbody>[\s\S]*<\/tbody>/)).toBeTruthy();
-    for (const t of ['Cadastro', 'Situação', 'Última carga', 'Registros', 'Com erro', 'Ações', 'Importar']) expect(h).toContain(`>${t}<`);
+    for (const t of ['Cadastro', 'Situação', 'Última carga', 'Registros', 'Com erro', 'Ações']) expect(h).toContain(`>${t}<`);
     expect(h).not.toContain('>Origem<'); // a Origem saiu das colunas, sem esconder por CSS
     expect(h).not.toContain('>Modelo<'); // o Modelo vai para o menu "Ações" (T-0099)
     expect(h).toContain('>Filiais<');
@@ -36,7 +36,8 @@ describe('aba Dados (T-0058, T-0086)', () => {
     expect(h).toContain('23/11/2026 14:39 · 1 registro');
     expect(h).not.toContain('>Planilha<'); // sem a coluna Origem
     expect(h).not.toContain('>CSV<');
-    expect(h.match(/>Importar<\/button>/g)).toHaveLength(CADASTROS_CARGA_PORTAL.length);
+    expect(h.match(/aria-haspopup="menu"/g)).toHaveLength(CADASTROS_CARGA_PORTAL.length); // um botão só por linha: o Importar está dentro do "Ações ▾"
+    expect(h).not.toMatch(/>Importar<\/button>/);
     expect(h.match(/aria-haspopup="menu"/g)).toHaveLength(CADASTROS_CARGA_PORTAL.length);
     expect(h.match(/aria-label="Ações de Produtos"/g)).toHaveLength(1);
     expect(h).not.toContain('barra-acoes');
@@ -187,6 +188,14 @@ describe('endereços inativados (T-0070)', () => {
   });
 });
 
+
+describe('T-0135: sem carga, sem a linha "Última carga: —"', () => {
+  it('só os cadastros com carga levam a linha sob o nome', () => {
+    const h = aba();
+    expect(h).not.toContain('Última carga: —');
+    expect(h.match(/carga-sob-nome/g)).toHaveLength(2); // filial e produto; os outros cadastros não têm carga
+  });
+});
 
 describe('v0.3.23: aba Dados no celular (390) esconde as colunas certas', () => {
   it('#840: a regra por posição esconde Última carga, Registros e Com erro (a última carga sobe para sob o nome), na ordem real das colunas', async () => {

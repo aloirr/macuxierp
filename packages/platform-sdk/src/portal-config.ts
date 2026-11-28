@@ -135,6 +135,11 @@ export const EmpresaPlataforma = z.object({
   uf: z.string().regex(PADRAO_UF, 'UF com 2 letras maiúsculas').nullable().optional(),
   /** Código da empresa (RN-CORE-11) em maiúsculas, preenchido pelo core (`codigoDaEmpresa(slug)`); null em slug antigo. */
   codigo: z.string().nullable().optional(),
+  /**
+   * A empresa também usa o Macuxi FDV (`plataforma.empresa_json`, migração 0080; mapeado pelo core). Ausente = `false`
+   * (contrato antigo continua válido).
+   */
+  tem_fdv: z.boolean().default(false),
   created_at: Instante,
   updated_at: Instante,
 });

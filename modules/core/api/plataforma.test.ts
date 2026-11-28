@@ -49,6 +49,7 @@ function repoMemoria(inicial: Partial<EmpresaPlataforma> = {}, op: OpcoesFicha =
     fuso: 'America/Manaus',
     situacao: 'ativo',
     modulos: [{ modulo: 'core', ativo: true, valido_ate: null }],
+    tem_fdv: false,
     primeiro_admin: null,
     created_at: AGORA.toISOString(),
     updated_at: AGORA.toISOString(),

@@ -44,7 +44,7 @@ describe('adaptador SQL da plataforma: ficha da Receita (0063)', () => {
   it('lê a ficha da chave `ficha` do empresa_ler e a tira do objeto da empresa', async () => {
     const tx: Transacao = { consultar: (async () => [{ e: { id: ID, nome: 'X', ficha: { uf: 'AM' } } }]) as never };
     const r = await repo.lerEmpresaComFicha(tx, ID);
-    expect(r).toEqual({ empresa: { id: ID, nome: 'X' }, ficha: { uf: 'AM' } });
+    expect(r).toEqual({ empresa: { id: ID, nome: 'X', tem_fdv: false }, ficha: { uf: 'AM' } });
   });
 
   it('T-0106: uma query só para as duas funções (0066) e a ficha sai com a descrição e o nome', async () => {
@@ -73,7 +73,7 @@ describe('adaptador SQL da plataforma: ficha da Receita (0063)', () => {
   it('T-0106: sem ficha não há consulta extra; lerEmpresa também descreve a ficha do detalhe', async () => {
     let n = 0;
     const tx: Transacao = { consultar: (async () => (n++, [{ e: { id: ID, nome: 'X', ficha: null } }])) as never };
-    expect(await repo.lerEmpresa(tx, ID)).toEqual({ id: ID, nome: 'X', ficha: null });
+    expect(await repo.lerEmpresa(tx, ID)).toEqual({ id: ID, nome: 'X', ficha: null, tem_fdv: false });
     expect(n).toBe(1);
   });
 });
@@ -177,5 +177,15 @@ describe('adaptador SQL da plataforma: e-mail único no sistema todo (RN-CORE-18
 
   it('RN-CORE-18: outro 23505 no 1º admin segue null', async () => {
     expect(await admin(txErro({ constraint: 'outro_uq' }))).toBeNull();
+  });
+
+  it('T-0134: tem_fdv vem do banco (0080) na lista, na leitura e nas escritas; sem o campo (antes da 0080) vale false', async () => {
+    const com: Transacao = { consultar: (async () => [{ e: { id: ID, nome: 'X', ficha: null, tem_fdv: true } }]) as never };
+    expect((await repo.lerEmpresa(com, ID) as { tem_fdv?: boolean } | null)?.tem_fdv).toBe(true);
+    expect((await repo.listarEmpresas(com, { limite: 10 }))[0]).toMatchObject({ tem_fdv: true });
+    expect(await repo.alterarSituacao(com, { id: ID, situacao: 'suspenso', motivo: 'm', request_id: 'r' })).toMatchObject({ tem_fdv: true });
+    const sem: Transacao = { consultar: (async () => [{ e: { id: ID, nome: 'X' } }]) as never };
+    expect((await repo.listarEmpresas(sem, { limite: 10 }))[0]).toMatchObject({ tem_fdv: false });
+    expect(await repo.alterarSituacao(sem, { id: ID, situacao: 'suspenso', motivo: 'm', request_id: 'r' })).toMatchObject({ tem_fdv: false });
   });
 });

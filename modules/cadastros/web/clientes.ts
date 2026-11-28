@@ -41,7 +41,7 @@ export const paginaClientes = definirPaginaLista({
 
 export const CAMPOS_CLIENTE: readonly CampoEdicao[] = [
   { nome: 'tipo_pessoa', rotulo: 'Tipo de pessoa', tipo: 'selecao', obrigatorio: true, opcoes: [{ valor: 'PJ', rotulo: 'Pessoa jurídica' }, { valor: 'PF', rotulo: 'Pessoa física' }] },
-  { nome: 'documento', rotulo: 'CNPJ/CPF', tipo: 'texto', obrigatorio: true, ajuda: 'Com ou sem pontuação.' },
+  { nome: 'documento', rotulo: 'CNPJ/CPF', tipo: 'texto', obrigatorio: true },
   { nome: 'razao_social', rotulo: 'Razão social', tipo: 'texto', obrigatorio: true },
   { nome: 'nome_fantasia', rotulo: 'Nome fantasia', tipo: 'texto' },
   { nome: 'ind_ie_dest', rotulo: 'Contribuinte ICMS', tipo: 'selecao', obrigatorio: true, opcoes: opcoes(ROTULO_IND_IE) },

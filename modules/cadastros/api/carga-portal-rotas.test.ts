@@ -151,7 +151,7 @@ describe('rotas da carga no /config (por etapa)', () => {
       { corpo: undefined, consulta: undefined, params: { id: TENANT } });
     const s = r.corpo as SituacaoCargasPlataforma;
     expect(s.cadastros).toHaveLength(8);
-    expect(s.cadastros[0]).toMatchObject({ cadastro: 'filial', numero: 1, situacao: 'carregado', liberado: true });
+    expect(s.cadastros[0]).toMatchObject({ cadastro: 'filial', numero: 1, situacao: 'manual', liberado: true });
     expect(s.cadastros.find((x) => x.cadastro === 'vendedor')).toMatchObject({ situacao: 'nao_carregado' });
     expect(t.passos).toEqual(['plataforma']);
     expect(t.sqls[0]).toMatchObject({ p: [TENANT] });
@@ -162,10 +162,12 @@ describe('rotas da carga no /config (por etapa)', () => {
     const crua = ENTIDADES_CARGA_PORTAL.map((cadastro) => ({ cadastro, ativos: cadastro === 'produto' ? 3 : 0, erros: 0, ultima_carga: null }));
     const s = situacaoDaAba({ empresa_id: TENANT, modulo_licenciado: true, cadastros: [...crua].reverse() });
     expect(s.cadastros.map((x) => x.cadastro)).toEqual([...ENTIDADES_CARGA_PORTAL]);
-    expect(s.cadastros.find((x) => x.cadastro === 'produto')).toMatchObject({ numero: 4, situacao: 'carregado' });
+    expect(s.cadastros.find((x) => x.cadastro === 'produto')).toMatchObject({ numero: 4, situacao: 'manual' });
     expect(s.cadastros.find((x) => x.cadastro === 'filial')).toMatchObject({ numero: 1, situacao: 'nao_carregado' });
     expect(s.cadastros.every((x) => x.liberado && !('depende_de' in x))).toBe(true);
     expect(() => situacaoDaAba({ empresa_id: TENANT, modulo_licenciado: true, cadastros: crua.slice(1) })).toThrow(/filial/);
+    const comData = crua.map((x) => (x.cadastro === 'produto' ? { ...x, ultima_carga: { em: '2026-11-23T15:00:00.000Z', quantidade: 3 } } : x));
+    expect(situacaoDaAba({ empresa_id: TENANT, modulo_licenciado: true, cadastros: comData }).cadastros.find((x) => x.cadastro === 'produto')).toMatchObject({ situacao: 'carregado' });
   });
 
   it('RF-CAD-11: GET modelo devolve o CSV modelo do cadastro com o nome do SDK; cadastro desconhecido é 404', async () => {
