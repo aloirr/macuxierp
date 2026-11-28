@@ -11,7 +11,7 @@ import { COOKIE_ACESSO, contexto } from '@/lib/sessao';
 export const metadata: Metadata = { title: 'Licenças' };
 
 /**
- * Somente leitura (D12): a licença muda pelo operador da Macuxi, com auditoria. Mesmo vocabulário e mesma regra da lista do core (RN-CORE-02):
+ * Mesmo vocabulário e mesma regra da lista do core (RN-CORE-02):
  * a situação sai de `GET /v1/core/licencas` (traz a vencida). Quem não tem `core.licenca.ver` ou com a API fora cai no `eu.modulos`, que traz só as
  * vigentes: o que falta aparece como Inativa.
  */
@@ -27,6 +27,7 @@ async function situacoes(): Promise<Map<string, 'ativa' | 'inativa' | 'vencida'>
   }
 }
 
+/** Somente leitura (D12): a licença muda pelo operador da Macuxi, com auditoria. A situação vem de `situacoes()` (RN-CORE-02). */
 export default async function Licencas() {
   const { eu } = await contexto();
   const ativos = new Set(eu.modulos.map((m) => m.id));

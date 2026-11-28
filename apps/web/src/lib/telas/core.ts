@@ -6,7 +6,7 @@
  */
 import { AVISO_USUARIO, tomAmarelo } from '../usuarios-textos';
 import {
-  AVISO_SENHA_PROVISORIA, COLUNAS_USUARIOS, PAGINAS_CORE, ROTULO_MODULO, ROTULO_SITUACAO_LICENCA, situacaoDaLicenca, tomDaLicenca, TOM_SITUACAO_USUARIO, linhaAuditoria, linhaLicenca, linhaUsuario, opcoesDePerfil, paginaAuditoria, paginaLicencas, paginaUsuarios, quadroEmpresaFiscal,
+  AVISO_SENHA_PROVISORIA, COLUNAS_USUARIOS, PAGINAS_CORE, ROTULO_MODULO, ROTULO_SITUACAO_LICENCA, situacaoDaLicenca, tomDaLicenca, TOM_SITUACAO_USUARIO, linhaAuditoria, linhaLicenca, linhaUsuario, opcoesDePerfil, paginaAuditoria, paginaLicencas, paginaUsuarios, quadroEmpresaFiscal, ROTULO_ENTIDADE_AUDITORIA,
 } from '@macuxierp/core/web';
 import { AuditoriaItemLista, Licenca, ROTULOS_SITUACAO_USUARIO, Usuario, UsuarioCriar, UsuarioEditar, type PerfilComAcoes } from '@macuxierp/core/contracts';
 import { PERFIS, ROTULOS_PERFIL, pode, type Perfil } from '@macuxierp/platform-sdk';
@@ -172,30 +172,21 @@ export const LISTA_LICENCAS: TelaLista = {
   },
 };
 
-/** Entidades que o core audita, em português (mapa só do core; entidade de outro módulo aparece como veio). */
-const ROTULO_ENTIDADE: Readonly<Record<string, string>> = {
-  usuario: 'Usuário',
-  empresa: 'Empresa',
-  certificado: 'Certificado A1',
-  ambiente_fiscal: 'Ambiente fiscal',
-  exportacao: 'Exportação',
-};
+/** Opções do filtro de entidade: os rótulos do core (RD-2419), um por texto (carga e carga_portal dizem o mesmo), com a chave da primeira. */
+const OPCOES_ENTIDADE_AUDITORIA = [...new Map(Object.entries(ROTULO_ENTIDADE_AUDITORIA).map(([valor, rotulo]) => [rotulo, { valor, rotulo }] as const)).values()];
 
 /** `de` e `ate` chegam à API como datetime ISO completo (início e fim do dia no fuso da empresa); a tela guarda só o dia na URL. */
 export const LISTA_AUDITORIA: TelaLista = {
   tipo: 'lista',
   pagina: paginaAuditoria as unknown as TelaLista['pagina'],
   filtrosTela: [
-    { chave: 'entidade', rotulo: 'Entidade', tipo: 'selecao', vazio: 'Todas', opcoes: Object.entries(ROTULO_ENTIDADE).map(([valor, rotulo]) => ({ valor, rotulo })) },
-    { chave: 'usuario_id', rotulo: 'Usuário', tipo: 'texto' },
+    { chave: 'entidade', rotulo: 'Entidade', tipo: 'selecao', vazio: 'Todas', opcoes: OPCOES_ENTIDADE_AUDITORIA },
+    { chave: 'usuario', rotulo: 'Usuário', tipo: 'texto' },
     { chave: 'de', rotulo: 'De', tipo: 'data', instante: 'inicio' },
     { chave: 'ate', rotulo: 'Até', tipo: 'data', instante: 'fim' },
   ],
   colunas: () => colunasDoModulo(paginaAuditoria.colunas, { ocorrido_em: 'data' }),
-  linha: (item, fuso) => {
-    const l = linhaAuditoria(item as unknown as AuditoriaItemLista, fuso);
-    return { ...l, entidade: ROTULO_ENTIDADE[l.entidade ?? ''] ?? l.entidade ?? '' };
-  },
+  linha: (item, fuso) => linhaAuditoria(item as unknown as AuditoriaItemLista, fuso),
 };
 
 export const TELAS_CORE: Readonly<Record<string, TelaDescrita>> = {
