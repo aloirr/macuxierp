@@ -225,6 +225,33 @@ const IbsCbs = z.object({
     .optional(),
 });
 
+/**
+ * ICMS de partilha para a UF de destino (grupo NA01 `ICMSUFDest`, EC 87/2015 e LC 190/2022; XSD do PL_010g,
+ * leiauteNFe_v4.00.xsd:5145): só na venda interestadual (idDest 2) a consumidor final (indFinal 1), conferido no
+ * `NotaParaEmissao`. Os valores vêm prontos do modulo-fiscal (RN-FIS-06, T-0128): base, alíquota interna e FCP são do
+ * motor; o emissor confere só a forma e monta. Nomes iguais às tags do XSD.
+ */
+const PICMS_INTER: readonly string[] = ['4', '7', '12'];
+const IcmsUfDest = z
+  .object({
+    vBCUFDest: Centavos,
+    /** NA04, opcional no XSD; exige o FCP (pFCPUFDest e vFCPUFDest). */
+    vBCFCPUFDest: Centavos.optional(),
+    /** NA05 e NA13, opcionais no XSD: vão juntos. */
+    pFCPUFDest: Aliquota.optional(),
+    pICMSUFDest: Aliquota,
+    /** NA09: o XSD só aceita 4, 7 ou 12; sai com 2 casas ("12.00"). */
+    pICMSInter: Aliquota.refine((a) => PICMS_INTER.includes(String(Number(a))), 'pICMSInter só 4, 7 ou 12 (XSD)'),
+    /** NA11, obrigatório no XSD: 100 desde 2019 (art. 99 do ADCT, EC 87/2015). */
+    pICMSInterPart: Aliquota.default('100'),
+    vFCPUFDest: Centavos.optional(),
+    vICMSUFDest: Centavos,
+    /** NA17: 0 desde 2019, mas obrigatório no XSD. */
+    vICMSUFRemet: Centavos,
+  })
+  .refine((g) => (g.pFCPUFDest === undefined) === (g.vFCPUFDest === undefined), { message: 'pFCPUFDest e vFCPUFDest vão juntos', path: ['vFCPUFDest'] })
+  .refine((g) => g.vBCFCPUFDest === undefined || g.pFCPUFDest !== undefined, { message: 'vBCFCPUFDest exige pFCPUFDest e vFCPUFDest', path: ['vBCFCPUFDest'] });
+
 const Item = z.object({
   cProd: Texto(1, 60),
   cEAN: z.union([z.literal('SEM GTIN'), z.string().regex(/^(\d{8}|\d{12,14})$/)]).default('SEM GTIN'),
@@ -247,6 +274,8 @@ const Item = z.object({
     ICMS: Icms,
     PIS: PisCofins,
     COFINS: PisCofins,
+    /** DIFAL (NA01): só com idDest 2 e indFinal 1 (conferido no `NotaParaEmissao`). */
+    ICMSUFDest: IcmsUfDest.optional(),
     IS: ImpostoSeletivo.optional(),
     IBSCBS: IbsCbs.optional(),
   }),
@@ -269,18 +298,26 @@ const Pagamento = z.object({
   vTroco: Centavos.optional(),
 });
 
-export const NotaParaEmissao = z.object({
-  ide: IdeComContingencia,
-  emit: Emitente,
-  dest: Destinatario.optional(),
-  itens: z.array(Item).min(1).max(990),
-  transp: z.object({ modFrete: z.number().int().min(0).max(9) }),
-  pag: Pagamento,
-  infAdic: z.object({ infCpl: Texto(1, 5000) }).optional(),
-  infRespTec: z
-    .object({ CNPJ: CnpjXml, xContato: Texto(2, 60), email: z.string().email().max(60), fone: z.string().regex(/^\d{6,14}$/) })
-    .optional(),
-});
+export const NotaParaEmissao = z
+  .object({
+    ide: IdeComContingencia,
+    emit: Emitente,
+    dest: Destinatario.optional(),
+    itens: z.array(Item).min(1).max(990),
+    transp: z.object({ modFrete: z.number().int().min(0).max(9) }),
+    pag: Pagamento,
+    infAdic: z.object({ infCpl: Texto(1, 5000) }).optional(),
+    infRespTec: z
+      .object({ CNPJ: CnpjXml, xContato: Texto(2, 60), email: z.string().email().max(60), fone: z.string().regex(/^\d{6,14}$/) })
+      .optional(),
+  })
+  .superRefine((nota, ctx) => {
+    if (nota.ide.idDest === 2 && nota.ide.indFinal === 1) return;
+    nota.itens.forEach((it, i) => {
+      if (it.imposto.ICMSUFDest !== undefined)
+        ctx.addIssue({ code: 'custom', path: ['itens', i, 'imposto', 'ICMSUFDest'], message: 'RN-FIS-06: ICMSUFDest só com idDest 2 e indFinal 1' });
+    });
+  });
 
 /** Entrada já validada (com os padrões aplicados). */
 export type NotaParaEmissao = z.output<typeof NotaParaEmissao>;
@@ -289,3 +326,4 @@ export type NotaParaEmissaoEntrada = z.input<typeof NotaParaEmissao>;
 export type ItemNota = z.output<typeof Item>;
 export type IcmsSimples = z.output<typeof IcmsSn>;
 export type IcmsStSimples = z.output<z.ZodObject<typeof IcmsSt>>;
+export type IcmsUfDest = z.output<typeof IcmsUfDest>;
