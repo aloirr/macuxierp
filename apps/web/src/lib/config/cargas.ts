@@ -20,6 +20,9 @@ export interface LinhaCarga {
   ultima: string | null;
   /** Instante da última carga por planilha (para a Origem: a mais recente entre planilha e lote automático). */
   ultimaEm: string | null;
+  /** Registros da última carga e registros com erro hoje: o mesmo dado do chip e da linha "Última carga", para a coluna não contradizê-los (RD-2422). */
+  registros: number | null;
+  erros: number | null;
 }
 
 /** Uma linha por cadastro, na ordem da carga. A API manda as 10 linhas (o SDK confere); sem dados, tudo vale "não carregado". */
@@ -37,7 +40,7 @@ export function linhasCargas(dados: SituacaoCargasPlataforma | null, fuso: strin
       : { tom: 'neutro', texto: 'Não carregado' };
     const u = l?.ultima_carga;
     const ultima = u ? `${formatarDataHora(u.em, fuso)} · ${plural(u.quantidade, 'registro', 'registros')}` : null;
-    return { cadastro: def.cadastro, numero: def.numero, rotulo: rotuloCadastroCarga(def.cadastro), situacao, chip, ultima, ultimaEm: u?.em ?? null };
+    return { cadastro: def.cadastro, numero: def.numero, rotulo: rotuloCadastroCarga(def.cadastro), situacao, chip, ultima, ultimaEm: u?.em ?? null, registros: u?.quantidade ?? null, erros: situacao === 'com_erro' ? (l?.erros ?? 0) : null };
   });
 }
 
