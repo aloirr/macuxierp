@@ -25,6 +25,7 @@ export interface AcoesDoPedido {
   cancelar: boolean;
   /** Pedido bko em análise; adm, gerente e faturista. */
   revalidar: boolean;
+  /** Sempre `false` até a tela "Editar pedido" existir no BKO (decisão do PO, v0.3.30); o PUT `/pedidos/:id` continua na API. */
   editar: boolean;
 }
 
@@ -40,7 +41,7 @@ export function acoesDoPedido(perfil: Perfil, p: PedidoParaAcao): AcoesDoPedido 
     recusar: aprova,
     cancelar: possiveis(p.status).includes('cancelado') && pode(perfil, 'pedido.pedido.cancelar'),
     revalidar: lanca,
-    editar: lanca,
+    editar: false,
   };
 }
 
