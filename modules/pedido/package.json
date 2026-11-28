@@ -17,6 +17,7 @@
   "dependencies": {
     "@macuxierp/cadastros": "workspace:*",
     "@macuxierp/core": "workspace:*",
+    "@macuxierp/fiscal": "workspace:*",
     "@macuxierp/platform-sdk": "workspace:*",
     "zod": "^3.25.76"
   },

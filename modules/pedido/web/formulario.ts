@@ -125,6 +125,11 @@ export function formularioDoPedido(p: Pick<Pedido, 'filial_id' | 'cliente_id' | 
   };
 }
 
+/** Pedido aberto para edição: o formulário preenchido e a versão (`updated_at`) que a tela manda no `If-Match` (RF-PED-02). */
+export function edicaoDoPedido(p: Pick<Pedido, 'filial_id' | 'cliente_id' | 'condicao_pagamento_id' | 'endereco_entrega' | 'observacao' | 'itens' | 'updated_at'>): { formulario: Formulario; versao: string } {
+  return { formulario: formularioDoPedido(p), versao: p.updated_at };
+}
+
 export interface RetornoDoLancamento {
   status: 'aprovado' | 'em_analise';
   titulo: string;

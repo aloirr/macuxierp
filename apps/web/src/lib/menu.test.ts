@@ -40,7 +40,7 @@ describe('montarMenu (RN-CORE-02, RD-11)', () => {
     const m = montarMenu(EU_FALSO.modulos, MANIFESTOS, 'administrador');
     expect(resolverPagina(m, '/core/empresa/ambiente-fiscal', 'administrador')?.rotulo).toBe('Empresa');
     expect(resolverPagina(m, '/core/empresa/ambiente-fiscal', 'administrador')?.pagina?.titulo).toBeDefined();
-    expect(resolverPagina(m, '/core/empresa', 'administrador')).toBeUndefined();
+    expect(resolverPagina(m, '/core/empresa', 'administrador')?.rotulo).toBe('Empresa'); // T-0125: a Empresa tem tela
     expect(resolverPagina(m, '/core/empresa/certificado', 'administrador')).toBeUndefined();
     expect(resolverPagina(m, '/core/inexistente', 'administrador')).toBeUndefined();
   });
