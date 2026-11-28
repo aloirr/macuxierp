@@ -7,8 +7,7 @@
  *    "Esqueci a senha" (painel do /login), a troca de senha (/senha e /config/senha) e o primeiro acesso (/senha com
  *    `deve_trocar_senha` ou com a temporária). O detector roda já, contra trechos fictícios; a varredura das telas
  *    liga com `TELA_T0133_ENTROU = true` no PR casado do web (regra 5 da revisão casada), e daí falha se o campo voltar.
- * 2. Roteiro dos casos de ponta a ponta (API real com Postgres local, depois as telas com o Playwright), em `it.todo`
- *    até a API e a tela da T-0133 entrarem. Cada caso diz o dado, o passo e o esperado.
+ * 2. Roteiro das telas com o Playwright, em `it.todo` até a tela da T-0133 entrar.
  *
  * Só dado fictício; nenhum e-mail em log (LGPD).
  */
@@ -23,13 +22,6 @@ const RAIZ = join(__dirname, '../..');
  * `true` no PR da tela da T-0133, revisado junto com o da API.
  */
 const TELA_T0133_ENTROU = false;
-
-/** Textos travados pelo PO (ADR 0021, seção Textos), exatamente assim. A fonte única no ERP será o SDK. */
-const TEXTOS_T0133 = {
-  credencialInvalida: 'E-mail ou senha inválidos.',
-  empresaSuspensa: 'Sua empresa está suspensa. Fale com o administrador da Macuxi.',
-  esqueci: 'Se o e-mail estiver cadastrado, enviamos as instruções.',
-} as const;
 
 /** Fontes dos formulários de acesso, sem os testes. Pasta ou arquivo, relativos à raiz. */
 const FORMULARIOS_DE_ACESSO = [
@@ -107,35 +99,16 @@ describe('T-0133: nenhum formulário de acesso tem o campo empresa (ADR 0021)', 
     expect(arquivos.length).toBeGreaterThan(5);
     expect(camposEmpresa(arquivos)).toEqual([]);
   });
-  it.todo('varredura das telas ligada (TELA_T0133_ENTROU = true) no PR da tela da T-0133');
-
-  it('os textos travados pelo PO ficam com maiúscula e ponto', () => {
-    for (const t of Object.values(TEXTOS_T0133)) expect(t).toMatch(/^[A-ZÀ-Ú].*\.$/);
-  });
 });
 
 /**
- * Roteiro de ponta a ponta. Dados (fictícios, `@exemplo.invalid`):
- * - empresa ativa `am0133a` com o usuário `u-ativa`; empresa suspensa `am0133s` com o usuário `u-suspensa`;
- * - superadmin só `sa-so`; o mesmo e-mail `par` como administrador de `am0133a` e como superadmin, com senhas diferentes.
- * Na API: `POST /v1/auth/login` com `{ email, senha }`, sem `empresa`. Nas telas: `/login` só com E-mail e Senha
- * (o `entrar` de `tests/e2e/apoio-e2e.mjs` deixa de preencher a Empresa).
+ * Roteiro das telas com o Playwright (`tests/e2e/`), em `it.todo` até a tela da T-0133 entrar; a API fica em
+ * tests/integracao/auth/login-email.db.test.ts e no apps/api/src/login-email.db.test.ts. Dados fictícios
+ * (`@exemplo.invalid`); o `entrar` de `tests/e2e/apoio-e2e.mjs` deixa de preencher a Empresa.
  */
-describe('T-0133: roteiro do login sem empresa (liga quando a API e a tela entrarem)', () => {
-  it.todo('usuário de empresa: e-mail e senha certos dão 200, destino "bko", e a tela abre o BKO da empresa dele');
-  it.todo('o campo "empresa" no corpo do login é ignorado na v0.3.30: com um código de outra empresa, entra na dele');
-  it.todo('superadmin só: e-mail e senha certos dão 200, destino "config", e a tela abre o /config');
-  it.todo('mesmo e-mail como usuário e superadmin, senha do usuário: destino "bko" e nenhum cookie COOKIE_CONFIG');
-  it.todo('mesmo e-mail, senha do superadmin: 401 NAO_AUTENTICADO com "E-mail ou senha inválidos."');
-  it.todo('mesmo e-mail: o /config só abre pelo POST /v1/auth/config da sessão do BKO (45 A), nunca pela tela de entrada');
-  it.todo('empresa suspensa, senha certa: 403 EMPRESA_SUSPENSA com "Sua empresa está suspensa. Fale com o administrador da Macuxi." e sem sessão');
-  it.todo('empresa suspensa, senha errada: 401 com "E-mail ou senha inválidos." (a suspensão só aparece depois da senha)');
-  it.todo('empresa encerrada: igual ao e-mail inexistente, 401 com "E-mail ou senha inválidos."');
-  it.todo('e-mail inexistente: 401 com "E-mail ou senha inválidos.", com o mesmo custo de argon2 da senha errada');
-  it.todo('senha errada de e-mail existente: 401 com o mesmo corpo do e-mail inexistente');
-  it.todo('trava por e-mail: as tentativas erradas travam a conta pelo e-mail, sem empresa na chave');
-  it.todo('esqueci com e-mail cadastrado: 202 com "Se o e-mail estiver cadastrado, enviamos as instruções." e um e-mail sem o código da empresa');
-  it.todo('esqueci com e-mail inexistente: o mesmo 202 e o mesmo texto, sem e-mail enviado');
-  it.todo('esqueci de usuário de empresa suspensa: o mesmo 202 e o mesmo texto');
-  it.todo('nenhum log do login nem do esqueci leva o e-mail; a contagem do campo "empresa" leva só números');
+describe('T-0133: roteiro das telas do login sem empresa (Playwright)', () => {
+  it.todo('/login só com E-mail e Senha: o usuário de empresa entra e a tela abre o BKO da empresa dele');
+  it.todo('/login: o e-mail só de superadmin entra e a tela abre o /config');
+  it.todo('/login: a empresa suspensa, com a senha certa, mostra a mensagem MENSAGEM_EMPRESA_SUSPENSA do SDK e não abre sessão');
+  it.todo('"Esqueci a senha" só com o E-mail mostra a MENSAGEM_ESQUECI_NEUTRA do SDK');
 });

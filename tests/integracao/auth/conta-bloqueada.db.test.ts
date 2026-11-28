@@ -7,7 +7,6 @@
  * - B-3: o "Esqueci a senha" da conta bloqueada manda a temporária num e-mail multipart (text/plain e text/html) com o
  *   e-mail digitado e sem o código da empresa (ADR 0021, T-0133); o log desse envio não leva a senha nem o e-mail;
  * - B-4: entrar com a temporária desbloqueia (`desbloqueou: true`, `bloqueado_ate` nulo, falhas zeradas) e pede a troca.
- * Login e esqueci só com e-mail e senha (T-0133): o corpo não leva mais o campo `empresa`.
  * NÃO se repete: a regra pura (modules/core/domain/conta-bloqueada.test.ts), o texto e o HTML do e-mail (platform-sdk
  * esqueci-senha.test.ts), o log do esqueci da conta não travada
  * (esqueci-log.db.test.ts) e a trava do superadmin (login-trava.db.test.ts).

@@ -15,7 +15,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { CABECALHO_CSRF_CONFIG } from '../../../packages/platform-sdk/src/index';
+import { CABECALHO_CSRF_CONFIG, MENSAGEM_ESQUECI_NEUTRA } from '../../../packages/platform-sdk/src/index';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '../../../packages/platform-sdk/src/pg-testes';
 import { RepositorioCoreSql } from '../../../modules/core/api/index';
 import { appPgDeTeste, destinoDeLogs, EnvioEmailMemoria, inserirAdministradorDeTeste } from '../../../apps/api/src/apoio-teste';
@@ -164,7 +164,7 @@ describe.skipIf(!PG_DISPONIVEL)('T-0102: log do motivo do "Esqueci a senha" na A
     const corpos = new Set(respostas.map((r) => r.body));
     expect(corpos.size).toBe(1);
     expect(Object.keys(respostas[0]!.json<object>())).toEqual(['mensagem']);
-    // texto travado pelo PO (ADR 0021, seção Textos), literal: o teste confere o valor, não a constante do SDK
-    expect(respostas[0]!.json<{ mensagem: string }>().mensagem).toBe('Se o e-mail estiver cadastrado, enviamos as instruções.');
+    // texto travado pelo PO (ADR 0021, seção Textos)
+    expect(respostas[0]!.json<{ mensagem: string }>().mensagem).toBe(MENSAGEM_ESQUECI_NEUTRA);
   });
 });
