@@ -36,6 +36,31 @@
     },
     {
       "metodo": "GET",
+      "caminho": "/v1/cadastros/condicoes-pagamento/:id",
+      "area": "bko",
+      "origem": {
+        "tipo": "lista",
+        "de": "GET /v1/cadastros/condicoes-pagamento",
+        "campo": "itens[0].id"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/cadastros/condicoes-pagamento/exportar",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/cadastros/estoque",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/cadastros/estoque/exportar",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
       "caminho": "/v1/cadastros/filiais",
       "area": "bko"
     },
@@ -51,6 +76,46 @@
     {
       "metodo": "GET",
       "caminho": "/v1/cadastros/filiais/exportar",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/cadastros/oficiais/cest",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/cadastros/oficiais/cest/exportar",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/cadastros/oficiais/cfop",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/cadastros/oficiais/cfop/exportar",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/cadastros/oficiais/municipios",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/cadastros/oficiais/municipios/exportar",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/cadastros/oficiais/ncm",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/cadastros/oficiais/ncm/exportar",
       "area": "bko"
     },
     {
@@ -100,6 +165,21 @@
     },
     {
       "metodo": "GET",
+      "caminho": "/v1/cadastros/vendedores/:id",
+      "area": "bko",
+      "origem": {
+        "tipo": "lista",
+        "de": "GET /v1/cadastros/vendedores",
+        "campo": "itens[0].id"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/cadastros/vendedores/exportar",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
       "caminho": "/v1/core/ambientes-fiscais",
       "area": "bko"
     },
@@ -130,6 +210,11 @@
       "origem": {
         "tipo": "ficticio"
       }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/core/exportacoes/disponibilidade",
+      "area": "bko"
     },
     {
       "metodo": "GET",
