@@ -1,6 +1,80 @@
 /** Apoio comum dos e2e (`bko-cadastro.mjs`, `portal-integracao.mjs`, `render-telas.mjs`, `menu-acoes.mjs`) e dos servidores que eles usam (`api-real.ts`, `apoio-api.ts`). */
 import { join } from 'node:path';
 
+/**
+ * T-0135: o navegador de todo e2e sai em pt-BR e no fuso de Manaus. Sem isso a data que a tela formata no navegador vem
+ * em mm/dd/yyyy (o Chromium headless cai no en-US). Receita do quadro (28/11): o Chromium completo com `--lang=pt-BR` e
+ * LANGUAGE/LANG, mais `locale` e `timezoneId` em todo contexto (`novoContexto`, que sobrepõe o que o roteiro passar).
+ */
+export const CONTEXTO_PT_BR = Object.freeze({ locale: 'pt-BR', timezoneId: 'America/Manaus' });
+
+/** Abre o Chromium em pt-BR (receita do quadro). `chromium` é o do `playwright` que o roteiro já carregou. */
+export function abrirNavegador(chromium) {
+  return chromium.launch({ channel: 'chromium', args: ['--lang=pt-BR'], env: { ...process.env, LANGUAGE: 'pt_BR', LANG: 'pt_BR.UTF-8' } });
+}
+
+/**
+ * Contexto novo com `CONTEXTO_PT_BR` por cima de `opcoes` e conferido antes de devolver: 28/11/2026 15:00 UTC tem de sair
+ * "28/11/2026" e "11:00" no navegador. Se sair outra coisa, o e2e para aqui, antes de conferir data em tela.
+ */
+export async function novoContexto(navegador, opcoes = {}) {
+  const contexto = await navegador.newContext({ ...opcoes, ...CONTEXTO_PT_BR });
+  const p = await contexto.newPage();
+  const data = await p.evaluate(() => new Date(Date.UTC(2026, 10, 28, 15, 0)).toLocaleString()); // hora-fixa-ok: data de teste do formato pt-BR, não é relógio
+  await p.close();
+  exigir(data.includes('28/11/2026') && data.includes('11:00'), `navegador fora do pt-BR/Manaus: a data de teste saiu "${data}"`);
+  return contexto;
+}
+
+/**
+ * Asserções novas da T-0135, prontas e desligadas até o PR do dono entrar no main (nenhum teste é pulado: desligada, a
+ * asserção roda e só avisa "pendente"; ligada, reprova). Para ligar: troque `false` por `true` aqui, no PR do testes
+ * depois do merge do dono; para ensaiar o PR do dono antes, `MX_LIGAR=carregadoSoComData,singularRegistroCarregado`.
+ *  - carregadoSoComData: na aba Integrações do /config, o selo "Carregado" só com a data da última carga (sem "—") e o
+ *    "Cadastro manual" sem data de carga.
+ *  - singularRegistroCarregado: o anúncio da TabelaDensa com 1 linha diz "1 registro carregado." (designer-ux).
+ */
+// carregadoSoComData ligada: a decisão B entrou no main pelo #952 (a55ca9a). singularRegistroCarregado espera o designer-ux.
+const LIGADAS = { carregadoSoComData: true, singularRegistroCarregado: false };
+const LIGADAS_POR_ENV = new Set((process.env.MX_LIGAR ?? '').split(',').map((s) => s.trim()).filter(Boolean));
+export const assercaoLigada = (nome) => {
+  if (!(nome in LIGADAS)) throw new Error(`asserção desconhecida: ${nome}`);
+  return LIGADAS[nome] || LIGADAS_POR_ENV.has(nome);
+};
+
+/**
+ * T-0135 (`carregadoSoComData`, decisão B, #952): na aba Integrações aberta em `pagina`, toda linha com o selo "Carregado" (a
+ * célula da Situação só com o `Chip`, que não tem classe) mostra a data da última carga (dd/mm/aaaa), nunca "—"; e toda linha
+ * "Cadastro manual" (registro ativo sem carga) não tem data de carga. Lê só o visível (`innerText`): no 390 a coluna some e a
+ * data sobe para sob o nome (#840). Devolve quantas linhas de cada selo leu e a mensagem do defeito ('' se conforme); quem
+ * chama decide com `exigirQuandoLigada`.
+ */
+export async function carregadoSemData(pagina, onde) {
+  const linhasDo = (selo) =>
+    pagina.locator('tbody tr').evaluateAll(
+      (trs, s) => trs.filter((tr) => [...tr.querySelectorAll('td')].some((td) => td.textContent?.trim() === s)).map((tr) => tr.innerText.replace(/\s+/g, ' ').trim()),
+      selo,
+    );
+  const comData = (t) => /\b\d{2}\/\d{2}\/\d{4}\b/.test(t);
+  const linhas = await linhasDo('Carregado');
+  const manuais = await linhasDo('Cadastro manual');
+  const semData = linhas.filter((t) => !comData(t));
+  const manualComData = manuais.filter(comData);
+  const curto = (l) => l.map((t) => t.slice(0, 60)).join(' | ');
+  const defeitos = [
+    semData.length > 0 ? `${onde}: ${semData.length} de ${linhas.length} linha(s) "Carregado" sem data: ${curto(semData)}` : '',
+    manualComData.length > 0 ? `${onde}: ${manualComData.length} linha(s) "Cadastro manual" com data de carga: ${curto(manualComData)}` : '',
+  ].filter(Boolean);
+  return { lidas: linhas.length, manuais: manuais.length, defeito: defeitos.join('; ') };
+}
+
+/** Confere `cond`: ligada, falha como `exigir`; desligada, só avisa no stderr e devolve se passou. */
+export function exigirQuandoLigada(nome, cond, msg) {
+  if (assercaoLigada(nome)) exigir(cond, msg);
+  else if (!cond) console.error(`[e2e] pendente (${nome}, T-0135; desligada até o PR do dono): ${msg}`);
+  return Boolean(cond);
+}
+
 /** Valor de `--<nome> <valor>` na linha de comando, ou `padrao`. */
 export function argumento(nome, padrao) {
   const i = process.argv.indexOf(`--${nome}`);
@@ -110,6 +184,9 @@ const PROIBIDOS_PRINT = [
   /Algo deu errado/i,
   /Não foi possível/i,
   /indisponível agora/i,
+  // T-0135: data que só existe em mm/dd/yyyy (o segundo número passa de 12) e hora com AM/PM, sinal de navegador fora do pt-BR
+  /\b\d{1,2}\/(1[3-9]|2\d|3[01])\/\d{4}\b/,
+  /\b\d{1,2}:\d{2}(:\d{2})? ?[AP]M\b/,
 ];
 
 /** Confere a tela contra defeito visível: texto proibido e rolagem horizontal. */

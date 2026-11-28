@@ -18,3 +18,4 @@
 2026-11-26 — main vermelho (fumaca-telas, #717) — 18h34 de Manaus: o scanner ignora o `baixarCsv` local de `@/lib/baixar-csv` (sem GET); o de `lib/api.ts` continua varrido.
 2026-11-26 — main vermelho (#734 × #720) — 19h07 de Manaus: o caso "o digitado vale" usa 42, dentro da faixa das parcelas (T-0112), no lugar de 20.
 2026-11-26 — T-0111 (c) — 18h52 de Manaus: e2e da conta bloqueada (`tests/integracao/auth/conta-bloqueada.db.test.ts`) e as 11 expectativas do login-trava e do operador-superadmin (R-20261126-184746); a igualdade com docs/design (R-20261126-183834) ficou fora: R4 do grafo-turbo.
+2026-11-28 — T-0135 e T-0132 — 05h08 de Manaus: e2e em pt-BR/Manaus (abrirNavegador/novoContexto), "Carregado" só com data e "Cadastro manual" sem data ligada (#952); singular da TabelaDensa pronto e desligado (designer-ux); 15 casos de borda da 63 A do fiscal ao Hub no Postgres real (tests/integracao/fiscal/st-ipi-63a.db.test.ts), sem defeito.

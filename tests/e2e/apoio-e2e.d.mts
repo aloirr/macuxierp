@@ -21,3 +21,9 @@ export interface UrlTela {
 }
 export function urlsDasTelas(dados: unknown): UrlTela[];
 export function abasDaEmpresa(pagina: unknown, base: string, url: string): Promise<string[]>;
+export const CONTEXTO_PT_BR: Readonly<{ locale: 'pt-BR'; timezoneId: 'America/Manaus' }>;
+export function abrirNavegador<N>(chromium: { launch(o?: object): Promise<N> }): Promise<N>;
+export function novoContexto<C>(navegador: { newContext(o?: object): Promise<C> }, opcoes?: object): Promise<C>;
+export function assercaoLigada(nome: 'carregadoSoComData' | 'singularRegistroCarregado'): boolean;
+export function exigirQuandoLigada(nome: 'carregadoSoComData' | 'singularRegistroCarregado', cond: unknown, msg: string): boolean;
+export function carregadoSemData(pagina: unknown, onde: string): Promise<{ lidas: number; manuais: number; defeito: string }>;

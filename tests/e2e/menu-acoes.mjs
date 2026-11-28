@@ -21,7 +21,7 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { abasDaEmpresa, argumento, entrar, LARGURAS_PRINT, urlsDasTelas } from './apoio-e2e.mjs';
+import { abasDaEmpresa, abrirNavegador, argumento, entrar, LARGURAS_PRINT, novoContexto, urlsDasTelas } from './apoio-e2e.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -274,7 +274,7 @@ async function conferirLinhas(pagina, onde) {
   for (const a of achados) falhar(onde, a);
 }
 
-const navegador = await chromium.launch();
+const navegador = await abrirNavegador(chromium);
 try {
   if (BANCADA) {
     const UI = resolve(argumento('ui', RAIZ));
@@ -294,7 +294,7 @@ try {
     const css = ['tokens.css', 'botoes.css'].map((f) => `<link rel="stylesheet" href="${pathToFileURL(join(UI, 'packages/ui/src', f))}">`).join('');
     writeFileSync(join(pasta, 'index.html'), `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${css}</head><body style="margin:0"><div id="raiz"></div><script src="bancada.js"></script></body></html>`);
     for (const { nome, viewport } of LARGURAS_PRINT) {
-      const p = await (await navegador.newContext({ viewport, deviceScaleFactor: 1, locale: 'pt-BR' })).newPage();
+      const p = await (await novoContexto(navegador, { viewport, deviceScaleFactor: 1 })).newPage();
       const erros = [];
       p.on('pageerror', (e) => erros.push(String(e?.message ?? e)));
       await p.goto(pathToFileURL(join(pasta, 'index.html')).href);
@@ -333,9 +333,9 @@ try {
     const dados = JSON.parse(readFileSync(DADOS, 'utf8'));
     const urls = urlsDasTelas(dados).filter((u) => u.contexto !== 'sem-sessao');
     for (const { nome, viewport } of LARGURAS_PRINT) {
-      const opcoes = { viewport, deviceScaleFactor: 1, locale: 'pt-BR', timezoneId: 'America/Manaus' };
+      const opcoes = { viewport, deviceScaleFactor: 1 };
       const sessao = async (u, chegou) => {
-        const p = await (await navegador.newContext(opcoes)).newPage();
+        const p = await (await novoContexto(navegador, opcoes)).newPage();
         p.setDefaultTimeout(30_000);
         await entrar(p, BASE, u);
         await p.waitForURL((x) => chegou(new URL(x).pathname));
