@@ -6,7 +6,7 @@
  * rota `[modulo]/[...pagina]` do shell, e dos `page.tsx` do web (filtro do `arquivosDoWeb`), e vai no JSON de pronto. Rota com `:param` leva um UUID fictício (o registro não existe).
  * O tenant tem TODOS os módulos dos manifestos do web. Nenhuma chamada ao Hub: sem worker de pé, nada sai para o FDV.
  */
-import { PAGINAS_REGISTRADAS } from '../../apps/web/src/lib/paginas';
+import { PAGINAS_REGISTRADAS, ROTAS_SEM_TELA } from '../../apps/web/src/lib/paginas';
 import { MANIFESTOS } from '../../apps/web/src/lib/manifestos';
 import { dirname, join, relative, sep } from 'node:path';
 import { arquivosDoWeb, preencherCaminho, RAIZ } from '../apoio/caminhos';
@@ -19,7 +19,8 @@ const paginasDoApp = arquivosDoWeb()
   .map((f) => relative(APP, dirname(f)).split(sep).join('/'))
   .sort();
 
-const telas = PAGINAS_REGISTRADAS.map((p) => ({
+/** Rota sem tela pronta (`ROTAS_SEM_TELA`, decisão do PO na v0.3.28) não abre nem pela URL: fica fora do e2e. */
+const telas = PAGINAS_REGISTRADAS.filter((p) => !ROTAS_SEM_TELA.has(p.rota)).map((p) => ({
   modulo: p.modulo,
   titulo: p.titulo,
   rota: p.rota,

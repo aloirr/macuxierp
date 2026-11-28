@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# R-20261127-061730 (v0.3.20): e2e do login único entre o BKO e o /config, e do link do e-mail (`/login#codigo=…&email=…`).
+# R-20261127-061730 (v0.3.20; login na raiz desde a v0.3.27, #886): e2e do login único entre o BKO e o /config, das rotas
+# antigas em 308 e do link do e-mail (`/#codigo=…&email=…`, e o antigo `/login#…`).
 # Pré-requisito: Postgres local de pé (`eval "$(bash db/scripts/pg-local.sh --subir)"`). Sem Docker, sem rede.
 # Uso: bash tests/e2e/rodar-login-config.sh [pasta dos prints]   (portas: API 3204, web 3104)
 set -euo pipefail

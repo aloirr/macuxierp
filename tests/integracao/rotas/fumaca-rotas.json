@@ -16,6 +16,21 @@
     },
     {
       "metodo": "GET",
+      "caminho": "/v1/cadastros/clientes/:id",
+      "area": "bko",
+      "origem": {
+        "tipo": "lista",
+        "de": "GET /v1/cadastros/clientes",
+        "campo": "itens[0].id"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/cadastros/clientes/exportar",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
       "caminho": "/v1/cadastros/condicoes-pagamento",
       "area": "bko"
     },
@@ -26,7 +41,56 @@
     },
     {
       "metodo": "GET",
+      "caminho": "/v1/cadastros/filiais/:id",
+      "area": "bko",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "filial"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/cadastros/filiais/exportar",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
       "caminho": "/v1/cadastros/produtos",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/cadastros/produtos/:id",
+      "area": "bko",
+      "origem": {
+        "tipo": "lista",
+        "de": "GET /v1/cadastros/produtos",
+        "campo": "itens[0].id"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/cadastros/produtos/exportar",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/cadastros/tabelas-preco",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/cadastros/tabelas-preco/:id",
+      "area": "bko",
+      "origem": {
+        "tipo": "lista",
+        "de": "GET /v1/cadastros/tabelas-preco",
+        "campo": "itens[0].id"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/cadastros/tabelas-preco/exportar",
       "area": "bko"
     },
     {
