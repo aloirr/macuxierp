@@ -115,23 +115,13 @@ export const ROTA_TELA_LOGIN = '/';
  * a ADR 0021 (§6) o login não pede a empresa, e o link não leva código nem token. LGPD: o fragmento não vai ao
  * servidor, nem ao log da Cloudflare, nem ao Referer. A senha nunca entra no link. Função pura.
  */
-export function urlEntrarPreenchida(email: string): string;
-/**
- * @deprecated Transição da v0.3.30 (ADR 0021 §6): o código é ignorado e o link leva só o e-mail. A forma com o código
- * sai quando a apps/web deixar de chamá-la (RD-2414).
- */
-export function urlEntrarPreenchida(codigo_ignorado: string | null, email: string): string;
-export function urlEntrarPreenchida(a: string | null, b?: string): string {
-  const email = b ?? a ?? '';
+export function urlEntrarPreenchida(email: string): string {
   return `${URL_MACUXI_ERP}${ROTA_TELA_LOGIN}#${new URLSearchParams({ email }).toString()}`;
 }
 
 /** O que a tela de login preenche a partir do fragmento: só o e-mail, normalizado como no login (ADR 0021 §6). */
 export const PreenchimentoLogin = z.object({ email: EmailUsuario.optional() });
-export type PreenchimentoLogin = z.infer<typeof PreenchimentoLogin> & {
-  /** @deprecated Sempre ausente (ADR 0021 §6): o `#codigo` de link antigo é ignorado. Sai com a apps/web (RD-2414). */
-  codigo?: undefined;
-};
+export type PreenchimentoLogin = z.infer<typeof PreenchimentoLogin>;
 
 /**
  * Lê o fragmento do link (`location.hash`, com ou sem o `#`): só o `email`, se válido (o inválido fica de fora, sem
