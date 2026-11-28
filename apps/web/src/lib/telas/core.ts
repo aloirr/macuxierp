@@ -6,7 +6,7 @@
  */
 import { AVISO_USUARIO, tomAmarelo } from '../usuarios-textos';
 import {
-  AVISO_SENHA_PROVISORIA, COLUNAS_USUARIOS, PAGINAS_CORE, ROTULO_MODULO, TOM_SITUACAO_USUARIO, linhaAuditoria, linhaLicenca, linhaUsuario, opcoesDePerfil, paginaAuditoria, paginaLicencas, paginaUsuarios, quadroEmpresaFiscal,
+  AVISO_SENHA_PROVISORIA, COLUNAS_USUARIOS, PAGINAS_CORE, ROTULO_MODULO, ROTULO_SITUACAO_LICENCA, situacaoDaLicenca, tomDaLicenca, TOM_SITUACAO_USUARIO, linhaAuditoria, linhaLicenca, linhaUsuario, opcoesDePerfil, paginaAuditoria, paginaLicencas, paginaUsuarios, quadroEmpresaFiscal,
 } from '@macuxierp/core/web';
 import { AuditoriaItemLista, Licenca, ROTULOS_SITUACAO_USUARIO, Usuario, UsuarioCriar, UsuarioEditar, type PerfilComAcoes } from '@macuxierp/core/contracts';
 import { PERFIS, ROTULOS_PERFIL, pode, type Perfil } from '@macuxierp/platform-sdk';
@@ -165,7 +165,11 @@ export const LISTA_LICENCAS: TelaLista = {
   filtrosTela: [],
   colunas: () => colunasDoModulo(paginaLicencas.colunas, { ativo: 'status' }),
   linha: (item, fuso) => linhaLicenca(item as unknown as Licenca, fuso),
-  selos: (item) => ({ ativo: [(item as unknown as Licenca).ativo ? { texto: 'Ativa', tom: 'ok' } : { texto: 'Inativa', tom: 'neutro' }] }),
+  // Ativa, Inativa ou Vencida (RN-CORE-02), com o vocabulário do core; "Vencida" é o único em âmbar.
+  selos: (item) => {
+    const s = situacaoDaLicenca(item as unknown as Licenca, new Date());
+    return { ativo: [{ texto: ROTULO_SITUACAO_LICENCA[s], tom: tomAmarelo(tomDaLicenca(s)) }] };
+  },
 };
 
 /** Entidades que o core audita, em português (mapa só do core; entidade de outro módulo aparece como veio). */

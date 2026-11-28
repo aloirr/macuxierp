@@ -55,7 +55,7 @@ describe('lista de empresas', () => {
     expect(h).toContain('placeholder="Buscar por código ou nome"');
     expect(h).not.toMatch(/>Buscar<\/button>|Criar empresa|Buscar por código</);
     expect(h.indexOf('>Nova empresa</a>')).toBeGreaterThan(h.indexOf('</table>'));
-    expect(h).toMatch(/class="barra-acoes rodape-lista"><a class="mx-botao" href="\/config\/empresas\/nova">Nova empresa<\/a><\/div>/);
+    expect(h).toMatch(/class="barra-acoes barra-rodape-lista"><a class="mx-botao" href="\/config\/empresas\/nova">Nova empresa<\/a><\/div>/);
     const css = readFileSync(join(__dirname, '../../globals.css'), 'utf8');
     expect(css).toContain('.titulo-lista h1 { grid-column: span 8;');
     expect(css).toContain('.titulo-lista .busca-lista { grid-column: span 4;');

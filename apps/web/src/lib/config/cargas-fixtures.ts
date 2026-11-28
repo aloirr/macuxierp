@@ -11,7 +11,7 @@ export function situacoes(dados: Partial<Record<CadastroCargaPortal, { situacao:
     const d = dados[def.cadastro];
     return {
       numero: def.numero, cadastro: def.cadastro, situacao: sit[def.cadastro], erros: d?.erros ?? 0, opcional: def.opcional, liberado: true,
-      ultima_carga: d && d.situacao !== 'nao_carregado' ? { em: '2026-11-23T18:39:00.000Z', quantidade: d.quantidade ?? 44 } : null,
+      ultima_carga: d && d.situacao !== 'nao_carregado' && d.situacao !== 'manual' ? { em: '2026-11-23T18:39:00.000Z', quantidade: d.quantidade ?? 44 } : null,
     };
   });
   return SituacaoCargasPlataforma.parse({ empresa_id: EMP, modulo_licenciado: true, cadastros });

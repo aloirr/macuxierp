@@ -62,3 +62,4 @@
 2026-11-27 — v0.3.28 — web: shell no padrão da marca (MC-0201 a MC-0210, decisão 54); MC-0212 sem tabela a converter
 2026-11-27 — v0.3.28 — tela de Clientes ligada no BKO (lista, novo, edição por PATCH) e h1 a 4 px da saudação (MC-0216)
 2026-11-28 — T-0134 — lista de Empresas: coluna Macuxi FDV, Ações ▾ (suspender/reativar, redefinir senha), busca, CNAE sem duplicata, Nova empresa/Criar/Salvar
+2026-11-28 — T-0135 — selos de Integrações (4 situações), selo da licença com o vocabulário do core, temFdv sem cast, um botão por linha, coluna Cadastro, marca ERP → Macuxi FDV, Nova empresa à esquerda

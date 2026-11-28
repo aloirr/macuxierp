@@ -18,7 +18,7 @@ const TITULO_TROCAR_CHAVE_FDV = `Trocar a chave do ${ROTULO_DESTINO_FDV}?`;
 const ROTULO_FICHA_FDV = `Chave do ${ROTULO_DESTINO_FDV}`;
 
 /**
- * Ligação "ERP → Força de vendas" (v0.3.24, docs/design/integracao-duas-ligacoes; juntou "Conexão com o Macuxi FDV" e o Monitor).
+ * Ligação "ERP → Macuxi FDV" (v0.3.24, docs/design/integracao-duas-ligacoes; juntou "Conexão com o Macuxi FDV" e o Monitor).
  * Sem chave: o formulário Código / Chave / Ambiente e "Salvar chave". Com chave: a ficha (o Monitor vira a Situação) e
  * "Trocar chave" (diálogo com Nova chave e Ambiente; o código fica fixo) e "Testar conexão". A chave fica só no campo até o
  * envio: sem estado, URL, armazenamento nem log; depois de salvar, o campo é limpo.

@@ -55,7 +55,7 @@ export async function lerApoio<T>(ler: () => Promise<T>): Promise<{ valor: T | n
 }
 
 /** "Macuxi FDV" da lista: `tem_fdv` ausente (API ou contrato anteriores à 0080) vale falso (T-0134). */
-export const temFdv = (e: object): boolean => (e as { tem_fdv?: unknown }).tem_fdv === true;
+export const temFdv = (e: { tem_fdv?: boolean }): boolean => e.tem_fdv === true;
 
 export type ChaveAcaoEmpresa = 'suspender' | 'reativar' | 'redefinir_senha';
 export interface ItemAcaoEmpresa { chave: ChaveAcaoEmpresa; rotulo: string; perigo?: boolean }

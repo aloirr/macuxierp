@@ -1,11 +1,12 @@
 import type { Metadata } from 'next';
+import { ROTULO_SITUACAO_LICENCA } from '@macuxierp/core/web';
 import { MANIFESTOS } from '@/lib/manifestos';
 import { NOMES_MODULOS } from '@/lib/nomes-modulos';
 import { contexto } from '@/lib/sessao';
 
 export const metadata: Metadata = { title: 'Licenças' };
 
-/** Somente leitura (D12): a licença muda pelo operador da Macuxi, com auditoria. */
+/** Somente leitura (D12): a licença muda pelo operador da Macuxi, com auditoria. Mesmo vocabulário da lista do core (RN-CORE-02); `eu.modulos` traz só as vigentes, então o que falta aparece como Inativa. */
 export default async function Licencas() {
   const { eu } = await contexto();
   const ativos = new Set(eu.modulos.map((m) => m.id));
@@ -23,7 +24,7 @@ export default async function Licencas() {
               <tr key={m.id}>
                 <th scope="row">{NOMES_MODULOS[m.id]}</th>
                 <td>{m.descricao}</td>
-                <td><span className={`selo ${ativo ? 'selo-ativo' : 'selo-inativo'}`}>{ativo ? 'Contratado' : 'Não contratado'}</span></td>
+                <td><span className={`selo ${ativo ? 'selo-ativo' : 'selo-inativo'}`}>{ROTULO_SITUACAO_LICENCA[ativo ? 'ativa' : 'inativa']}</span></td>
               </tr>
             );
           })}

@@ -22,7 +22,7 @@ type Pedido = { tipo: 'ligar' | 'desligar' | 'retomar'; linha: LinhaCadastroFdv 
 const LEGENDA_ENVIADOS = 'Cadastros enviados';
 
 /**
- * Aba Dados, seção "ERP → Força de vendas" (v0.3.24, docs/design/integracao-duas-ligacoes; era a parte de baixo da aba Integração):
+ * Aba Dados, seção "ERP → Macuxi FDV" (v0.3.24, docs/design/integracao-duas-ligacoes; era a parte de baixo da aba Integração):
  * Registros por lote, a tabela "Cadastros enviados" com o menu Ações (T-0099) e "Zerar pedidos não faturados". Os retornos seguem a
  * 36 A: cada um logo abaixo do seu botão.
  */

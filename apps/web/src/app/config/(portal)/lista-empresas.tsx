@@ -140,7 +140,7 @@ export function ListaEmpresas({ empresas, vazio, proximo = null, busca = '' }: {
     </div>
     </div>
     <ResultadoAcao resultado={resultado} chave={chaveResultado} />
-    <div className="barra-acoes rodape-lista">
+    <div className="barra-acoes barra-rodape-lista">
       <Link className="mx-botao" href="/config/empresas/nova">Nova empresa</Link>
     </div>
     {pedido && pedido.chave === 'redefinir_senha' && (
