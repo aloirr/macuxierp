@@ -110,6 +110,7 @@ function repoMemoria(inicial: Partial<EmpresaPlataforma> = {}, op: OpcoesFicha =
     },
     // Usuários (0078): cobertos em plataforma-usuarios.test.ts.
     listarUsuarios: async () => [],
+    listarFiliais: async () => [],
     criarUsuario: () => Promise.reject(new Error('não usado aqui')),
     editarUsuario: () => Promise.reject(new Error('não usado aqui')),
     redefinirSenhaUsuario: () => Promise.reject(new Error('não usado aqui')),
@@ -169,12 +170,13 @@ const LIGADOS_ATE_PEDIDO = [
 ] as const;
 
 describe('T-0050: plugin de plataforma do core (ADR 0012)', () => {
-  it('monta as 21 rotas de empresa (14 + 7 de usuários, 0078), nenhuma em /auth', () => {
+  it('monta as 22 rotas de empresa (14 + 7 de usuários, 0078, + filiais, 0086), nenhuma em /auth', () => {
     const { plugin } = montar();
     expect(plugin.rotas.map((r) => `${r.metodo} ${r.caminho}`).sort()).toEqual([
       'GET /empresas',
       'GET /empresas/:id',
       'GET /empresas/:id/cnpj',
+      'GET /empresas/:id/filiais',
       'GET /empresas/:id/usuarios',
       'PATCH /empresas/:id/usuarios/:usuario',
       'POST /empresas',

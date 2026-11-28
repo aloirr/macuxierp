@@ -1,6 +1,6 @@
 import { CABECALHOS_SENHA_PROVISORIA, ErroApi, type RotaPlataforma, type Transacao } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
-import { MENSAGEM_ULTIMO_ADMIN, ROTAS_USUARIOS_CONFIG, UsuarioConfig, UsuarioConfigComSenha } from '../contracts';
+import { ListaFiliaisConfig, MENSAGEM_ULTIMO_ADMIN, ROTAS_USUARIOS_CONFIG, UsuarioConfig, UsuarioConfigComSenha } from '../contracts';
 import { MANIFESTOS_TESTE } from './manifestos-teste';
 import { criarPluginPlataformaCore, semPrefixoPortal, type ItemUsuarioBanco, type RepositorioPlataforma } from './plataforma';
 
@@ -8,6 +8,8 @@ const EMPRESA = '00000000-0000-4000-8000-0000000000e1';
 const ADM = '00000000-0000-4000-8000-0000000000a1';
 const FAT = '00000000-0000-4000-8000-0000000000a2';
 const INATIVO = '00000000-0000-4000-8000-0000000000a3';
+const FILIAL = '00000000-0000-4000-8000-0000000000f1';
+const FILIAL2 = '00000000-0000-4000-8000-0000000000f2';
 const FORA = '00000000-0000-4000-8000-0000000000ff';
 
 const item = (p: Partial<ItemUsuarioBanco> & Pick<ItemUsuarioBanco, 'id'>): ItemUsuarioBanco => ({
@@ -25,6 +27,10 @@ function montar(linhas: ItemUsuarioBanco[] = [
   const hashes: string[] = [];
   const repo = {
     async listarUsuarios(_tx: Transacao, id: string) { chamadas.push(`listar:${id}`); return linhas; },
+    async listarFiliais(_tx: Transacao, id: string) {
+      chamadas.push(`filiais:${id}`);
+      return [{ id: FILIAL, nome: 'Matriz', padrao: true }, { id: FILIAL2, nome: 'Loja Centro', padrao: false }];
+    },
     async criarUsuario(_tx: Transacao, p: { email: string; nome: string; perfil: string; senha_hash: string; request_id: string }) {
       chamadas.push(`criar:${p.perfil}:${p.request_id}`);
       hashes.push(p.senha_hash);
@@ -83,6 +89,17 @@ describe('v0.3.28: Usuários da empresa na Config (0078, RN-CORE-01, RN-CORE-17)
     ]);
     expect(por(R.criar)?.idempotencia).toBe('obrigatoria');
     expect(por(R.redefinirSenha)?.idempotencia).toBe('obrigatoria');
+  });
+
+  it('T-0130: GET filiais exige plataforma.usuario.ver, devolve { itens } no ListaFiliaisConfig e é no-store', async () => {
+    const t = montar();
+    const rota = t.plugin.rotas.find((x) => x.metodo === 'GET' && x.caminho === semPrefixoPortal(ROTAS_USUARIOS_CONFIG.filiais));
+    expect(rota?.acao).toBe('plataforma.usuario.ver');
+    const r = await t.chamar(ROTAS_USUARIOS_CONFIG.filiais, { id: EMPRESA });
+    expect(r.cabecalhos).toMatchObject(SEM_CACHE);
+    expect(ListaFiliaisConfig.parse(r.corpo).itens.map((f) => [f.nome, f.padrao])).toEqual([['Matriz', true], ['Loja Centro', false]]);
+    expect(t.chamadas).toEqual([`filiais:${EMPRESA}`]);
+    expect(t.auditadas).toEqual([]);
   });
 
   it('lista com o e-mail mascarado do banco e as ações do domain; o último admin fica sem Excluir (52 A); no-store', async () => {

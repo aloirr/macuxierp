@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   CnpjAlterado,
   EVENTO_CNPJ_ALTERADO,
+  ListaFiliaisConfig,
   ListaUsuariosConfig,
   MENSAGEM_ULTIMO_ADMIN,
   MENSAGENS_BLOQUEIO_CNPJ,
@@ -421,5 +422,29 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
     const outro = await criarTenant(b.admin, `portal-usu-${randomUUID().slice(0, 8)}`, ['core']);
     const nf = await chamar('POST', '/empresas/:id/usuarios/:usuario/senha', { params: { id: outro, usuario: a.id } }).catch((x: unknown) => x);
     expect((nf as ErroApi).status).toBe(404);
+  });
+
+  it('T-0130 (0086): GET filiais devolve {id, nome, padrao} da empresa, a padrão primeiro, sem excluídas nem CNPJ; empresa inexistente = 404; sem sessão = MXS01', async () => {
+    const id = await criarTenant(b.admin, `portal-fil-${randomUUID().slice(0, 8)}`, ['core']);
+    const filial = (cnpj: string, razao: string, fantasia: string | null, padrao: boolean, excluida: boolean) =>
+      b.admin.query(
+        `INSERT INTO cadastros.filial (tenant_id, cnpj, razao_social, nome_fantasia, crt, logradouro, numero, bairro, municipio_ibge, uf, cep, padrao, emissora, deleted_at)
+         VALUES ($1, $2, $3, $4, '3', 'Rua Ficticia', '1', 'Centro', '1302603', 'AM', '69000000', $5, false, $6)`,
+        [id, cnpj, razao, fantasia, padrao, excluida ? new Date(0) : null],
+      );
+    await filial('11222333000181', 'Razao Matriz Ltda', 'Matriz Teste', true, false);
+    await filial('11444777000161', 'Razao Loja Ltda', null, false, false);
+    await filial('00000000000191', 'Razao Excluida Ltda', 'Excluida', false, true);
+    const r = await chamar('GET', '/empresas/:id/filiais', { params: { id } });
+    const lista = ListaFiliaisConfig.parse(r.corpo);
+    expect(lista.itens.map((f) => [f.nome, f.padrao])).toEqual([['Matriz Teste', true], ['Razao Loja Ltda', false]]);
+    expect(JSON.stringify(r.corpo)).not.toMatch(/cnpj|11222333/);
+    const nf = await chamar('GET', '/empresas/:id/filiais', { params: { id: randomUUID() } }).catch((x: unknown) => x);
+    expect((nf as ErroApi).status).toBe(404);
+    const sem = await comPlataforma(async (tx) => {
+      await tx.consultar("SELECT set_config('macuxierp.sessao_superadmin', '', true)");
+      return new RepositorioPlataformaSql().listarFiliais(tx, id).catch((x: unknown) => x);
+    });
+    expect((sem as { code?: string }).code ?? (sem as { causa?: { code?: string } }).causa?.code).toBe('MXS01');
   });
 });
