@@ -143,6 +143,7 @@ const NAO_EXTRAIVEIS: Readonly<Record<string, string>> = {
   'apps/web/src/components/descritor/lista-generica.tsx :: tela.pagina.api': 'lista da tela (TelaLista.pagina.api)',
   'apps/web/src/components/descritor/tela-generica.tsx :: `${caminhoDaFonte(fonte)}?limite=200`': 'fontes do formulário (campos[].fonte e itens.fonte)',
   'apps/web/src/components/descritor/tela-generica.tsx :: tela.api(id)': 'detalhe (TelaDetalhe.api)',
+  'apps/web/src/components/descritor/tela-generica.tsx :: tela.edicao.ler(id)': 'registro da edição (TelaFormulario.edicao.ler, v0.3.28)',
   'apps/web/src/components/descritor/tela-generica.tsx :: tela.motivosApi': 'catálogo de motivos (TelaDetalhe.motivosApi)',
   'apps/web/src/components/descritor/tela-generica.tsx :: tela.eventosApi(id)': 'histórico (TelaDetalhe.eventosApi)',
   'apps/web/src/app/(shell)/[modulo]/[...pagina]/acoes.ts :: caminho': 'leituras dos diálogos (ExecutorDeAcoes.leituras, via leituraDeclarada)',
@@ -179,6 +180,7 @@ function getsDasTelas(): { origem: string; caminho: string }[] {
     if (!t) continue;
     const de = (caminho: string, o: string) => r.push({ origem: `tela ${p.rota} (${o})`, caminho });
     for (const f of FONTES_DE(t)) de(f, 'fonte');
+    if (t.tipo === 'formulario' && t.edicao) de(t.edicao.ler(ID_DA_TELA), 'edição');
     if (t.tipo === 'lista') {
       de(t.pagina.api, 'lista');
       de(`${t.pagina.api}/exportar`, 'exportar CSV');
@@ -276,6 +278,9 @@ describe('fumaça das telas: a lista de GETs do web (T-0065)', () => {
     // T-0110: aceita só enquanto o fonte tiver a tela "Clientes recebidos"; sai depois do PR do apps.
     const saiNaT0110 = 'apps/web/src/app/(shell)/[modulo]/[...pagina]/tela-integracao-fdv.tsx :: caminhoApiClientesRecebidos(consulta)';
     expect([...VARREDURA.dinamicas].filter((c) => c !== saiNaT0110).sort()).toEqual(Object.keys(NAO_EXTRAIVEIS).sort());
+  });
+  it('v0.3.28: os GETs de edição de Clientes, Produtos, Filiais e Tabelas de preço estão na lista (TelaFormulario.edicao.ler)', () => {
+    for (const c of ['clientes', 'produtos', 'filiais', 'tabelas-preco']) expect(CAMINHOS.has(`/v1/cadastros/${c}/${ID}`), c).toBe(true);
   });
   it(`a lista tem pelo menos ${PISO_DE_ROTAS} rotas, todas /v1/...`, () => {
     expect(CASOS.length).toBeGreaterThanOrEqual(PISO_DE_ROTAS);
