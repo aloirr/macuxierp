@@ -8,7 +8,7 @@ vi.mock('@/lib/api', async (orig) => ({ ...(await orig<typeof import('@/lib/api'
 // A Fiscal venceu: `eu.modulos` traz só as vigentes, então ela não está na lista.
 vi.mock('@/lib/sessao', async (orig) => ({
   ...(await orig<typeof import('@/lib/sessao')>()),
-  contexto: async () => ({ eu: { modulos: [{ id: 'core' }, { id: 'cadastros' }] }, filial: null }),
+  contexto: async () => ({ eu: { empresa: { fuso: 'America/Manaus' }, modulos: [{ id: 'core' }, { id: 'cadastros' }] }, filial: null }),
 }));
 
 import Licencas from './page';
@@ -21,6 +21,8 @@ describe('/licencas: situação da licença igual à do core (RN-CORE-02)', () =
     const h = linhaFiscal(renderToStaticMarkup(await Licencas()));
     expect(h).toContain('>Vencida<');
     expect(h).not.toContain('>Inativa<');
+    expect(h).toContain('selo-aviso'); // âmbar, igual ao core
+    expect(h).not.toContain('Plataforma:'); // sem coluna de descrição técnica
   });
   it('sem core.licenca.ver (403), cai no eu.modulos e a vencida aparece como Inativa: só as vigentes chegam', async () => {
     resposta = () => { throw new SemPermissao(); };

@@ -1,7 +1,10 @@
 import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import { z } from 'zod';
-import { ROTULO_SITUACAO_LICENCA, situacaoDaLicenca } from '@macuxierp/core/web';
+import { ROTULO_SITUACAO_LICENCA, TEXTO_SEM_PRAZO, situacaoDaLicenca, tomDaLicenca } from '@macuxierp/core/web';
+import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
+import { Selo } from '@/components/descritor/ui-cliente';
+import { tomAmarelo } from '@/lib/usuarios-textos';
 import { Licenca } from '@macuxierp/core/contracts';
 import { getValidado } from '@/lib/api';
 import { MANIFESTOS } from '@/lib/manifestos';
@@ -15,13 +18,13 @@ export const metadata: Metadata = { title: 'Licenças' };
  * a situação sai de `GET /v1/core/licencas` (traz a vencida). Quem não tem `core.licenca.ver` ou com a API fora cai no `eu.modulos`, que traz só as
  * vigentes: o que falta aparece como Inativa.
  */
-async function situacoes(): Promise<Map<string, 'ativa' | 'inativa' | 'vencida'> | null> {
+async function situacoes(): Promise<Map<string, { sit: 'ativa' | 'inativa' | 'vencida'; ate: string | null }> | null> {
   const acesso = (await cookies()).get(COOKIE_ACESSO)?.value;
   if (!acesso) return null;
   try {
     const r = await getValidado('/v1/core/licencas', z.object({ itens: z.array(Licenca) }), acesso, 'licencas', true);
     const agora = new Date();
-    return new Map(r.itens.map((l) => [l.modulo, situacaoDaLicenca(l, agora)]));
+    return new Map(r.itens.map((l) => [l.modulo, { sit: situacaoDaLicenca(l, agora), ate: l.valido_ate }]));
   } catch {
     return null;
   }
@@ -38,16 +41,16 @@ export default async function Licencas() {
       <p className="apoio">Para contratar ou alterar módulos, fale com a Macuxi.</p>
       <table>
         <caption className="pular">Módulos e situação da licença</caption>
-        <thead><tr><th scope="col">Módulo</th><th scope="col">Descrição</th><th scope="col">Situação</th></tr></thead>
+        <thead><tr><th scope="col">Módulo</th><th scope="col">Situação</th><th scope="col">Válido até</th></tr></thead>
         <tbody>
           {MANIFESTOS.map((m) => {
-            const sit = lidas?.get(m.id) ?? (ativos.has(m.id) ? 'ativa' : 'inativa');
-            const ativo = sit === 'ativa';
+            const l = lidas?.get(m.id);
+            const sit = l?.sit ?? (ativos.has(m.id) ? 'ativa' : 'inativa');
             return (
               <tr key={m.id}>
                 <th scope="row">{NOMES_MODULOS[m.id]}</th>
-                <td>{m.descricao}</td>
-                <td><span className={`selo ${ativo ? 'selo-ativo' : 'selo-inativo'}`}>{ROTULO_SITUACAO_LICENCA[sit]}</span></td>
+                <td><Selo selo={{ texto: ROTULO_SITUACAO_LICENCA[sit], tom: tomAmarelo(tomDaLicenca(sit)) }} /></td>
+                <td>{l ? (l.ate ? formatarDataHora(l.ate, eu.empresa.fuso) : TEXTO_SEM_PRAZO) : '—'}</td>
               </tr>
             );
           })}
