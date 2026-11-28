@@ -15,7 +15,7 @@ import { AuditoriaItemLista, Id, Licenca, ROTULOS_SITUACAO_USUARIO, Usuario, typ
 const Instante = z.string().datetime();
 
 export const ROTULO_MODULO: Readonly<Record<string, string>> = {
-  core: 'Plataforma',
+  core: 'Empresa',
   cadastros: 'Cadastros',
   pedido: 'Pedidos',
   faturamento: 'Faturamento',

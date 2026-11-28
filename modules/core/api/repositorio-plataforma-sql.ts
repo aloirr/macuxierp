@@ -118,9 +118,8 @@ const usuario = <R = ItemUsuarioBanco>(tx: Transacao, sql: string, parametros: r
 
 /**
  * T-0134: `tem_fdv` vem do banco (0080, lê a licença da integração FDV). Antes da 0080 o campo não vem: vale `false`.
- * O campo entra no contrato `EmpresaPlataforma` (SDK) por pedido ao engenheiro-software; até lá o tipo é local.
  */
-const comTemFdv = <E extends object>(e: E): E & { tem_fdv: boolean } => ({ ...e, tem_fdv: (e as { tem_fdv?: unknown }).tem_fdv === true });
+const comTemFdv = <E extends object>(e: E): E & Pick<EmpresaPlataforma, 'tem_fdv'> => ({ ...e, tem_fdv: (e as { tem_fdv?: unknown }).tem_fdv === true });
 
 const empresa = async (tx: Transacao, sql: string, parametros: readonly unknown[]): Promise<EmpresaPlataforma> =>
   comTemFdv((await primeiraLinha<{ e: EmpresaPlataforma }>(tx, sql, parametros)).e);
