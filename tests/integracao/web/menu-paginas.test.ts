@@ -7,7 +7,8 @@
  * todas as páginas dele estão ocultas; o item "Empresa" abre no "Ambiente fiscal". A lista esperada aqui é a da decisão, não a
  * do próprio shell: o teste confere que cada rota oculta da decisão está em `ROTAS_SEM_TELA` e que nenhuma vira link.
  * T-0123 (v0.3.32): Estoque e Tabelas oficiais (lote A, #979) e Condições de pagamento e Equipe e carteira (lote B, #988) ganharam
- * tela e voltaram ao menu; `ROTAS_SEM_TELA` fica só com o core/empresa (menos o Ambiente fiscal) e as Regras fiscais.
+ * tela e voltaram ao menu; na T-0125 (#984) a Empresa abre na própria página, com o Ambiente fiscal dentro. `ROTAS_SEM_TELA`
+ * fica só com o certificado e a exportação da Empresa e as Regras fiscais.
  */
 import { describe, expect, it } from 'vitest';
 import { montarMenu, resolverPagina } from '../../../apps/web/src/lib/menu';
@@ -29,8 +30,8 @@ const paginas: readonly { menu: string; rota: string }[] = [...PAGINAS, ...PAGIN
 
 /** Decisão do PO (v0.3.28, revista na T-0123): só as Regras fiscais saem do menu por não terem tela pronta. */
 const ITENS_OCULTOS = ['Regras fiscais'];
-/** Decisão do PO (v0.3.28, revista na T-0123): rotas sem tela (as do item Empresa saem, o "Ambiente fiscal" fica). */
-const ROTAS_OCULTAS = ['/fiscal/regras-fiscais', '/core/empresa', '/core/empresa/certificado', '/core/empresa/exportacao'];
+/** Decisão do PO (v0.3.28, revista na T-0123 e na T-0125): rotas sem tela (certificado e exportação da Empresa; a Empresa, com o Ambiente fiscal dentro, ficou). */
+const ROTAS_OCULTAS = ['/fiscal/regras-fiscais', '/core/empresa/certificado', '/core/empresa/exportacao'];
 /** T-0123: itens do cadastros que ganharam tela (lote A: Estoque e Tabelas oficiais; lote B: Condições e Equipe) e a rota de cada um. */
 const ITENS_T0123 = {
   Estoque: '/cadastros/estoque',
@@ -78,11 +79,12 @@ describe('menu do shell × páginas dos módulos (D-02, v0.3.28)', () => {
     }
   });
 
-  it('[D-02] o href de cada item é a rota da primeira página visível que o módulo declara para o rótulo; Empresa abre no Ambiente fiscal', () => {
+  it('[D-02] o href de cada item é a rota da primeira página visível que o módulo declara para o rótulo; Empresa abre na página Empresa (T-0125)', () => {
     for (const { rotulo, href } of hrefs) {
       expect(href, rotulo).toBe(paginas.find((p) => p.menu === rotulo && !ROTAS_OCULTAS.includes(p.rota))?.rota);
       expect(resolverPagina(menu, href, 'administrador')?.rotulo, rotulo).toBe(rotulo);
     }
-    expect(hrefs.find((h) => h.rotulo === 'Empresa')?.href).toBe('/core/empresa/ambiente-fiscal');
+    // T-0125 (#984): a Empresa abre na própria página, que traz o Ambiente fiscal dentro
+    expect(hrefs.find((h) => h.rotulo === 'Empresa')?.href).toBe('/core/empresa');
   });
 });

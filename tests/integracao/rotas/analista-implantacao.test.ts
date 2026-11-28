@@ -52,7 +52,9 @@ describe('RN-CORE-09: analista_implantacao fora do core (T-0050 E6.5)', () => {
     const a = await api();
     for (const r of ROTAS_CADASTROS_VER) {
       const res = await a.app.inject({ method: 'GET', url: urlDe('cadastros', r.caminho), headers: a.auth(ANALISTA) });
-      expect(res.json<{ codigo?: string }>()?.codigo, `GET /v1/cadastros${r.caminho}`).not.toBe('PERFIL_SEM_PERMISSAO');
+      // as rotas /exportar (CSV, #1005) respondem texto quando passam; o 403 de perfil é sempre JSON
+      const json = String(res.headers['content-type'] ?? '').includes('application/json');
+      expect(res.statusCode === 403 && json ? res.json<{ codigo?: string }>().codigo : undefined, `GET /v1/cadastros${r.caminho}`).not.toBe('PERFIL_SEM_PERMISSAO');
     }
   });
 });

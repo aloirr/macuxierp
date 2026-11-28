@@ -155,6 +155,16 @@
     },
     {
       "metodo": "GET",
+      "caminho": "/v1/cadastros/tabelas-preco/:id/itens",
+      "area": "bko",
+      "origem": {
+        "tipo": "lista",
+        "de": "GET /v1/cadastros/tabelas-preco",
+        "campo": "itens[0].id"
+      }
+    },
+    {
+      "metodo": "GET",
       "caminho": "/v1/cadastros/tabelas-preco/exportar",
       "area": "bko"
     },
