@@ -37,9 +37,9 @@ describe('v0.3.24: ligação "Sistema do cliente → ERP" (era "Integração via
     expect(h).not.toContain('Nenhuma chave gerada');
     expect(h).not.toMatch(/erro-campo|aria-invalid/);
   });
-  it('com chave: ficha única (Situação, Último contato, Código, Chave), Trocar e Revogar; sem Versão, Criada em nem a chave inteira', () => {
+  it('com chave: ficha única (Último contato, Código, Chave; a Situação é o selo do título), Trocar e Revogar à direita em vermelho; sem Versão, Criada em nem a chave inteira', () => {
     const h = bloco(leitura());
-    for (const dt of ['Situação', 'Último contato', 'Código', 'Chave']) expect(h).toContain(`<dt>${dt}</dt>`);
+    for (const dt of ['Último contato', 'Código', 'Chave']) expect(h).toContain(`<dt>${dt}</dt>`);
     expect(h).toContain('AbCdEfGh…');
     expect(h).toContain('erp-cliente');
     expect(h).toMatch(/Sem envio|Recebendo/);

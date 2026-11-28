@@ -13,33 +13,40 @@ export function TituloLigacao({ ligacao, id, nivel = 'h2' }: { ligacao: Ligacao;
   );
 }
 
-/** A ficha única da ligação: Situação (selo com texto, apoio embaixo), Último contato, Código, Chave e, na saída, Ambiente e Ligado a. */
+/**
+ * A ficha da ligação na grade da simulação aprovada (445e459): Código, Ambiente (só na saída), Último contato e Chave, lado a lado; o
+ * destino da saída ("Macuxi FDV") entra como valor. A Situação vai para o selo na linha do título (`SeloDaLigacao`); o apoio fica abaixo.
+ */
 export function FichaDaLigacao({ ficha, rotulo }: { ficha: FichaLigacao; rotulo: string }) {
   return (
-    <dl className="ficha" aria-label={rotulo}>
-      <div>
-        <dt>Situação</dt>
-        <dd>
-          <SeloTom tom={ficha.situacao.tom}>{ficha.situacao.texto}</SeloTom>
-          {ficha.apoio.map((a) => <span key={a} className="apoio apoio-situacao">{a}</span>)}
-        </dd>
-      </div>
-      <div><dt>Último contato</dt><dd>{ficha.ultimoContato}</dd></div>
-      {ficha.ligadoA && <div><dt>Ligado a</dt><dd>{ficha.ligadoA}</dd></div>}
-      <div><dt>Código</dt><dd className="codigo">{ficha.codigo}</dd></div>
-      <div><dt>Chave</dt><dd className="codigo">{ficha.chave}</dd></div>
-      {ficha.ambiente && <div><dt>Ambiente</dt><dd>{ficha.ambiente}</dd></div>}
-    </dl>
+    <>
+      <dl className="ficha" aria-label={rotulo}>
+        <div><dt>Código</dt><dd className="codigo">{ficha.codigo}</dd></div>
+        {ficha.ambiente && <div><dt>Ambiente</dt><dd>{ficha.ambiente}</dd></div>}
+        {ficha.ligadoA && <div><dt>Ligado a</dt><dd>{ficha.ligadoA}</dd></div>}
+        <div><dt>Último contato</dt><dd>{ficha.ultimoContato}</dd></div>
+        <div><dt>Chave</dt><dd className="codigo">{ficha.chave}</dd></div>
+      </dl>
+      {ficha.apoio.map((a) => <p key={a} className="apoio apoio-situacao">{a}</p>)}
+    </>
   );
 }
 
-/** Cartão de uma ligação: `section.bloco.ligacao` com o título montado. */
-export function CartaoLigacao({ ligacao, children }: { ligacao: Ligacao; children: ReactNode }) {
+/** Situação da ligação: selo com texto (a cor nunca fala sozinha), à direita do título. Sem chave, não há selo. */
+export function SeloDaLigacao({ ficha }: { ficha: FichaLigacao | null }) {
+  return ficha ? <SeloTom tom={ficha.situacao.tom}>{ficha.situacao.texto}</SeloTom> : null;
+}
+
+/** Cartão de uma ligação: título e selo numa linha, depois o cartão com a ficha, a tabela e UMA barra de botões (regra 12). */
+export function CartaoLigacao({ ligacao, ficha = null, children }: { ligacao: Ligacao; ficha?: FichaLigacao | null; children: ReactNode }) {
   const id = `h-ligacao-${ligacao.id}`;
   return (
     <section className="bloco ligacao" aria-labelledby={id}>
-      <TituloLigacao ligacao={ligacao} id={id} />
-      {children}
+      <div className="cabeca-ligacao">
+        <TituloLigacao ligacao={ligacao} id={id} />
+        <SeloDaLigacao ficha={ficha} />
+      </div>
+      <div className="cartao-ligacao">{children}</div>
     </section>
   );
 }

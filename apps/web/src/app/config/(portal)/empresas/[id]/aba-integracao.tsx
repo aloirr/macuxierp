@@ -1,11 +1,14 @@
 'use client';
-import type { IntegracaoFdvPlataforma, MonitorConectorFdv, PortalEntradaLeitura } from '@macuxierp/platform-sdk';
+import type { IntegracaoFdvPlataforma, MonitorConectorFdv, PortalEntradaLeitura, SituacaoCargasPlataforma } from '@macuxierp/platform-sdk';
 import { ResultadoAcao, useResultado } from '@macuxierp/ui';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { maisRecente, textoAtualizado } from '@/lib/config/operacao-fdv';
 import { resultadoErro } from '@/lib/resultado-acao';
 import { lerMonitorFdvAcao } from '@/lib/acoes-cliente';
+import { AbaDados } from './aba-dados';
+import { SecaoEnvioFdv } from './envio-fdv';
+import { EnviosRecentes } from './envios-recentes';
 import { LigacaoEntrada } from './ligacao-entrada';
 import { LigacaoSaida } from './ligacao-saida';
 
@@ -14,9 +17,10 @@ const ERRO_ATUALIZAR = 'Não foi possível atualizar. Tente de novo.';
 /**
  * Aba "Integração" da ficha da empresa (v0.3.24, R-20261127-101915, docs/design/integracao-duas-ligacoes). Só duas ligações, lado a
  * lado no computador e uma embaixo da outra abaixo de 900 px: "Sistema do cliente → ERP" e "ERP → Força de vendas". As tabelas
- * (cadastros recebidos e enviados) ficam na aba Dados. Um único "Atualizar" no topo relê as duas ligações (o Monitor e a ficha).
+ * (cadastros recebidos e enviados) ficam dentro do cartão de cada ligação, como na simulação aprovada (445e459); "Envios recentes" embaixo, com o único
+ * "Atualizar" (relê as duas ligações: o Monitor e a ficha) na barra do bloco.
  */
-export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial = null, entrada = null }: { empresaId: string; dados: IntegracaoFdvPlataforma; fuso: string; monitor?: MonitorConectorFdv | null; entrada?: PortalEntradaLeitura | null }) {
+export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial = null, entrada = null, cargas = null }: { empresaId: string; dados: IntegracaoFdvPlataforma; fuso: string; monitor?: MonitorConectorFdv | null; entrada?: PortalEntradaLeitura | null; cargas?: SituacaoCargasPlataforma | null }) {
   const router = useRouter();
   const [pendente, iniciar] = useTransition();
   const [rAtualizar, kAtualizar, mostrarAtualizar, limparAtualizar] = useResultado();
@@ -34,16 +38,22 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
     });
 
   return (
-    <>
-      <div className="cabeca-ligacoes">
-        {monitor && <span className="apoio" data-testid="atualizado-as" aria-live="polite">{textoAtualizado(monitor.lido_em, fuso)}</span>}
-        <button type="button" className="mx-botao-secundario" disabled={pendente} onClick={atualizar}>Atualizar</button>
-      </div>
-      <ResultadoAcao resultado={rAtualizar} chave={kAtualizar} />
+    <div className="integracoes">
       <div className="ligacoes">
-        <LigacaoEntrada empresaId={empresaId} dados={entrada} fuso={fuso} />
-        <LigacaoSaida empresaId={empresaId} dados={dados} monitor={monitor} fuso={fuso} />
+        <LigacaoEntrada empresaId={empresaId} dados={entrada} fuso={fuso} corpo={<AbaDados empresaId={empresaId} dados={cargas} fuso={fuso} integracao={dados} entrada={entrada} />} />
+        <LigacaoSaida empresaId={empresaId} dados={dados} monitor={monitor} fuso={fuso} corpo={(barra) => <SecaoEnvioFdv empresaId={empresaId} dados={dados} fuso={fuso} barra={barra} />} />
       </div>
-    </>
+      <EnviosRecentes
+        lotes={entrada?.lotes ?? []}
+        fuso={fuso}
+        barra={
+          <>
+            <button type="button" className="mx-botao-secundario" disabled={pendente} onClick={atualizar}>Atualizar</button>
+            {monitor && <span className="apoio" data-testid="atualizado-as" aria-live="polite">{textoAtualizado(monitor.lido_em, fuso)}</span>}
+          </>
+        }
+        retorno={<ResultadoAcao resultado={rAtualizar} chave={kAtualizar} />}
+      />
+    </div>
   );
 }

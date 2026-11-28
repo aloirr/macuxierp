@@ -2,7 +2,7 @@
 import type { PortalEntradaLeitura } from '@macuxierp/platform-sdk';
 import { Dialogo, DialogoMotivo, ResultadoAcao, useResultado } from '@macuxierp/ui';
 import { useRouter } from 'next/navigation';
-import { useEffect, useId, useReducer, useRef, useState, useTransition } from 'react';
+import { useEffect, useId, useReducer, useRef, useState, useTransition, type ReactNode } from 'react';
 import { botaoDaChave, ehGeracaoIncerta, estadoDaChave, reduzirChave, validarConectorId, codigoSugerido, type AcaoChave, type EstadoChave } from '@/lib/config/entrada';
 import { LIGACAO_ENTRADA, fichaEntrada } from '@/lib/config/ligacoes';
 import { CartaoLigacao, FichaDaLigacao } from './ligacao';
@@ -16,7 +16,7 @@ import { gerarChaveEntradaAcao, revogarChaveEntradaAcao } from '@/lib/acoes-clie
  * Trocar chave / Revogar chave. Os lotes recebidos foram para a aba Dados ("Cadastros recebidos", RD-1103).
  * A chave nova só vive no estado do diálogo (`EstadoChave`): sem URL, armazenamento nem log; fechar a descarta.
  */
-export function LigacaoEntrada({ empresaId, dados, fuso }: { empresaId: string; dados: PortalEntradaLeitura | null; fuso: string }) {
+export function LigacaoEntrada({ empresaId, dados, fuso, corpo = null }: { empresaId: string; dados: PortalEntradaLeitura | null; fuso: string; /** A tabela "Cadastros recebidos", entre a ficha e a barra. */ corpo?: ReactNode }) {
   const router = useRouter();
   const [pendente, iniciar] = useTransition();
   const [chave, despachar] = useReducer(reduzirChave, undefined, estadoDaChave);
@@ -62,18 +62,12 @@ export function LigacaoEntrada({ empresaId, dados, fuso }: { empresaId: string; 
   };
 
   return (
-    <CartaoLigacao ligacao={LIGACAO_ENTRADA}>
+    <CartaoLigacao ligacao={LIGACAO_ENTRADA} ficha={ficha}>
       {ficha ? (
-        <>
-          <FichaDaLigacao ficha={ficha} rotulo={T.TITULO_CHAVE} />
-          <div className="barra-acoes">
-            <button type="button" className="mx-botao-secundario" disabled={pendente} onClick={() => (botao.pedeConfirmacao ? setPedirTroca(true) : gerar())}>{botao.rotulo}</button>
-            <button type="button" className="mx-botao-secundario" disabled={pendente} onClick={() => setPedirRevogar(true)}>{T.ROTULOS_ENTRADA.revogar}</button>
-          </div>
-        </>
+        <FichaDaLigacao ficha={ficha} rotulo={T.TITULO_CHAVE} />
       ) : (
-        <form noValidate onSubmit={(ev) => { ev.preventDefault(); gerar(); }}>
-          <label className="campo">
+        <form id={`${idCodigo}-form`} noValidate className="formulario" onSubmit={(ev) => { ev.preventDefault(); gerar(); }}>
+          <label className="campo campo-curto">
             <span>Código</span>
             <input
               ref={campo}
@@ -88,11 +82,19 @@ export function LigacaoEntrada({ empresaId, dados, fuso }: { empresaId: string; 
           </label>
           <p id={`${idCodigo}-ajuda`} className="apoio">{T.AJUDA_CODIGO_LIVRE}</p>
           {erroCodigo && <p id={`${idCodigo}-erro`} className="erro-campo" role="alert">{erroCodigo}</p>}
-          <div className="barra-acoes">
-            <button type="submit" className="mx-botao" disabled={pendente}>{T.ROTULOS_ENTRADA.gerar}</button>
-          </div>
         </form>
       )}
+      {corpo}
+      <div className="barra-acoes barra-bloco">
+        {ficha ? (
+          <>
+            <button type="button" className="mx-botao-secundario" disabled={pendente} onClick={() => (botao.pedeConfirmacao ? setPedirTroca(true) : gerar())}>{botao.rotulo}</button>
+            <button type="button" className="mx-botao-secundario botao-perigo-contorno botao-direita" disabled={pendente} onClick={() => setPedirRevogar(true)}>{T.ROTULOS_ENTRADA.revogar}</button>
+          </>
+        ) : (
+          <button type="submit" form={`${idCodigo}-form`} className="mx-botao" disabled={pendente}>{T.ROTULOS_ENTRADA.gerar}</button>
+        )}
+      </div>
       <ResultadoAcao resultado={rGerar} chave={kGerar} />
       <ResultadoAcao resultado={rRevogar} chave={kRevogar} />
       {chave.chave && <DialogoChave estado={chave} aoAcionar={despachar} />}

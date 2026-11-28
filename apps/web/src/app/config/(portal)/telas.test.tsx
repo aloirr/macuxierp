@@ -21,12 +21,13 @@ const lic = (...a: string[]) => ['core', 'cadastros', 'pedido', 'faturamento', '
 const acme: EmpresaPlataforma = { ...base, codigo: 'AM2808', id: '11111111-1111-4111-8111-111111111111', slug: 'acme', nome: 'Acme Ltda', situacao: 'ativo', modulos: lic('cadastros', 'fiscal'), primeiro_admin: { id: '22222222-2222-4222-8222-222222222222', ativo: true, bloqueado: false } };
 const beta: EmpresaPlataforma = { ...acme, codigo: null, id: '33333333-3333-4333-8333-333333333333', slug: 'beta', nome: 'Beta SA', situacao: 'suspenso', modulos: lic(), primeiro_admin: null };
 const deps = MANIFESTOS.map((m) => ({ id: m.id, depende: m.depende }));
-const chaves = { admin: 'k1', senha: 'k2', situacao: 'k3' };
+const chaves = { situacao: 'k3' };
 
 describe('lista de empresas', () => {
   const h = renderToStaticMarkup(<ListaEmpresas empresas={[acme, beta]} vazio="Nenhuma empresa ainda. Crie a primeira." />);
-  it('colunas Código, Nome, Situação e Módulos, linha com rótulo "Abrir empresa <código>"', () => {
-    for (const t of ['Código', 'Nome', 'Situação', 'Módulos']) expect(h).toContain(t);
+  it('colunas como a simulação 124 A (Empresa, Código, CNPJ, Situação, Módulos, Criada em), linha com rótulo "Abrir empresa <código>"', () => {
+    expect([...h.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1])).toEqual(['Empresa', 'Código', 'CNPJ', 'Situação', 'Módulos', 'Criada em']);
+    expect(h).toContain('<b>Acme Ltda</b>');
     expect(h).toContain('Abrir empresa AM2808');
     expect(h).toMatch(/<a [^>]*href="\/config\/empresas\/11111111-1111-4111-8111-111111111111"[^>]*>AM2808<\/a>/);
     expect(h).toContain('tabela-rolavel com-sinal-rolagem');
@@ -46,6 +47,19 @@ describe('lista de empresas', () => {
     expect(readFileSync(join(__dirname, '../../globals.css'), 'utf8')).toMatch(/@media \(max-width: 480px\) \{ \.modulos-lista \{ display: none; \} \.modulos-resumo \{ display: inline; \} \}/);
     expect(h).not.toContain('referencia');
   });
+  it('124 A e RD-2360 a RD-2363: um título só com a contagem, a busca única na mesma linha, sem botão, e "Nova empresa" abaixo da tabela', () => {
+    expect(h.match(/<h1>/g)).toHaveLength(1);
+    expect(h).toContain('<h1>Empresas <span class="contagem">· 2</span></h1>');
+    expect(h.indexOf('class="busca-lista"')).toBeLessThan(h.indexOf('<table'));
+    expect(h.match(/type="search"/g)).toHaveLength(1);
+    expect(h).toContain('placeholder="Buscar por código ou nome"');
+    expect(h).not.toMatch(/>Buscar<\/button>|Criar empresa|Buscar por código</);
+    expect(h.indexOf('>Nova empresa</a>')).toBeGreaterThan(h.indexOf('</table>'));
+    expect(h).toMatch(/class="barra-acoes rodape-lista"><a class="mx-botao" href="\/config\/empresas\/nova">Nova empresa<\/a><\/div>/);
+    const css = readFileSync(join(__dirname, '../../globals.css'), 'utf8');
+    expect(css).toContain('.titulo-lista h1 { grid-column: span 8;');
+    expect(css).toContain('.titulo-lista .busca-lista { grid-column: span 4;');
+  });
   it('vazio mostra o texto da spec', () => {
     expect(renderToStaticMarkup(<ListaEmpresas empresas={[]} vazio="Nenhuma empresa com esse código. Limpe a busca." />)).toContain('Nenhuma empresa com esse código. Limpe a busca.');
   });
@@ -53,9 +67,9 @@ describe('lista de empresas', () => {
 
 describe('topo do portal: sem menu de tenant', () => {
   const h = renderToStaticMarkup(<TopoPlataforma nome="Operadora" />);
-  it('só o selo Plataforma, "Empresas" e Sair', () => {
+  it('só o selo Plataforma e Sair, sem o link "Empresas" (RD-2360)', () => {
     expect(h).toContain('Plataforma');
-    expect(h).toContain('Empresas');
+    expect(h).not.toContain('Empresas');
     expect(h).toContain('Sair');
     expect(h).toContain('mx-fundo-escuro');
   });
@@ -83,36 +97,31 @@ describe('empresa: módulos, 1º administrador e situação', () => {
     expect(caixas.some((c) => c.includes('disabled'))).toBe(true);
   });
 
-  it('com administrador: só o estado e "Redefinir senha"; nem e-mail nem nome; sem senha na tela', () => {
+  it('Config v4: o 1º administrador saiu do painel (vira a linha de Usuários); o Suspender fica no rodapé fixo da página, em vermelho', () => {
     const h = renderToStaticMarkup(<PainelEmpresa empresa={acme} deps={deps} chaves={chaves} />);
-    expect(h).toContain('Ativo');
-    expect(h).toContain('Redefinir senha');
+    expect(h).not.toContain('1º administrador');
     expect(h).not.toContain('Criar administrador');
-    expect(h).not.toContain('Esta senha não volta a aparecer'); // painel só depois da ação
     expect(h).not.toContain('Entrar como');
-    expect(h).toContain('Suspender empresa');
-  });
-  it('administrador bloqueado aparece em texto; sem administrador: formulário com "Administrador" padrão', () => {
-    const bloq = renderToStaticMarkup(<PainelEmpresa empresa={{ ...acme, primeiro_admin: { id: acme.primeiro_admin!.id, ativo: true, bloqueado: true } }} deps={deps} chaves={chaves} />);
-    expect(bloq).toContain('Bloqueado');
-    const sem = renderToStaticMarkup(<PainelEmpresa empresa={beta} deps={deps} chaves={chaves} />);
-    expect(sem).toContain('Criar administrador');
-    expect(sem).toContain('value="Administrador"');
-    expect(sem).toContain('Reativar empresa');
+    expect(h).toContain('id="h-usuarios"');
+    const rodape = h.slice(h.indexOf('class="rodape-pagina"'));
+    expect(rodape).toMatch(/class="mx-botao-destrutivo rodape-suspender"[^>]*>Suspender</);
+    expect(h).not.toContain('id="h-situacao"'); // RD-2368: sem o bloco Situação
+    expect(h.indexOf('id="h-usuarios"')).toBeLessThan(h.indexOf('class="rodape-pagina"'));
+    expect(renderToStaticMarkup(<PainelEmpresa empresa={beta} deps={deps} chaves={chaves} />)).toContain('>Reativar<');
   });
   it('nenhum diálogo aberto de saída; cada ação destrutiva usa o DialogoMotivo da spec', () => {
     expect(renderToStaticMarkup(<PainelEmpresa empresa={acme} deps={deps} chaves={chaves} />)).not.toContain('role="dialog"');
     const fonte = readFileSync(join(__dirname, 'empresas/[id]/painel.tsx'), 'utf8');
-    for (const t of ['Redefinir a senha do administrador?', 'rotuloConfirmar="Redefinir"', "'Manter ativa'", 'Manter ligado', 'Não escreva dado pessoal no motivo', 'Os usuários da empresa deixam de entrar', 'Esta senha não volta a aparecer. Entregue ao administrador por canal seguro.']) {
+    for (const t of ["'Manter ativa'", 'Manter ligado', 'Não escreva dado pessoal no motivo', 'Os usuários da empresa deixam de entrar']) {
       expect(fonte).toContain(t);
     }
     expect(fonte).not.toMatch(/localStorage|sessionStorage|console\./);
   });
 });
 
-describe('empresa: Ficha com o CNPJ e e-mail do 1º administrador (docs/design/telas-horizontais §3)', () => {
-  const completa = { ...acme, razao_social: 'Acme Comércio Ltda', cnpj: '12345678000195', cidade: 'Manaus', uf: 'AM', primeiro_admin: { ...acme.primeiro_admin!, email_mascarado: 'ad****@exemplo.com.br' } };
-  it('empresa completa: a Ficha (bloco largo) traz a razão social, o CNPJ formatado e a cidade; sem cartão "Dados da empresa"; e-mail mascarado com "Mostrar"', () => {
+describe('empresa: Ficha com o CNPJ (docs/design/telas-horizontais §3)', () => {
+  const completa = { ...acme, razao_social: 'Acme Comércio Ltda', cnpj: '12345678000195', cidade: 'Manaus', uf: 'AM', primeiro_admin: acme.primeiro_admin };
+  it('empresa completa: a Ficha (bloco largo) traz a razão social, o CNPJ formatado e a cidade; sem cartão "Dados da empresa"', () => {
     const h = renderToStaticMarkup(<PainelEmpresa empresa={completa} deps={deps} chaves={chaves} cnpj={{ permitida: true }} />);
     expect(h).not.toContain('Dados da empresa');
     expect(h).toContain('class="bloco bloco-largo ficha-editavel"');
@@ -121,8 +130,18 @@ describe('empresa: Ficha com o CNPJ e e-mail do 1º administrador (docs/design/t
     expect(h).toContain('12.345.678/0001-95');
     expect(h).toContain('>Trocar CNPJ</button>');
     expect(h).toContain('Manaus/AM');
-    expect(h).toContain('ad****@exemplo.com.br');
-    expect(h).not.toContain('admin@exemplo.com.br');
+  });
+  it('RD-2370: a barra do rodapé da página é "Salvar · Atualizar · Trocar CNPJ", com o Suspender sozinho à direita; nenhum botão no meio da ficha', () => {
+    const h = renderToStaticMarkup(<PainelEmpresa empresa={completa} deps={deps} chaves={chaves} cnpj={{ permitida: true }} />);
+    // no servidor a barra da ficha fica no rodapé do cartão; no navegador ela vai, por portal, para o rodapé da página, antes do Suspender
+    const textos = (t: string) => [...t.matchAll(/<button[^>]*>([^<]*)<\/button>/g)].map((m) => m[1]);
+    const barra = h.slice(h.indexOf('class="barra-acoes rodape-cartao"'));
+    expect(textos(barra.slice(0, barra.indexOf('</div>')))).toEqual(['Salvar', 'Atualizar', 'Trocar CNPJ']);
+    expect(textos(h.slice(h.indexOf('class="rodape-pagina"')))).toEqual(['Suspender']);
+    const campos = h.slice(h.indexOf('id="h-ficha"'), h.indexOf('class="barra-acoes rodape-cartao"'));
+    expect(campos).not.toMatch(/>(Trocar CNPJ|Atualizar)<\/button>/);
+    const css = readFileSync(join(__dirname, '../../globals.css'), 'utf8');
+    expect(css).toContain('.rodape-pagina .rodape-suspender { margin-left: auto; }');
   });
   it('CNPJ bloqueado (RN-CORE-16): sem o botão e com o motivo que a API devolveu; sem a leitura, fica fechado', () => {
     const msg = 'O CNPJ não pode ser trocado: a empresa já tem NF-e autorizada em produção';
@@ -184,8 +203,8 @@ describe('ajustes de marca e componentes do #309', () => {
     expect(css).toMatch(/\.painel-senha \{[^}]*border: 1px solid var\(--mx-cor-borda-tabela\)/);
     expect(css).not.toMatch(/outline:\s*none/);
   });
-  it('Desligar módulo e Redefinir senha usam DialogoMotivo semTexto (sem Observação)', () => {
-    expect(fonte.match(/semTexto/g)).toHaveLength(2);
+  it('Desligar módulo usa DialogoMotivo semTexto (sem Observação)', () => {
+    expect(fonte.match(/semTexto/g)).toHaveLength(1);
     expect(fonte).not.toContain('rotuloTexto="Observação"');
   });
   it('lista de empresas: "Carregar mais" só com próximo cursor, sem link ?cursor=', () => {

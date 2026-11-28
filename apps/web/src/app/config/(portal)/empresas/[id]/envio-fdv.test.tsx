@@ -24,11 +24,14 @@ const render = (d = dados()) => renderToStaticMarkup(<SecaoEnvioFdv empresaId={I
 describe('v0.3.24: aba Dados, seção "ERP → Força de vendas" (a tabela saiu da aba Integração)', () => {
   it('título com a direção, Registros por lote com o Salvar na mesma linha, "Cadastros enviados" e Zerar pedidos', () => {
     const h = render();
-    expect(h).toMatch(/<h2 id="h-dados-saida">ERP <span class="seta" aria-hidden="true">→<\/span><span class="sr-only"> para a <\/span> Força de vendas<\/h2>/);
-    expect(h).toMatch(/<div class="campo-com-botao"><label class="campo"><span>Registros por lote<\/span>[\s\S]*?<\/label><button[^>]*>Salvar<\/button><\/div>/);
+    expect(h).not.toContain('<h2'); // o título da ligação é do cartão (ligacao.tsx)
+    // regra 11: o campo é curto na grade de 12; regra 12: o Salvar e o Zerar pedidos ficam numa barra só, no pé do bloco
+    expect(h).toMatch(/<form[^>]*class="formulario"[^>]*><label class="campo campo-curto"><span>Registros por lote<\/span>/);
+    expect(h).not.toMatch(/campo-com-botao|form-lote/);
+    expect(h.match(/class="barra-acoes barra-bloco"/g)).toHaveLength(1);
+    expect(h).toMatch(/<div class="barra-acoes barra-bloco"><button[^>]*>Salvar<\/button><button[^>]*botao-direita[^>]*>Zerar pedidos…<\/button><\/div>/);
     expect(h).toMatch(/<caption[^>]*>Cadastros enviados<\/caption>/);
-    expect(h).toContain('>Zerar pedidos não faturados</button>');
-    expect(h).not.toContain('Envio por cadastro');
+        expect(h).not.toContain('Envio por cadastro');
     expect(h).not.toContain('Nenhum cadastro ligado');
     expect(h).not.toMatch(/erro-campo|aria-invalid/); // nenhum erro antes de agir
   });
@@ -38,15 +41,14 @@ describe('v0.3.24: aba Dados, seção "ERP → Força de vendas" (a tabela saiu 
     expect(campo(render())).toContain('value="500"');
     expect(campo(render(dados({}, false)))).toContain('value="5000"');
   });
-  it('36 A: Salvar, a tabela e Zerar pedidos com o retorno logo abaixo', () => {
+  it('36 A + regra 12: retornos junto do que os causa; uma barra só no pé', () => {
     const h = render();
-    const depois = (r: string) => h.indexOf('data-resultado-acao', h.indexOf(`>${r}</button>`));
-    expect(depois('Salvar')).toBeLessThan(h.indexOf('<table'));
-    expect(h.indexOf('data-resultado-acao', h.indexOf('</table>'))).toBeLessThan(h.indexOf('Zerar pedidos não faturados'));
-    expect(depois('Zerar pedidos não faturados')).toBeGreaterThan(0);
+    // o retorno do Salvar vem antes da tabela; o do Zerar pedidos, depois dela e antes da barra (uma só)
+    expect(h.indexOf('data-resultado-acao')).toBeLessThan(h.indexOf('<table'));
+    expect(h.indexOf('data-resultado-acao', h.indexOf('</table>'))).toBeLessThan(h.indexOf('Zerar pedidos…'));
   });
   it('sem a licença do módulo: escritas desabilitadas', () => {
-    expect(render(dados({ modulo_licenciado: false }))).toMatch(/<button[^>]*disabled=""[^>]*>Zerar pedidos não faturados/);
+    expect(render(dados({ modulo_licenciado: false }))).toMatch(/<button[^>]*disabled=""[^>]*>Zerar pedidos…/);
   });
   const linha = (entidade: string, extra: Partial<LinhaCadastroFdv> = {}): LinhaCadastroFdv => ({ ...linhasCadastros(dados(), 'America/Manaus').find((l) => l.entidade === entidade)!, ...extra });
   const opcoes = { bloqueado: false, semCredencial: false, licenciado: true };
@@ -57,7 +59,7 @@ describe('v0.3.24: aba Dados, seção "ERP → Força de vendas" (a tabela saiu 
     expect(h.match(/>Ações<\/button>/g)).toHaveLength(n);
     for (const x of ['Produtos', 'Clientes', 'Estoque']) expect(h).toContain(`aria-label="Ações de ${x}"`);
     expect(h).not.toMatch(/>Zerar<|>Desligar<|>Ligar<|min-width:\s*480px/); // Zerar é perigo no menu, nunca solto na linha (marca, botao-acoes)
-    expect(h).not.toContain('botao-perigo-contorno');
+    expect(h.slice(h.indexOf('<table'), h.indexOf('</table>'))).not.toContain('botao-perigo-contorno'); // o vermelho é só do Zerar pedidos, na barra
     expect(h).not.toContain('Reenviar tudo');
     expect(h).toContain('Use &quot;Trocar chave&quot;.');
     expect(h).not.toContain('credencial do conector');

@@ -23,36 +23,51 @@ const render = (f: typeof ficha | null = ficha, editavel = true, razao: string |
 const valorDe = (h: string, campo: string) => new RegExp(`name="${campo}"[^>]*value="([^"]*)"|value="([^"]*)"[^>]*name="${campo}"`).exec(h)?.slice(1).find((v) => v !== undefined);
 
 describe('Ficha da Receita editável na aba Empresa (RN-CORE-16, v0.3.24)', () => {
-  it('formulário em 4 cartões, com os valores salvos nos campos; "Salvar" começa desligado (nada mudou)', () => {
+  it('formulário em 5 cartões na grade de 12, com os valores salvos nos campos; "Salvar" começa desligado (nada mudou)', () => {
     const h = render();
-    for (const t of ['Identificação', 'Endereço', 'Situação na Receita', 'Atividades e contato']) expect(h).toContain(`>${t}</h3>`);
-    expect(h.match(/<fieldset/g)).toHaveLength(4);
+    for (const t of ['Identificação', 'Endereço', 'Atividades (CNAE)', 'Contato', 'Na Receita']) expect(h).toContain(`>${t}</h3>`);
+    expect(h.match(/<fieldset/g)).toHaveLength(5);
     expect(valorDe(h, 'razao_social')).toBe('Comércio Fictício Ltda');
     expect(valorDe(h, 'ie')).toBe('123456789');
     expect(valorDe(h, 'cep')).toBe('69000000');
     expect(valorDe(h, 'data_abertura')).toBe('31/01/2020'); // dd/mm/aaaa sem depender do idioma do navegador
     expect(h).not.toContain('type="date"');
     expect(h.indexOf('id="rotulo-cnpj"')).toBe(-1); // sem o nó do CNPJ (vem do painel)
-    expect([...h.matchAll(/<h3 id="h-ficha-([a-z]+)"/g)].map((m) => m[1])).toEqual(['identificacao', 'endereco', 'atividades', 'situacao']);
-    expect(h.match(/class="cartao-campos cartao-largo"/g)).toHaveLength(2);
+    expect([...h.matchAll(/<h3 id="h-ficha-([a-z]+)"/g)].map((m) => m[1])).toEqual(['identificacao', 'endereco', 'atividades', 'contato', 'situacao']);
+    expect(h).toContain('<div class="formulario">'); // a grade de 12 da regra 11
+    expect(h.match(/class="formulario cartao-ficha cartao-12"/g)).toHaveLength(3);
+    expect(h).toContain('class="formulario cartao-ficha cartao-5"');
+    expect(h).toContain('class="formulario cartao-ficha cartao-4"');
+    expect(h).not.toMatch(/grade-cartoes|cartao-campos|cartao-largo|campo-ficha/);
+    expect(h).toContain('<div class="campo campo-curto"><label for="ficha-ie"'); // campo curto em 2 colunas
     expect(h).toMatch(/<option value="simples" selected="">Simples Nacional<\/option>/);
     expect(h).toContain('4712100\n4781400</textarea>');
     expect(h).toMatch(/<button[^>]*disabled=""[^>]*>Salvar<\/button>/);
     expect(h).not.toContain('>Descartar<');
     expect(h).toContain('Consultada em 24/11/2026 12:00');
   });
+  it('RD-2373: sem o placeholder "Vazio mantém o salvo" e sem as dicas de quantidade; "Só números ou ISENTO." fica; a data mostra o formato no placeholder', () => {
+    const h = render();
+    expect(h).not.toContain('Vazio mantém o salvo');
+    expect(h).not.toMatch(/[78] números\./);
+    expect(h).not.toContain('<span class="dica-campo">dd/mm/aaaa</span>');
+    expect(h).toContain('Só números ou ISENTO.');
+    expect(h).toMatch(/name="data_abertura"[^>]*placeholder="dd\/mm\/aaaa"|placeholder="dd\/mm\/aaaa"[^>]*name="data_abertura"/);
+    expect(h).toContain('>Na Receita</h3>');
+    expect(h).not.toContain('Situação na Receita');
+  });
   it('rótulo de campo com classe própria (destaque, R-20261127-110345) e ligado ao campo pelo id', () => {
     const h = render();
     expect(h).toContain('<label for="ficha-razao_social" class="rotulo-campo">Razão social</label>');
     expect(h).toContain('id="ficha-razao_social"');
   });
-  it('36 A: um retorno por botão, logo abaixo dele: o do "Atualizar pela Receita" antes dos campos; o do "Salvar", no rodapé do cartão', () => {
+  it('36 A: um retorno por ação: o da prévia da Receita antes dos campos; o do "Salvar", depois da barra de botões (sem o rodapé da página, a barra fica no rodapé do cartão)', () => {
     const h = render();
     const retornos = [...h.matchAll(/data-resultado-acao/g)].map((m) => m.index);
     expect(retornos).toHaveLength(2);
-    const atualizar = h.indexOf('Atualizar pela Receita</button>');
+    const atualizar = h.indexOf('>Atualizar</button>');
     const salvar = h.indexOf('>Salvar</button>');
-    expect(retornos[0]).toBeGreaterThan(atualizar);
+    expect(atualizar).toBeGreaterThan(h.lastIndexOf('</fieldset>'));
     expect(retornos[0]).toBeLessThan(h.indexOf('<fieldset'));
     expect(salvar).toBeGreaterThan(h.lastIndexOf('</fieldset>'));
     expect(retornos[1]).toBeGreaterThan(salvar);
@@ -77,7 +92,7 @@ describe('Ficha da Receita editável na aba Empresa (RN-CORE-16, v0.3.24)', () =
     expect(valorDe(h, 'logradouro')).toBe('');
     expect(h).not.toContain('—');
     const enc = render(ficha, false);
-    expect(enc).toMatch(/<button[^>]*disabled=""[^>]*>Atualizar pela Receita/);
+    expect(enc).toMatch(/<button[^>]*disabled=""[^>]*>Atualizar</);
     expect(enc).toMatch(/name="razao_social"[^>]*disabled=""|disabled=""[^>]*name="razao_social"/);
   });
   it('CNAE: a descrição oficial aparece sob o campo enquanto o código é o salvo; sem descrição, só a dica', () => {

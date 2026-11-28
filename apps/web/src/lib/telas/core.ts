@@ -5,9 +5,9 @@
  * perfil, tenant e licença (RN-CORE-02, RN-CORE-09). Sem dado pessoal em log. A senha provisória só passa pela resposta da escrita.
  */
 import {
-  AVISO_SENHA_PROVISORIA, COLUNAS_USUARIOS, PAGINAS_CORE, ROTULO_MODULO, linhaAuditoria, linhaLicenca, linhaUsuario, opcoesDePerfil, paginaAuditoria, paginaLicencas, paginaUsuarios, quadroEmpresaFiscal,
+  AVISO_SENHA_PROVISORIA, COLUNAS_USUARIOS, PAGINAS_CORE, ROTULO_MODULO, TOM_SITUACAO_USUARIO, linhaAuditoria, linhaLicenca, linhaUsuario, opcoesDePerfil, paginaAuditoria, paginaLicencas, paginaUsuarios, quadroEmpresaFiscal,
 } from '@macuxierp/core/web';
-import { AuditoriaItemLista, Licenca, Usuario, UsuarioCriar, UsuarioEditar, type PerfilComAcoes } from '@macuxierp/core/contracts';
+import { AuditoriaItemLista, Licenca, ROTULOS_SITUACAO_USUARIO, Usuario, UsuarioCriar, UsuarioEditar, type PerfilComAcoes } from '@macuxierp/core/contracts';
 import { PERFIS, ROTULOS_PERFIL, pode, type Perfil } from '@macuxierp/platform-sdk';
 import { ERRO_CAMPOS } from '../textos';
 import type { AcaoVista, EntradaAcao, ErrosFormulario, Linha, ResultadoAcao, TelaDescrita, TelaFormulario, TelaLista, ValoresFormulario } from '../descritor/tipos';
@@ -76,7 +76,9 @@ export const NOVO_USUARIO: TelaFormulario = {
 const POR_ID = `${USUARIOS}/:id`;
 const ESCRITAS_USUARIO = [
   { metodo: 'PATCH', caminho: POR_ID },
-  { metodo: 'DELETE', caminho: POR_ID },
+  { metodo: 'POST', caminho: `${POR_ID}/inativar` },
+  { metodo: 'POST', caminho: `${POR_ID}/reativar` },
+  { metodo: 'POST', caminho: `${POR_ID}/excluir` },
   { metodo: 'POST', caminho: `${POR_ID}/redefinir-senha`, segredo: 'senha_provisoria' },
 ] as const;
 
@@ -93,8 +95,13 @@ export function acoesDoUsuario(l: Linha, perfil: Perfil): readonly AcaoVista[] {
       { nome: 'perfil', rotulo: 'Perfil', tipo: 'selecao', valor: u.perfil, opcoes: OPCOES_PERFIL },
     ],
   };
+  // RN-CORE-17: Inativar é reversível (Reativar) e Excluir é definitivo (some da lista e libera o e-mail); Excluir fica por último, em vermelho.
+  const excluir: AcaoVista = {
+    id: 'excluir', rotulo: 'Excluir', metodo: 'POST', caminho: `${caminho}/excluir`, entrada: 'confirmar', destrutivo: true, tituloDialogo: 'Excluir este usuário?',
+    aviso: 'O usuário some da lista e o e-mail fica livre para outro cadastro. Não dá para desfazer; para só impedir a entrada, use Inativar.', rotuloConfirmar: 'Excluir', textoCarregando: 'Excluindo…', dados,
+  };
   if (!u.ativo) {
-    return [{ id: 'reativar', rotulo: 'Reativar', metodo: 'PATCH', caminho, entrada: 'confirmar', tituloDialogo: 'Reativar este usuário?', aviso: 'A pessoa volta a entrar no ERP com a senha atual.', rotuloConfirmar: 'Reativar', textoCarregando: 'Reativando…', dados }, editar];
+    return [{ id: 'reativar', rotulo: 'Reativar', metodo: 'POST', caminho: `${caminho}/reativar`, entrada: 'confirmar', tituloDialogo: 'Reativar este usuário?', aviso: 'A pessoa volta a entrar no ERP com a senha atual.', rotuloConfirmar: 'Reativar', textoCarregando: 'Reativando…', dados }, editar, excluir];
   }
   return [
     editar,
@@ -103,9 +110,10 @@ export function acoesDoUsuario(l: Linha, perfil: Perfil): readonly AcaoVista[] {
       aviso: 'A senha atual deixa de valer.', rotuloConfirmar: 'Redefinir senha', textoCarregando: 'Redefinindo…', avisoSegredo: AVISO_SENHA_PROVISORIA, dados,
     },
     {
-      id: 'inativar', rotulo: 'Inativar', metodo: 'DELETE', caminho, entrada: 'confirmar', destrutivo: true, tituloDialogo: 'Inativar este usuário?',
+      id: 'inativar', rotulo: 'Inativar', metodo: 'POST', caminho: `${caminho}/inativar`, entrada: 'confirmar', tituloDialogo: 'Inativar este usuário?',
       aviso: 'A pessoa deixa de entrar no ERP. Dá para reativar depois.', rotuloConfirmar: 'Inativar', textoCarregando: 'Inativando…', dados,
     },
+    excluir,
   ];
 }
 
@@ -118,10 +126,6 @@ export function validarAcaoUsuario(a: AcaoVista, e: EntradaAcao): ResultadoAcao 
     const r = UsuarioEditar.safeParse({ ...mudou, updated_at: a.dados?.updated_at });
     return r.success ? { ok: true, corpo: r.data } : { ok: false, erro: Object.values(errosDe(r.error))[0] ?? ERRO_CAMPOS };
   }
-  if (a.id === 'reativar') {
-    const r = UsuarioEditar.safeParse({ ativo: true, updated_at: a.dados?.updated_at });
-    return r.success ? { ok: true, corpo: r.data } : { ok: false, erro: 'Não foi possível reativar. Atualize a página.' };
-  }
   return { ok: true };
 }
 
@@ -129,14 +133,20 @@ const FILTROS_USUARIOS = [
   { chave: 'inativos', rotulo: 'Situação', tipo: 'selecao', vazio: 'Só ativos', opcoes: [{ valor: 'true', rotulo: 'Ativos e inativos' }] },
 ] as const;
 
+/** O contrato chama o amarelo de 'alerta'; o selo do shell, de 'aviso'. */
+const tomDoSelo = (t: 'ok' | 'alerta' | 'neutro'): 'ok' | 'aviso' | 'neutro' => (t === 'alerta' ? 'aviso' : t);
+
 export const LISTA_USUARIOS: TelaLista = {
   tipo: 'lista',
   pagina: paginaUsuarios as unknown as TelaLista['pagina'],
   rotuloBusca: 'Nome ou e-mail',
   filtrosTela: FILTROS_USUARIOS,
-  colunas: () => colunasDoModulo(COLUNAS_USUARIOS, { ativo: 'status' }),
+  colunas: () => colunasDoModulo(COLUNAS_USUARIOS),
   linha: (item, fuso) => linhaUsuario(item as unknown as Usuario, fuso),
-  selos: (item) => ({ ativo: [(item as unknown as Usuario).ativo ? { texto: 'Ativo', tom: 'ok' } : { texto: 'Inativo', tom: 'neutro' }] }),
+  selos: (item) => {
+    const u = item as unknown as Usuario;
+    return { situacao: [{ texto: ROTULOS_SITUACAO_USUARIO[u.situacao], tom: tomDoSelo(TOM_SITUACAO_USUARIO[u.situacao]) }] };
+  },
   novo: { rota: ROTA_USUARIO_NOVO, rotulo: 'Novo usuário', criar: GERIR },
   acaoDaLinha: {
     acao: (l, perfil) => acoesDoUsuario(l, perfil)[0] ?? null,

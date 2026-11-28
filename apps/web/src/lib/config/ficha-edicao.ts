@@ -22,69 +22,81 @@ export interface DefCampo {
   rotulo: string;
   tipo: TipoCampo;
   max?: number;
-  /** Campo de texto longo (razão social, natureza jurídica): a linha toda do cartão. */
-  largo?: boolean;
-  /** Campo curto (CEP, UF, datas…): no computador divide a linha com outro (docs/design/telas-horizontais §1.5). */
+  /** Largura na grade de 12 (.formulario): curto = 2, médio = 4, largo = 12 e, sem nenhum, 6 (regra 11). */
   curto?: boolean;
+  medio?: boolean;
+  largo?: boolean;
   /** Texto curto de formato, abaixo do campo. */
   dica?: string;
 }
 interface GrupoFicha {
   id: string;
   titulo: string;
-  /** Cartão nas duas colunas da Ficha (a partir de 768), com 4 colunas de campos: o texto longo não corta (PO, #853). */
-  largo?: boolean;
+  /** Colunas que o cartão ocupa na grade de 12 da Ficha (a partir de 1101 px; abaixo disso, a linha toda). */
+  colunas: 3 | 4 | 5 | 12;
   campos: DefCampo[];
 }
 
 const M = FORMATO_FICHA.max;
 
-/** Os cartões do formulário, na ordem da tela (lado a lado no computador, um embaixo do outro no celular). */
+/**
+ * Os cartões do formulário, na ordem da tela (Config v4: grade de 12, como a simulação aprovada 445e459; o CNPJ entra depois do nome fantasia).
+ * RD-2373: sem as dicas de quantidade (o limite de caracteres e o erro sob o campo já dizem); a data mostra o formato no placeholder.
+ */
 export const GRUPOS_FICHA: GrupoFicha[] = [
   {
     id: 'identificacao',
-    largo: true,
+    colunas: 12,
     titulo: 'Identificação',
     campos: [
-      { campo: 'razao_social', largo: true, rotulo: 'Razão social', tipo: 'texto', max: M.razao },
-      { campo: 'nome_fantasia', rotulo: 'Nome fantasia', tipo: 'texto', max: M.razao },
-      { campo: 'ie', rotulo: 'Inscrição estadual', tipo: 'texto', max: 14, dica: 'Só números ou ISENTO.' },
+      { campo: 'razao_social', medio: true, rotulo: 'Razão social', tipo: 'texto', max: M.razao },
+      { campo: 'nome_fantasia', medio: true, rotulo: 'Nome fantasia', tipo: 'texto', max: M.razao },
+      { campo: 'ie', curto: true, rotulo: 'Inscrição estadual', tipo: 'texto', max: 14, dica: 'Só números ou ISENTO.' },
     ],
   },
   {
     id: 'endereco',
+    colunas: 12,
     titulo: 'Endereço',
     campos: [
-      { campo: 'logradouro', rotulo: 'Logradouro', tipo: 'texto', max: M.logradouro },
+      { campo: 'cep', curto: true, rotulo: 'CEP', tipo: 'texto', max: 9 },
+      { campo: 'logradouro', medio: true, rotulo: 'Logradouro', tipo: 'texto', max: M.logradouro },
       { campo: 'numero', curto: true, rotulo: 'Número', tipo: 'texto', max: M.numero },
-      { campo: 'complemento', curto: true, rotulo: 'Complemento', tipo: 'texto', max: M.complemento },
-      { campo: 'bairro', rotulo: 'Bairro', tipo: 'texto', max: M.bairro },
-      { campo: 'cep', curto: true, rotulo: 'CEP', tipo: 'texto', max: 9, dica: '8 números.' },
-      { campo: 'municipio_ibge', curto: true, rotulo: 'Código IBGE do município', tipo: 'texto', max: 7, dica: '7 números.' },
+      { campo: 'complemento', medio: true, rotulo: 'Complemento', tipo: 'texto', max: M.complemento },
+      { campo: 'bairro', medio: true, rotulo: 'Bairro', tipo: 'texto', max: M.bairro },
+      { campo: 'municipio_ibge', curto: true, rotulo: 'Código IBGE do município', tipo: 'texto', max: 7 },
       { campo: 'uf', curto: true, rotulo: 'UF', tipo: 'texto', max: 2 },
     ],
   },
   {
     id: 'atividades',
-    titulo: 'Atividades e contato',
+    colunas: 5,
+    titulo: 'Atividades (CNAE)',
     campos: [
-      { campo: 'cnae_principal', rotulo: 'CNAE principal', tipo: 'texto', max: 9, dica: '7 números.' },
-      { campo: 'cnae_secundarios', rotulo: 'CNAE secundários', tipo: 'lista', dica: 'Um por linha.' },
-      { campo: 'email', rotulo: 'E-mail', tipo: 'email', max: 254 },
-      { campo: 'telefone', rotulo: 'Telefone', tipo: 'telefone', max: 16, dica: 'DDD e número.' },
+      { campo: 'cnae_principal', medio: true, rotulo: 'CNAE principal', tipo: 'texto', max: 9 },
+      { campo: 'cnae_secundarios', largo: true, rotulo: 'CNAE secundários', tipo: 'lista', dica: 'Um por linha.' },
+    ],
+  },
+  {
+    id: 'contato',
+    colunas: 4,
+    titulo: 'Contato',
+    campos: [
+      { campo: 'email', largo: true, rotulo: 'E-mail', tipo: 'email', max: 254 },
+      { campo: 'telefone', largo: true, rotulo: 'Telefone', tipo: 'telefone', max: 16, dica: 'DDD e número.' },
     ],
   },
   {
     id: 'situacao',
-    largo: true,
-    titulo: 'Situação na Receita',
+    colunas: 12,
+    titulo: 'Na Receita',
     campos: [
-      { campo: 'situacao_cadastral', rotulo: 'Situação cadastral', tipo: 'texto', max: M.situacao },
-      { campo: 'situacao_cadastral_data', curto: true, rotulo: 'Data da situação', tipo: 'data', dica: 'dd/mm/aaaa' },
-      { campo: 'data_abertura', curto: true, rotulo: 'Abertura', tipo: 'data', dica: 'dd/mm/aaaa' },
-      { campo: 'natureza_juridica', largo: true, rotulo: 'Natureza jurídica', tipo: 'texto', max: M.natureza },
-      { campo: 'porte', rotulo: 'Porte', tipo: 'texto', max: M.porte },
-      { campo: 'regime_receita', rotulo: 'Regime', tipo: 'regime' },
+      { campo: 'situacao_cadastral', medio: true, rotulo: 'Situação cadastral', tipo: 'texto', max: M.situacao },
+      { campo: 'situacao_cadastral_data', curto: true, rotulo: 'Data da situação', tipo: 'data' },
+      { campo: 'data_abertura', curto: true, rotulo: 'Abertura', tipo: 'data' },
+      { campo: 'natureza_juridica', medio: true, rotulo: 'Natureza jurídica', tipo: 'texto', max: M.natureza },
+      { campo: 'porte', medio: true, rotulo: 'Porte', tipo: 'texto', max: M.porte },
+      { campo: 'regime_receita', medio: true, rotulo: 'Regime', tipo: 'regime' },
     ],
   },
 ];

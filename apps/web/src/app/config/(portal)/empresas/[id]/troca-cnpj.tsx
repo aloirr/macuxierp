@@ -11,22 +11,30 @@ import { trocarCnpjAcao } from '@/lib/acoes-cliente';
 /** Sem a situação (leitura falhou), a troca fica fechada (falha fechada), com o texto do core para "não foi possível verificar". */
 const CNPJ_SEM_SITUACAO: SituacaoTrocaCnpj = { permitida: false, motivo: 'consulta_indisponivel', mensagem: MENSAGENS_BLOQUEIO_CNPJ.consulta_indisponivel };
 
-/** CNPJ no topo da Ficha da Receita (docs/design/telas-horizontais §3): rótulo em destaque, valor com máscara e a troca ou o motivo do bloqueio. */
+/**
+ * CNPJ no topo da Ficha da Receita (docs/design/telas-horizontais §3): rótulo em destaque e o valor com máscara, como texto. O botão
+ * "Trocar CNPJ" vai para a barra do rodapé da ficha (RD-2370, `TrocaCnpj`); quando a troca está fechada, o motivo fica aqui, junto do CNPJ.
+ */
 export function CampoCnpj({ empresa, situacao }: { empresa: EmpresaPlataforma; situacao: SituacaoTrocaCnpj | null }) {
+  const s = situacao ?? CNPJ_SEM_SITUACAO;
   return (
-    <div className="campo-ficha campo-cnpj">
+    <div className="campo campo-curto campo-cnpj">
       <span className="rotulo-campo" id="rotulo-cnpj">CNPJ</span>
       <p className="valor-cnpj" aria-labelledby="rotulo-cnpj">{empresa.cnpj ? formatarDocumento(empresa.cnpj) : AUSENTE}</p>
-      {empresa.cnpj && empresa.situacao !== 'encerrado' && <TrocaCnpj empresa={empresa} situacao={situacao ?? CNPJ_SEM_SITUACAO} />}
+      {trocaAberta(empresa) && !s.permitida && <p className="apoio motivo-bloqueio" role="note">{s.mensagem}.</p>}
     </div>
   );
 }
 
+const trocaAberta = (e: EmpresaPlataforma) => Boolean(e.cnpj) && e.situacao !== 'encerrado';
+
 /**
  * CNPJ editável só pelo superadmin (todo o /config é dele) e bloqueado com NF-e autorizada em produção (RN-CORE-16). A API
- * diz antes se pode (`situacao`) e revalida na troca; o motivo do bloqueio é o texto do core, junto do CNPJ.
+ * diz antes se pode (`situacao`) e revalida na troca; o motivo do bloqueio é o texto do core, junto do CNPJ (`CampoCnpj`). Sem a situação,
+ * a troca fica fechada. O botão e o retorno ficam na barra do rodapé da ficha (RD-2370).
  */
-function TrocaCnpj({ empresa, situacao }: { empresa: EmpresaPlataforma; situacao: SituacaoTrocaCnpj }) {
+export function TrocaCnpj({ empresa, situacao: lida }: { empresa: EmpresaPlataforma; situacao: SituacaoTrocaCnpj | null }) {
+  const situacao = lida ?? CNPJ_SEM_SITUACAO;
   const router = useRouter();
   const [aberto, setAberto] = useState(false);
   const [valor, setValor] = useState('');
@@ -34,7 +42,7 @@ function TrocaCnpj({ empresa, situacao }: { empresa: EmpresaPlataforma; situacao
   const [chave, setChave] = useState(() => crypto.randomUUID());
   const [resultado, chaveResultado, mostrar, limpar] = useResultado();
   const [pendente, iniciar] = useTransition();
-  if (!situacao.permitida) return <p className="apoio motivo-bloqueio" role="note">{situacao.mensagem}.</p>;
+  if (!trocaAberta(empresa) || !situacao.permitida) return null;
   const fechar = () => {
     setAberto(false);
     setValor('');
@@ -56,8 +64,8 @@ function TrocaCnpj({ empresa, situacao }: { empresa: EmpresaPlataforma; situacao
     });
   return (
     <>
-      <button className="mx-botao-secundario botao-linha" type="button" disabled={pendente} onClick={() => { limpar(); setAberto(true); }}>Trocar CNPJ</button>
-      <ResultadoAcao resultado={resultado} chave={chaveResultado} />
+      <button className="mx-botao-secundario" type="button" disabled={pendente} onClick={() => { limpar(); setAberto(true); }}>Trocar CNPJ</button>
+      {resultado && <div className="rodape-retorno"><ResultadoAcao resultado={resultado} chave={chaveResultado} /></div>}
       {aberto && (
         <Dialogo
           titulo={`Trocar o CNPJ de ${empresa.nome}?`}
