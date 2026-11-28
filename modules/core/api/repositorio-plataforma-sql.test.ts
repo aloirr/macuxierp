@@ -147,3 +147,30 @@ describe('adaptador SQL da plataforma: salvar ficha e trocar CNPJ (RN-CORE-16)',
     expect(JSON.parse(chamadas[0]![1] as string)).toEqual({ bairro: 'X' });
   });
 });
+
+describe('adaptador SQL da plataforma: e-mail único no sistema todo (RN-CORE-18, 0079)', () => {
+  const repo = new RepositorioPlataformaSql();
+  const novo = (tx: Transacao) => repo.criarUsuario(tx, { id: ID, email: 'x@exemplo.com.br', nome: 'X', perfil: 'faturista', senha_hash: 'h', filial_ids: [], request_id: 'r' });
+  const admin = (tx: Transacao) => repo.criarPrimeiroAdmin(tx, { id: ID, email: 'x@exemplo.com.br', nome: 'X', senha_hash: 'h', request_id: 'r' });
+  const txErro = (props: Record<string, unknown>, message = 'duplicate'): Transacao => ({
+    consultar: async () => {
+      throw Object.assign(new Error(message), { code: '23505', ...props });
+    },
+  });
+  const esperado = { status: 409, codigo: 'CONFLITO', detalhes: { codigo: 'email_em_uso' }, campos: { email: 'Este e-mail já está em uso em outra empresa. Use outro e-mail.' } };
+
+  it.each([
+    ['índice usuario_email_global_uq', { constraint: 'usuario_email_global_uq' }, 'duplicate'],
+    ['função email_em_uso', {}, 'email_em_uso'],
+  ])('RN-CORE-18: 23505 do %s vira 409 email_em_uso (criar usuário e 1º admin)', async (_n, props, msg) => {
+    for (const f of [novo, admin]) {
+      const e = await f(txErro(props, msg)).catch((x: unknown) => x);
+      expect(e).toBeInstanceOf(ErroApi);
+      expect(e).toMatchObject(esperado);
+    }
+  });
+
+  it('RN-CORE-18: outro 23505 no 1º admin segue null', async () => {
+    expect(await admin(txErro({ constraint: 'outro_uq' }))).toBeNull();
+  });
+});

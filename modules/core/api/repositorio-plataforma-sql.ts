@@ -17,7 +17,7 @@ import {
   type UsuarioExcluido,
 } from '../contracts';
 import { codigosParaDescrever, descreverFicha, MENSAGEM_SEM_CNPJ } from '../domain';
-import { sqlstate } from './erro-pg';
+import { ehEmailEmUso, erroEmailEmUso, sqlstate } from './erro-pg';
 import type { AcaoSituacaoUsuario, ItemUsuarioBanco, RepositorioPlataforma } from './plataforma';
 
 /** SQLSTATE da `empresa_trocar_cnpj` que viram bloqueio tratado (RN-CORE-16). */
@@ -37,6 +37,17 @@ async function semRepetido<R>(fn: () => Promise<R>): Promise<R | null> {
   try {
     return await fn();
   } catch (e) {
+    if (repetido(e)) return null;
+    throw e;
+  }
+}
+
+/** Como `semRepetido`, mas o 23505 do e-mail (0079) sai como 409 `email_em_uso`; os outros 23505 seguem `null`. */
+async function semRepetidoOuEmail<R>(fn: () => Promise<R>): Promise<R | null> {
+  try {
+    return await fn();
+  } catch (e) {
+    if (ehEmailEmUso(e)) throw erroEmailEmUso();
     if (repetido(e)) return null;
     throw e;
   }
@@ -96,6 +107,7 @@ async function comErrosDeUsuario<R>(fn: () => Promise<R>): Promise<R> {
   try {
     return await fn();
   } catch (e) {
+    if (ehEmailEmUso(e)) throw erroEmailEmUso();
     switch (sqlstate(e)) {
       case 'P0002':
         throw erros.naoEncontrado('Usuário');
@@ -179,7 +191,7 @@ export class RepositorioPlataformaSql implements RepositorioPlataforma {
     tx: Transacao,
     p: { id: string; email: string; nome: string; senha_hash: string; request_id: string },
   ): Promise<{ usuario_id: string } | null> {
-    return semRepetido(() =>
+    return semRepetidoOuEmail(() =>
       primeiraLinha<{ usuario_id: string }>(tx, 'SELECT plataforma.empresa_primeiro_admin_criar($1::uuid, $2, $3, $4, $5) usuario_id', [
         p.id,
         p.email,

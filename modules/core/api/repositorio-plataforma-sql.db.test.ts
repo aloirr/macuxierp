@@ -367,6 +367,18 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
     expect((nf as ErroApi).status).toBe(404);
   });
 
+  it('v0.3.30 (0079, RN-CORE-18): o mesmo e-mail em duas empresas = 409 email_em_uso, no criar usuário e no 1º admin', async () => {
+    const a = await criarTenant(b.admin, `portal-eml-${randomUUID().slice(0, 8)}`, ['core']);
+    const c2 = await criarTenant(b.admin, `portal-eml-${randomUUID().slice(0, 8)}`, ['core']);
+    const corpo = { nome: 'Dora Dupla', email: 'dora.dupla@exemplo.com.br', perfil: 'faturista' };
+    expect((await chamar('POST', '/empresas/:id/usuarios', { params: { id: a }, corpo }, true)).status).toBe(201);
+    const esperado = { status: 409, codigo: 'CONFLITO', detalhes: { codigo: 'email_em_uso' }, campos: { email: 'Este e-mail já está em uso em outra empresa. Use outro e-mail.' } };
+    const e1 = await chamar('POST', '/empresas/:id/usuarios', { params: { id: c2 }, corpo }).catch((x: unknown) => x);
+    expect(e1).toMatchObject(esperado);
+    const e2 = await chamar('POST', '/empresas/:id/primeiro-admin', { params: { id: c2 }, corpo: { email: 'DORA.dupla@exemplo.com.br' } }).catch((x: unknown) => x);
+    expect(e2).toMatchObject(esperado);
+  });
+
   it('v0.3.28 (0078): Usuários na Config — criar, listar mascarado, travar o último admin, inativar, reativar e excluir', async () => {
     const id = await criarTenant(b.admin, `portal-usu-${randomUUID().slice(0, 8)}`, ['core']);
     const P = (usuario?: string): Record<string, string> => (usuario ? { id, usuario } : { id });
