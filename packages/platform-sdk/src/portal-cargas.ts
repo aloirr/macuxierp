@@ -80,17 +80,23 @@ const Frase = z.string().max(200, 'Frase longa demais');
 
 // ---- Situação da aba ----
 
-export const SITUACOES_CARGA = ['carregado', 'com_erro', 'nao_carregado'] as const;
+/**
+ * Valores do selo (decisão B do PO, 28/11/2026 04h25). A API manda sempre o valor; o texto é da tela.
+ * `manual` = há registro ativo do cadastro no tenant, mas nenhuma carga (cadastrado no BKO ou vindo do FDV).
+ */
+export const SITUACOES_CARGA = ['carregado', 'com_erro', 'manual', 'nao_carregado'] as const;
 export const SituacaoCarga = z.enum(SITUACOES_CARGA);
 export type SituacaoCarga = z.infer<typeof SituacaoCarga>;
 
 /**
- * Situação de um cadastro: `com_erro` se a última carga recusou linhas; senão `carregado` se há registro ativo do
- * cadastro no tenant (venha da carga ou do BKO); senão `nao_carregado`. Pura: o plugin monta a linha com ela.
+ * Situação de um cadastro: `com_erro` se a última carga recusou linhas; senão `carregado` só quando há data de carga
+ * (`ultima_carga`); senão `manual` se há registro ativo sem carga; senão `nao_carregado`. Pura: o plugin monta a linha
+ * com ela.
  */
-export function situacaoCarga(e: { ativos: number; erros: number }): SituacaoCarga {
+export function situacaoCarga(e: { ativos: number; erros: number; ultima_carga: { em: string } | null }): SituacaoCarga {
   if (e.erros > 0) return 'com_erro';
-  return e.ativos > 0 ? 'carregado' : 'nao_carregado';
+  if (e.ultima_carga) return 'carregado';
+  return e.ativos > 0 ? 'manual' : 'nao_carregado';
 }
 
 export const UltimaCarga = z.object({ em: Instante, quantidade: Contagem });
@@ -139,6 +145,12 @@ export const SituacaoCargasPlataforma = z
       }
       if ((c.erros > 0) !== (c.situacao === 'com_erro')) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['cadastros', i, 'erros'], message: 'Erros só na situação com_erro' });
+      }
+      if (c.situacao === 'carregado' && !c.ultima_carga) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['cadastros', i, 'ultima_carga'], message: 'Carregado só com data de carga' });
+      }
+      if ((c.situacao === 'manual' || c.situacao === 'nao_carregado') && c.ultima_carga) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['cadastros', i, 'ultima_carga'], message: 'Sem carga, ultima_carga é null' });
       }
     });
   });

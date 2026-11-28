@@ -40,7 +40,7 @@ import {
   situacaoCarga,
   substituirPermitido,
   type CadastroCargaPortal,
-  type SituacaoCarga,
+  SituacaoCarga,
 } from './portal-cargas';
 import * as sdk from './index';
 
@@ -56,7 +56,7 @@ function linhas(situacoes: Partial<Record<CadastroCargaPortal, SituacaoCarga>> =
       cadastro: c.cadastro,
       situacao,
       erros: situacao === 'com_erro' ? 3 : 0,
-      ultima_carga: situacao === 'nao_carregado' ? null : { em: AGORA, quantidade: 10 },
+      ultima_carga: situacao === 'nao_carregado' || situacao === 'manual' ? null : { em: AGORA, quantidade: 10 },
       liberado: true as const,
       opcional: c.opcional,
     };
@@ -110,10 +110,23 @@ describe('frases (Alexandre, R-20261123-145123; RN-CAD-10)', () => {
 });
 
 describe('SituacaoCargasPlataforma', () => {
-  it('situacaoCarga: erro vence; registro ativo = carregado; nada = não carregado', () => {
-    expect(situacaoCarga({ ativos: 5, erros: 2 })).toBe('com_erro');
-    expect(situacaoCarga({ ativos: 5, erros: 0 })).toBe('carregado');
-    expect(situacaoCarga({ ativos: 0, erros: 0 })).toBe('nao_carregado');
+  it('situacaoCarga (decisão B do PO): erro vence; carregado só com data de carga; ativo sem carga = manual; nada = não carregado', () => {
+    const carga = { em: AGORA };
+    expect(situacaoCarga({ ativos: 5, erros: 2, ultima_carga: carga })).toBe('com_erro');
+    expect(situacaoCarga({ ativos: 5, erros: 0, ultima_carga: carga })).toBe('carregado');
+    expect(situacaoCarga({ ativos: 0, erros: 0, ultima_carga: carga })).toBe('carregado');
+    expect(situacaoCarga({ ativos: 5, erros: 0, ultima_carga: null })).toBe('manual');
+    expect(situacaoCarga({ ativos: 0, erros: 0, ultima_carga: null })).toBe('nao_carregado');
+  });
+
+  it('LinhaSituacaoCarga: o valor do enum, nunca texto; carregado exige ultima_carga; manual e não carregado sem ela', () => {
+    expect(SituacaoCarga.options).toEqual(['carregado', 'com_erro', 'manual', 'nao_carregado']);
+    expect(SituacaoCarga.safeParse('Cadastro manual').success).toBe(false);
+    expect(SituacaoCargasPlataforma.safeParse({ ...situacaoBase, cadastros: linhas({ cliente: 'manual' }) }).success).toBe(true);
+    const l = linhas({ filial: 'carregado' });
+    expect(SituacaoCargasPlataforma.safeParse({ ...situacaoBase, cadastros: [{ ...l[0]!, ultima_carga: null }, ...l.slice(1)] }).success).toBe(false);
+    const m = linhas({ filial: 'manual' });
+    expect(SituacaoCargasPlataforma.safeParse({ ...situacaoBase, cadastros: [{ ...m[0]!, ultima_carga: { em: AGORA, quantidade: 1 } }, ...m.slice(1)] }).success).toBe(false);
   });
 
   it('aceita as 8 linhas, todas liberadas, em qualquer combinação de situações', () => {
