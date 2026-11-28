@@ -82,13 +82,15 @@ try {
     await print(p, '01-login.png');
   });
 
-  await passo('RLS no login: e-mail e senha certos do tenant A na empresa B são recusados (a senha não volta)', async () => {
-    await entrar({ ...ADM_A, empresa: 'loja-b' });
+  // Sem o código da empresa desde a ADR 0021 (T-0133): o e-mail diz a empresa; o isolamento entre A e B segue nos passos abaixo.
+  await passo('login com a senha errada do tenant A: a mensagem única, o e-mail fica e a senha não volta', async () => {
+    await entrar({ ...ADM_A, senha: 'senha-errada-e2e-9' });
     // O Next também tem um role=alert (anúncio de rota): o do formulário é o do ResultadoAcao, logo abaixo do Entrar.
     const alerta = p.locator('form [data-resultado-acao="erro"] [role="alert"]');
     await alerta.waitFor();
     const texto = await alerta.textContent();
-    exigir(texto?.includes('incorretos'), `mensagem de erro diferente: ${texto}`);
+    // MENSAGEM_LOGIN_INVALIDO do SDK (o .mjs roda no node sem o TypeScript do SDK)
+    exigir(texto?.includes('E-mail ou senha inválidos.'), `mensagem de erro diferente: ${texto}`);
     exigir((await p.getByLabel('E-mail').inputValue()) === ADM_A.email, 'o e-mail se perdeu');
     exigir((await p.getByLabel('Senha', { exact: true }).inputValue()) === '', 'a senha voltou para a tela');
     await print(p, '02-login-erro-outro-tenant.png');
@@ -97,6 +99,9 @@ try {
   await passo('tenant A, administrador com duas filiais: a escolha mostra só as filiais de A', async () => {
     await entrar(ADM_A);
     await p.waitForURL(/\/filial/);
+    // a escolha da filial termina de carregar (o next dev ainda navega logo depois da URL)
+    await p.getByRole('radio').first().waitFor();
+    await p.waitForLoadState('networkidle').catch(() => undefined);
     const opcoes = (await p.locator('label').allTextContents()).join(' | ');
     exigir((await p.getByRole('radio').count()) === 2, `esperava 2 filiais: ${opcoes}`);
     exigir(opcoes.includes('Matriz Manaus') && opcoes.includes('Filial Parintins'), `filiais: ${opcoes}`);

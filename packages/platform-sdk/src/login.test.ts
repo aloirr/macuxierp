@@ -4,37 +4,15 @@ import { MENSAGEM_ESQUECI_NEUTRA, SenhaATrocarResposta } from './esqueci-senha';
 import { CODIGO_TROCAR_SENHA, EuResposta, MOTIVOS_TROCA_SENHA } from './eu';
 import {
   CAMINHO_LOGIN,
-  CodigoEmpresaLogin,
   DESTINOS_LOGIN,
   LoginEntrada,
   LoginResposta,
 } from './login';
-import { CODIGO_SUPERADMIN_LOGIN, EntrarPlataformaEntrada, EuPlataforma, SLUG_RESERVADO_SUPERADMIN } from './portal-config';
+import { EntrarPlataformaEntrada, EuPlataforma, SLUG_RESERVADO_SUPERADMIN } from './portal-config';
 import { SENHA_MAXIMA } from './senha';
 
 const ID = '00000000-0000-4000-8000-000000000001';
 const EXPIRA = '2026-11-23T21:00:00.000Z';
-
-describe('CodigoEmpresaLogin (transição da v0.3.30, só para a apps/web): formato do slug da 0002, sem diferenciar maiúsculas', () => {
-  it('aceita UF + 4 dígitos, o código reservado e o slug antigo (antes da T-0053), aparados e em maiúsculas', () => {
-    const casos: [string, string][] = [
-      ['AM2808', 'AM2808'],
-      ['am2808', 'AM2808'],
-      ['MACUXI', CODIGO_SUPERADMIN_LOGIN],
-      [' macuxi ', CODIGO_SUPERADMIN_LOGIN],
-      ['empresa-antiga', 'EMPRESA-ANTIGA'],
-      ['abc', 'ABC'],
-      ['a'.repeat(40), 'A'.repeat(40)],
-    ];
-    for (const [entrada, saida] of casos) expect(CodigoEmpresaLogin.parse(entrada), entrada).toBe(saida);
-  });
-
-  it('recusa o que o CHECK da 0002 recusa', () => {
-    for (const c of ['a', '-abc', 'a b', 'á1', 'a'.repeat(41), '', '   ']) {
-      expect(CodigoEmpresaLogin.safeParse(c).success, JSON.stringify(c)).toBe(false);
-    }
-  });
-});
 
 describe('RN-CORE-12: login único (POST /v1/auth/login)', () => {
   it('rota e destinos do login', () => {
@@ -76,7 +54,6 @@ describe('RN-CORE-12: login único (POST /v1/auth/login)', () => {
     const login = await import('./login');
     expect(login).not.toHaveProperty('destinoDoCodigo');
     expect(SLUG_RESERVADO_SUPERADMIN).toBe('macuxi');
-    expect(CODIGO_SUPERADMIN_LOGIN.toLowerCase()).toBe(SLUG_RESERVADO_SUPERADMIN);
     expect(LoginEntrada.parse({ empresa: 'MACUXI', email: 'a@b.co', senha: 'x'.repeat(8) })).not.toHaveProperty('empresa', 'config');
   });
 

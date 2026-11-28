@@ -49,7 +49,7 @@ describe('Ficha da Receita editável na aba Empresa (RN-CORE-16, v0.3.24)', () =
   it('MC-2 e MC-7: Endereço fecha as 12 (CEP 2 + Logradouro 8 + Número 2; Complemento 6 + Bairro 2 + IBGE 2 + UF 2); Na Receita: Situação, Data, Abertura e Porte em 2 e a Natureza em 4, e o Regime em 2', () => {
     const h = render();
     const classe = (c: string) => new RegExp(`<div class="campo([^"]*)"><label for="ficha-${c}"`).exec(h)?.[1] ?? null;
-    expect(classe('logradouro')).toBe(' campo-oito');
+    expect(classe('logradouro')).toBe(' campo-8'); // a classe de 8 colunas do main (#924)
     expect(classe('complemento')).toBe('');
     for (const c of ['cep', 'numero', 'bairro', 'municipio_ibge', 'uf', 'situacao_cadastral', 'situacao_cadastral_data', 'data_abertura', 'porte', 'regime_receita']) expect(classe(c)).toBe(' campo-curto');
     expect(classe('natureza_juridica')).toBe(' campo-medio');

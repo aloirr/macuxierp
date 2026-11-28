@@ -2,10 +2,10 @@
  * T-0111 (RN-CORE-15, RN-CORE-13) ponta a ponta na API de produção (`appPgDeTeste`, módulos de produção) sobre o PostgreSQL
  * efêmero, com o e-mail em memória (a única dublê: o SMTP) e o log do pino capturado:
  * - B-1: depois de `maxFalhas` (5) senhas erradas, o login responde 423 `ContaBloqueadaResposta`, inclusive com a senha certa;
- *   e-mail que não existe na empresa recebe o MESMO status e o MESMO corpo (trava por empresa+e-mail, R-20261126-175321);
+ *   e-mail que não existe recebe o MESMO status e o MESMO corpo (trava por e-mail desde a ADR 0021 §4, R-20261126-175321);
  * - B-2: o limite por IP é outro sinal: 429 `MUITAS_TENTATIVAS`, nunca 423, e vale para qualquer e-mail;
  * - B-3: o "Esqueci a senha" da conta bloqueada manda a temporária num e-mail multipart (text/plain e text/html) com o
- *   código da empresa e o e-mail digitados; o log desse envio não leva a senha nem o e-mail;
+ *   e-mail digitado e sem o código da empresa (ADR 0021, T-0133); o log desse envio não leva a senha nem o e-mail;
  * - B-4: entrar com a temporária desbloqueia (`desbloqueou: true`, `bloqueado_ate` nulo, falhas zeradas) e pede a troca.
  * NÃO se repete: a regra pura (modules/core/domain/conta-bloqueada.test.ts), o texto e o HTML do e-mail (platform-sdk
  * esqueci-senha.test.ts), o log do esqueci da conta não travada
@@ -25,7 +25,7 @@ const DOMINIO = 'loja-t0111.invalid';
 const EMAIL_BLOQ = `iracema.bloqueio@${DOMINIO}`;
 const EMAIL_NINGUEM = `ninguem.t0111@${DOMINIO}`;
 let seq = 0;
-/** Um e-mail inexistente por tentativa: a trava da memória (5 por empresa+e-mail) não entra no teste do limite por IP. */
+/** Um e-mail inexistente por tentativa: a trava da memória (5 por e-mail) não entra no teste do limite por IP. */
 const ninguemNovo = () => `ninguem.ip.${seq++}@${DOMINIO}`;
 const EMAIL_IP = `potira.ip@${DOMINIO}`;
 const SENHA_ERRADA = 'senha-errada-t0111!';
@@ -42,9 +42,9 @@ describe.skipIf(!PG_DISPONIVEL)('T-0111: conta bloqueada (423), limite por IP (4
   let temporaria = '';
 
   const entrar = (email: string, senha: string, remoteAddress = novoIp()): Promise<RespostaPortal> =>
-    app.inject({ method: 'POST', url: '/v1/auth/login', remoteAddress, payload: { empresa: SLUG.toUpperCase(), email, senha } });
+    app.inject({ method: 'POST', url: '/v1/auth/login', remoteAddress, payload: { email, senha } });
   const esqueci = (email: string) =>
-    app.inject({ method: 'POST', url: '/v1/auth/esqueci', headers: { 'cf-connecting-ip': novoIp() }, payload: { empresa: SLUG.toUpperCase(), email } });
+    app.inject({ method: 'POST', url: '/v1/auth/esqueci', headers: { 'cf-connecting-ip': novoIp() }, payload: { email } });
   const estado = async (id: string) =>
     (await b.admin.query<{ falhas_login: number; bloqueado: boolean }>('SELECT falhas_login, bloqueado_ate IS NOT NULL AND bloqueado_ate > now() AS bloqueado FROM plataforma.usuario WHERE id = $1', [id])).rows[0]!;
   const errarAteBloquear = async (email: string) => {
@@ -95,14 +95,17 @@ describe.skipIf(!PG_DISPONIVEL)('T-0111: conta bloqueada (423), limite por IP (4
     }
   });
 
-  it('B-3: o esqueci da conta bloqueada manda o e-mail multipart com código da empresa, e-mail e o aviso de desbloqueio; o log não leva senha nem e-mail', async () => {
+  it('B-3: o esqueci da conta bloqueada manda o e-mail multipart com o e-mail, sem o código da empresa, e o aviso de desbloqueio; o log não leva senha nem e-mail', async () => {
     const inicio = logs.length;
     expect((await esqueci(EMAIL_BLOQ)).statusCode).toBe(202);
     await envio.esperar();
     const m = envio.enviados.at(-1) as (typeof envio.enviados)[number] & { html?: string };
     expect(m.para).toBe(EMAIL_BLOQ);
-    // multipart: as duas partes, com o código e o e-mail que a API recebeu (o texto em si é do SDK e do design)
-    for (const parte of [m.texto, m.html ?? '']) for (const campo of [SLUG.toUpperCase(), EMAIL_BLOQ]) expect(parte).toContain(campo);
+    // multipart: as duas partes com o e-mail que a API recebeu e sem o código da empresa (ADR 0021; o texto é do SDK e do design)
+    for (const parte of [m.texto, m.html ?? '']) {
+      expect(parte).toContain(EMAIL_BLOQ);
+      expect(parte).not.toContain(SLUG.toUpperCase());
+    }
     temporaria = /Senha temporária:\s*(\S+)/.exec(m.texto)?.[1] ?? '';
     expect(temporaria).not.toBe('');
     const novos = logs.slice(inicio).join('\n');

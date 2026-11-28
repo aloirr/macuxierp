@@ -25,7 +25,7 @@ export interface DefCampo {
   /** Largura na grade de 12 (.formulario): curto = 2, médio = 4, largo = 12 e, sem nenhum, 6 (regra 11). */
   curto?: boolean;
   medio?: boolean;
-  /** 8 colunas (o Logradouro, para a linha do Endereço fechar as 12 com CEP e Número). */
+  /** 8 colunas (classe campo-8): o Logradouro, para a linha do Endereço fechar as 12 com CEP e Número. */
   oito?: boolean;
   largo?: boolean;
   /** Texto curto de formato, abaixo do campo. */

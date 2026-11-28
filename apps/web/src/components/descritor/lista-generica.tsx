@@ -11,6 +11,7 @@ import { urlDaLista, urlProxima } from '@/lib/listas-url';
 import type { FiltroTela, TelaLista } from '@/lib/descritor/tipos';
 import { AcoesDetalhe } from './acoes-detalhe';
 import { TabelaVista } from './ui-cliente';
+import { FiltrosLista } from './filtros-lista';
 import { TEXTO_SEM_PERMISSAO } from '@/lib/telas/comum';
 
 async function opcoesDoFiltro(f: FiltroTela, acesso: string, perfil: Perfil): Promise<readonly Opcao[]> {
@@ -23,7 +24,7 @@ async function opcoesDoFiltro(f: FiltroTela, acesso: string, perfil: Perfil): Pr
   }
 }
 
-/** Lista genérica a partir do descritor: filtros na URL (formulário GET, sem JS), tabela densa, paginação por cursor e CSV. */
+/** Lista genérica a partir do descritor: filtros na URL (formulário GET que funciona sem JS; com JS se aplica ao mudar, RD-2382), tabela densa, paginação por cursor e CSV. */
 export async function ListaGenerica({ tela, rota, rotaDaPagina, busca, perfil, acesso, fuso }: { tela: TelaLista; rota: string; rotaDaPagina: string; busca: URLSearchParams; perfil: Perfil; acesso: string; fuso: string }) {
   const filtros = filtrosDaUrl(tela.pagina, busca);
   const colunas = tela.colunas(perfil, fuso);
@@ -42,21 +43,22 @@ export async function ListaGenerica({ tela, rota, rotaDaPagina, busca, perfil, a
   }
   const [pagina, opcoes] = resultado;
   const rotulos = new Map(tela.filtrosTela.flatMap((f, i) => (f.tipo === 'cadastro' ? [[f.chave, new Map((opcoes[i] ?? []).map((o) => [o.valor, o.rotulo] as const))] as const] : [])));
-  /** Só filtro real acende o "Limpar filtros": cursor e limite são paginação. */
+  /** Só filtro real acende o link "Limpar filtros" ao lado dos filtros: cursor e limite são paginação. */
   const filtrada = Object.keys(filtros).some((k) => k !== 'cursor' && k !== 'limite');
   const aoLimpar = urlDaLista(rota, filtros.limite ? { limite: filtros.limite } : {});
   const declarado = tela.pagina.vazio;
-  const textoVazio = declarado ? (filtrada ? declarado.comFiltro : declarado.semFiltro) : 'Nenhum registro com estes filtros.';
+  const textoVazio = declarado ? (filtrada ? declarado.comFiltro : declarado.semFiltro) : filtrada ? 'Nenhum registro com estes filtros.' : 'Nenhum registro ainda.';
   const proxima = urlProxima(rota, filtros, pagina.proximo_cursor);
   const acaoBarra = tela.acaoDaBarra?.acao(perfil) ?? null;
   const iFilial = tela.filtrosTela.findIndex((f) => f.chave === 'filial_id');
   const barra = acaoBarra && acaoBarra.entrada === 'faixa' ? { ...acaoBarra, filiais: iFilial >= 0 ? (opcoes[iFilial] ?? []) : [] } : acaoBarra;
+  const novo = tela.novo && (!tela.novo.criar || pode(perfil, tela.novo.criar)) ? tela.novo : null;
   const csv = tela.pagina.csv ? `/exportar-csv?${new URLSearchParams({ rota, ...filtros }).toString()}` : null;
   return (
     <section>
-      <form method="get" action={rota} className="filtros" role="search" aria-label="Filtros">
+      <FiltrosLista rota={rota}>
         {tela.pagina.busca && (
-          <label className="campo"><span>{tela.rotuloBusca ?? 'Busca'}</span><input name="busca" defaultValue={filtros.busca ?? ''} maxLength={80} /></label>
+          <label className="campo"><span>Buscar</span><input type="search" name="busca" defaultValue={filtros.busca ?? ''} maxLength={80} {...(tela.rotuloBusca ? { placeholder: tela.rotuloBusca } : {})} /></label>
         )}
         {tela.filtrosTela.map((f, i) => (
           <label key={f.chave} className="campo">
@@ -71,11 +73,10 @@ export async function ListaGenerica({ tela, rota, rotaDaPagina, busca, perfil, a
             )}
           </label>
         ))}
-        <div className="filtros-acoes">
-          <button className="mx-botao" type="submit">Filtrar</button>
-          <Link className="mx-botao-secundario" href={rota}>Limpar</Link>
-        </div>
-      </form>
+        {/* Sem JS não há aplicar ao mudar: o botão só aparece nesse caso (globals.css, `scripting: none`). */}
+        <button className="mx-botao filtros-enviar" type="submit">Filtrar</button>
+        {filtrada && <Link className="filtros-limpar" href={aoLimpar}>Limpar filtros</Link>}
+      </FiltrosLista>
       <div className="cartao-tabela">
       <TabelaVista
         colunas={colunas.map((c) => ({ id: c.id, rotulo: c.rotulo, ...(c.tipo ? { tipo: c.tipo } : {}) }))}
@@ -94,14 +95,16 @@ export async function ListaGenerica({ tela, rota, rotaDaPagina, busca, perfil, a
           };
         })}
       />
-      <div className="barra-acoes">
-        {tela.novo && (!tela.novo.criar || pode(perfil, tela.novo.criar)) && <Link className="mx-botao" href={tela.novo.rota}>{tela.novo.rotulo}</Link>}
-        {csv && <a className="mx-botao-secundario" href={csv}>Exportar CSV</a>}
-        {barra && <AcoesDetalhe acoes={[barra]} rota={rota} rotaDaPagina={rotaDaPagina} origem="barra" compacta />}
       </div>
-      </div>
-      {pagina.itens.length === 0 && filtrada && <p><Link className="mx-botao-secundario" href={aoLimpar}>Limpar filtros</Link></p>}
-      <nav className="paginacao" aria-label="Paginação">{proxima ? <Link className="mx-botao-secundario" href={proxima}>Próxima página</Link> : pagina.itens.length > 0 ? <span className="apoio">Fim da lista.</span> : null}</nav>
+      {/* RD-2381: uma barra só, no rodapé da página, com as ações da lista e a paginação juntas. */}
+      {(novo || csv || barra || proxima) && (
+        <div className="barra-acoes barra-rodape-lista">
+          {novo && <Link className="mx-botao" href={novo.rota}>{novo.rotulo}</Link>}
+          {csv && <a className="mx-botao-secundario" href={csv}>Exportar CSV</a>}
+          {barra && <AcoesDetalhe acoes={[barra]} rota={rota} rotaDaPagina={rotaDaPagina} origem="barra" compacta />}
+          {proxima && <nav className="paginacao" aria-label="Paginação"><Link className="mx-botao-secundario" href={proxima}>Próxima página</Link></nav>}
+        </div>
+      )}
     </section>
   );
 }

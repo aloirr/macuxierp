@@ -8,12 +8,13 @@ export function argumento(nome, padrao) {
 }
 
 /**
- * Login único (`/login`, RN-CORE-12): abre a tela, preenche empresa, e-mail e senha de `u` e clica em Entrar. Quem chama
- * espera o destino (BKO, /config ou o alerta de recusa). O superadmin usa o código da plataforma como empresa.
+ * Login único (`/login`, RN-CORE-12; ADR 0021): abre a tela, preenche só o e-mail e a senha de `u` e clica em Entrar. Quem
+ * chama espera o destino (BKO, /config ou o alerta de recusa): a API decide pelo e-mail.
  */
 export async function entrar(pagina, base, u) {
   await pagina.goto(`${base}/login`);
-  await pagina.getByLabel('Empresa').fill(u.empresa);
+  // o formulário é controlado pelo React: preencher antes da hidratação (next dev compilando) perde o que foi digitado
+  await pagina.waitForLoadState('networkidle').catch(() => undefined);
   await pagina.getByLabel('E-mail').fill(u.email);
   // exact: o botão "Mostrar senha" também casa com "Senha".
   await pagina.getByLabel('Senha', { exact: true }).fill(u.senha);
