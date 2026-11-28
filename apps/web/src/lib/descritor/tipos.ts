@@ -243,6 +243,8 @@ export interface CampoFormulario {
   ajuda?: string;
   /** Largura do campo na grade de 12 colunas do formulário (regra 11). Ausente = a heurística de larguraDoCampo. */
   colunas?: ColunasCampo;
+  /** Largura que depende do que foi digitado (ex.: IPI da Filial ocupa 6 com CRT ≠ 3, quando o vizinho some); sem ela vale `colunas`. Roda no navegador a cada digitação. */
+  colunasSe?: (valores: Readonly<Record<string, string>>) => ColunasCampo;
   /** Começa linha nova na grade (coluna 1), mesmo que a linha anterior tenha sobra (ex.: CEP quando o PIS/COFINS some). Ausente = segue o fluxo. */
   inicioLinha?: boolean;
   /** Mostra o campo só quando a condição vale (ex.: regime de PIS/COFINS só com CRT 3). É função: roda no navegador, nunca atravessa do servidor como dado. */

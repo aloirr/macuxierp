@@ -63,3 +63,4 @@
 2026-11-27 — v0.3.28 — tela de Clientes ligada no BKO (lista, novo, edição por PATCH) e h1 a 4 px da saudação (MC-0216)
 2026-11-28 — T-0134 — lista de Empresas: coluna Macuxi FDV, Ações ▾ (suspender/reativar, redefinir senha), busca, CNAE sem duplicata, Nova empresa/Criar/Salvar
 2026-11-28 — T-0135 — selos de Integrações (4 situações), selo da licença com o vocabulário do core, temFdv sem cast, um botão por linha, coluna Cadastro, marca ERP → Macuxi FDV, Nova empresa à esquerda
+2026-11-28 — v0.3.32 apps-3 core telas — T-0125: Empresa renderiza a fichaEmpresa() do core com o Ambiente fiscal como bloco (oculto no menu); colunasSe do cadastros lido de forma tolerante; exportação segue sem tela
