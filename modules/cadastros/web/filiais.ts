@@ -40,18 +40,19 @@ export const paginaFiliais = definirPaginaLista({
 });
 
 export const CAMPOS_FILIAL: readonly CampoEdicao[] = [
-  { nome: 'cnpj', rotulo: 'CNPJ', tipo: 'texto', obrigatorio: true, soCriacao: true },
-  { nome: 'razao_social', rotulo: 'Razão social', tipo: 'texto', obrigatorio: true },
-  { nome: 'nome_fantasia', rotulo: 'Nome fantasia', tipo: 'texto' },
-  { nome: 'ie', rotulo: 'Inscrição estadual', tipo: 'texto' },
-  { nome: 'crt', rotulo: 'Regime tributário (CRT)', tipo: 'selecao', obrigatorio: true, opcoes: opcoes(ROTULO_CRT) },
-  { nome: 'regime_pis_cofins', rotulo: 'Regime de PIS/COFINS', tipo: 'selecao', obrigatorio: true, opcoes: opcoes(ROTULO_REGIME_PIS_COFINS), mostrarSe: (v) => v.crt === '3' },
-  { nome: 'industrial_ipi', rotulo: 'Estabelecimento industrial (IPI)', tipo: 'booleano' },
-  { nome: 'padrao', rotulo: 'Filial padrão', tipo: 'booleano' },
-  { nome: 'emissora', rotulo: 'Emite NF-e', tipo: 'booleano' },
-  { nome: 'nfe_serie', rotulo: 'Série da NF-e', tipo: 'texto' },
-  { nome: 'nfe_numero_inicial', rotulo: 'Número inicial da NF-e', tipo: 'texto' },
-  ...CAMPOS_ENDERECO,
+  { nome: 'cnpj', rotulo: 'CNPJ', tipo: 'texto', obrigatorio: true, soCriacao: true, colunas: 3 },
+  { nome: 'razao_social', rotulo: 'Razão social', tipo: 'texto', obrigatorio: true, colunas: 6 },
+  { nome: 'nome_fantasia', rotulo: 'Nome fantasia', tipo: 'texto', colunas: 3 },
+  { nome: 'ie', rotulo: 'Inscrição estadual', tipo: 'texto', colunas: 3 },
+  { nome: 'crt', rotulo: 'Regime tributário (CRT)', tipo: 'selecao', obrigatorio: true, opcoes: opcoes(ROTULO_CRT), colunas: 3 },
+  { nome: 'regime_pis_cofins', rotulo: 'Regime de PIS/COFINS', tipo: 'selecao', obrigatorio: true, opcoes: opcoes(ROTULO_REGIME_PIS_COFINS), mostrarSe: (v) => v.crt === '3', colunas: 3 },
+  { nome: 'industrial_ipi', rotulo: 'Estabelecimento industrial (IPI)', tipo: 'booleano', colunas: 3 },
+  { nome: 'padrao', rotulo: 'Filial padrão', tipo: 'booleano', colunas: 3, inicioLinha: true },
+  { nome: 'emissora', rotulo: 'Emite NF-e', tipo: 'booleano', colunas: 3 },
+  { nome: 'nfe_serie', rotulo: 'Série da NF-e', tipo: 'texto', colunas: 2 },
+  { nome: 'nfe_numero_inicial', rotulo: 'Número inicial da NF-e', tipo: 'texto', colunas: 4 },
+  // Sem latitude e longitude (a filial não tem coluna): Bairro 4, Município 6 e UF 2 fecham a linha.
+  ...CAMPOS_ENDERECO.map((c) => (c.nome === 'end_bairro' ? { ...c, colunas: 4 as const } : c.nome === 'end_municipio_ibge' ? { ...c, colunas: 6 as const } : c.nome === 'end_uf' ? { ...c, colunas: 2 as const } : c)),
 ];
 
 export const camposDaFilial = (perfil: Perfil, modo: Modo) => camposVisiveis(CAMPOS_FILIAL, perfil, modo);
