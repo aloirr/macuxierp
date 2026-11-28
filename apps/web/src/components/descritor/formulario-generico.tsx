@@ -54,15 +54,15 @@ function SeletorOpcoes({ id, rotulo, largura = '', valor, opcoes, onChange, erro
 }
 
 /** Formulário genérico: campos do descritor, seletores lidos do cadastros (opções vêm do servidor) e itens. A API revalida. */
-export function FormularioGenerico({ rota, opcoes, produtos, errosIniciais, perfil, campos, aberto }: { rota: string; opcoes: Readonly<Record<string, readonly Opcao[]>>; produtos: readonly Opcao[]; errosIniciais?: ErrosFormulario; perfil?: Perfil; campos?: readonly CampoFormulario[]; aberto?: Aberto }) {
+export function FormularioGenerico({ rota, opcoes, produtos, errosIniciais, perfil, campos, aberto, somenteLeitura = false }: { somenteLeitura?: boolean; rota: string; opcoes: Readonly<Record<string, readonly Opcao[]>>; produtos: readonly Opcao[]; errosIniciais?: ErrosFormulario; perfil?: Perfil; campos?: readonly CampoFormulario[]; aberto?: Aberto }) {
   const tela = telaFormulario(rota);
-  return tela ? <Formulario tela={tela} opcoes={opcoes} produtos={produtos} errosIniciais={errosIniciais} perfil={perfil} campos={perfil && tela.camposDoPerfil ? tela.camposDoPerfil(perfil) : (campos ?? tela.campos)} aberto={aberto} /> : <p className="erro" role="alert">Formulário não encontrado.</p>;
+  return tela ? <Formulario tela={tela} opcoes={opcoes} produtos={produtos} errosIniciais={errosIniciais} perfil={perfil} campos={perfil && tela.camposDoPerfil ? tela.camposDoPerfil(perfil) : (campos ?? tela.campos)} aberto={aberto} somenteLeitura={somenteLeitura} /> : <p className="erro" role="alert">Formulário não encontrado.</p>;
 }
 
 /** Registro aberto na edição: valores iniciais, o original (para o diff do PATCH) e o id. */
 export interface Aberto { valores: ValoresFormulario; original: unknown; id: string }
 
-function Formulario({ tela, opcoes, produtos, errosIniciais, perfil, campos, aberto }: { tela: TelaFormulario; opcoes: Readonly<Record<string, readonly Opcao[]>>; produtos: readonly Opcao[]; errosIniciais?: ErrosFormulario; perfil?: Perfil; campos: readonly CampoFormulario[]; aberto?: Aberto }) {
+function Formulario({ tela, opcoes, produtos, errosIniciais, perfil, campos, aberto, somenteLeitura }: { somenteLeitura: boolean; tela: TelaFormulario; opcoes: Readonly<Record<string, readonly Opcao[]>>; produtos: readonly Opcao[]; errosIniciais?: ErrosFormulario; perfil?: Perfil; campos: readonly CampoFormulario[]; aberto?: Aberto }) {
   const router = useRouter();
   const [valores, setValores] = useState<ValoresFormulario>(aberto?.valores ?? {});
   const [itens, setItens] = useState<ItemLinha[]>(() => (tela.itens ? [tela.itens.novoItem('item-1')] : []));
@@ -100,6 +100,28 @@ function Formulario({ tela, opcoes, produtos, errosIniciais, perfil, campos, abe
     mostrar(resultadoErro(r.mensagem));
   }
 
+  if (somenteLeitura) {
+    // T-0129: perfil sem a ação `editar` da página (paginaEditavel). Dado só de leitura vira texto, não caixa de campo; sem enviar.
+    const visiveis = campos.filter((c) => !c.mostrarSe || c.mostrarSe(valores));
+    const texto = (c: CampoFormulario): string => {
+      const v = valores[c.nome] ?? '';
+      if (c.tipo === 'cadastro') return (opcoes[c.nome] ?? []).find((o) => o.valor === v)?.rotulo ?? v;
+      if (c.tipo === 'selecao') return (c.opcoes ?? []).find((o) => o.valor === v)?.rotulo ?? v;
+      return v;
+    };
+    return (
+      <div className="formulario formulario-leitura">
+        <dl className="dados">
+          {visiveis.map((c) => <div key={c.nome} className={c.tipo === 'area' ? 'dado-linha-inteira' : undefined}><dt>{c.rotulo}</dt><dd>{texto(c) || '—'}</dd></div>)}
+        </dl>
+        {tela.itens && <Itens tela={tela.itens} itens={itens} produtos={produtos} onChange={setItens} erros={{}} temErroExterno={false} desabilitado />}
+        <div className="barra-acoes">
+          <Link className="mx-botao-secundario" href={tela.voltar}>Voltar</Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <form className="formulario" onSubmit={(ev) => void enviar(ev)} noValidate aria-busy={ocupado}>
       {!tela.itens && <RegiaoErros temErro={temErros(erros) || resultado !== null} />}
@@ -132,7 +154,7 @@ function Formulario({ tela, opcoes, produtos, errosIniciais, perfil, campos, abe
 }
 
 /** Itens do pedido na `FormularioItens` da ui: erros do módulo (`itens.N.campo`) viram mensagem da linha. */
-function Itens({ tela, itens, produtos, onChange, erros, temErroExterno }: { tela: NonNullable<TelaFormulario['itens']>; itens: ItemLinha[]; produtos: readonly Opcao[]; onChange: (i: ItemLinha[]) => void; erros: ErrosFormulario; temErroExterno: boolean }) {
+function Itens({ tela, itens, produtos, onChange, erros, temErroExterno, desabilitado = false }: { desabilitado?: boolean; tela: NonNullable<TelaFormulario['itens']>; itens: ItemLinha[]; produtos: readonly Opcao[]; onChange: (i: ItemLinha[]) => void; erros: ErrosFormulario; temErroExterno: boolean }) {
   const porLinha: Record<string, string> = {};
   for (const [k, m] of Object.entries(erros)) {
     const n = /^itens\.(\d+)\./.exec(k)?.[1];
@@ -148,6 +170,7 @@ function Itens({ tela, itens, produtos, onChange, erros, temErroExterno }: { tel
       {erros.itens && <p className="erro" role="alert">{erros.itens}</p>}
       <FormularioItens
         temErroExterno={temErroExterno}
+        desabilitado={desabilitado}
         itens={itens}
         aoMudar={onChange}
         novoItem={tela.novoItem}
