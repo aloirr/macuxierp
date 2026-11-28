@@ -38,8 +38,7 @@ import {
   type DependenciasFaturamento,
   type LogFaturamento,
 } from '@macuxierp/faturamento/api';
-import { criarCalculoFiscal } from '@macuxierp/fiscal/api';
-import { manifest as fiscal } from '@macuxierp/fiscal/manifest';
+import { criarCalculoFiscal, criarPluginFiscal } from '@macuxierp/fiscal/api';
 import { criarPluginIntegracaoFdv, criarPluginPlataformaIntegracaoFdv } from '@macuxierp/integracao-fdv/api';
 import { criarEmissorNFe } from '@macuxierp/nfe-emissor';
 import {
@@ -101,9 +100,6 @@ export function registrarModulos(entradas: readonly EntradaModulo[]): readonly P
   }
   return Object.freeze(MODULOS.flatMap((id) => porId.get(id) ?? []));
 }
-
-/** Módulos ainda sem rotas: só o manifesto (menus do `/eu`). O faturamento tem rotas desde a T-0045 (lote A). */
-const SEM_ROTAS: readonly ManifestoModulo[] = [fiscal];
 
 /** A1 válido da filial para o cadastros (consulta de IE, RN-CORE-06), pela porta pública do core, na transação da rota. */
 export function certificadosDoCore(repo: RepositorioCore): PortaCertificados {
@@ -220,8 +216,9 @@ export function montarModulos(d: DependenciasModulos): readonly PluginModulo[] {
     }),
     ...d.pedido,
   });
+  // Fiscal: `/v1/fiscal/regras` e `/v1/fiscal/catalogo` (T-0127), SQL na transação do tenant.
   // Integração FDV no BKO do tenant: só leitura (ADR 0013 §6); a escrita é do portal `/config` (`pluginsPlataforma`).
-  return registrarModulos([criarPluginCore(d.core), cadastros, pedido, criarPluginFaturamento(faturamento), criarPluginIntegracaoFdv(), ...SEM_ROTAS]);
+  return registrarModulos([criarPluginCore(d.core), cadastros, pedido, criarPluginFaturamento(faturamento), criarPluginFiscal(), criarPluginIntegracaoFdv()]);
 }
 
 export interface EntradaProducao {

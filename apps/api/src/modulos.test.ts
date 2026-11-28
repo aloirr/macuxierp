@@ -18,8 +18,9 @@ import {
   type Perfil,
   type PluginModulo,
 } from '@macuxierp/platform-sdk';
-import { AuditoriaMemoria, BancoMemoria, FilaDeTrabalhosMemoria, IdempotenciaMemoria, OutboxMemoria, RelogioFixo } from '@macuxierp/platform-sdk/testes';
+import { AuditoriaMemoria, BancoMemoria, FilaDeTrabalhosMemoria, IdempotenciaMemoria, OutboxMemoria, RelogioFixo, tenantDaTx } from '@macuxierp/platform-sdk/testes';
 import { afterEach, describe, expect, it } from 'vitest';
+import { criarPluginFiscal, type DependenciasRegras } from '@macuxierp/fiscal/api';
 import { CAMINHOS_ZERAR_PEDIDOS } from '@macuxierp/pedido/contracts';
 import { z } from 'zod';
 import { criarApp, type DependenciasApp } from './app';
@@ -115,15 +116,15 @@ describe('registrarModulos', () => {
     expect(() => registrarModulos([coreDuble, manifesto('pedido', ['core', 'cadastros'])])).toThrow(/depende de cadastros/);
   });
 
-  it('montarModulos: os seis da v1; core, cadastros, pedido (T-0016), faturamento (T-0045 lote A) e integração FDV (T-0011) com rotas, o fiscal só com o manifesto', () => {
+  it('montarModulos: os seis da v1; core, cadastros, pedido (T-0016), faturamento (T-0045 lote A) e fiscal (T-0127) e integração FDV (T-0011), todos com rotas', () => {
     const m = modulosDeTeste();
     expect(m.map((p) => p.manifesto.id)).toEqual(['core', 'cadastros', 'pedido', 'faturamento', 'fiscal', 'integracao-fdv']);
-    expect(m.map((p) => p.rotas.length > 0)).toEqual([true, true, true, true, false, true]);
+    expect(m.map((p) => p.rotas.length > 0)).toEqual([true, true, true, true, true, true]);
     const integracao = m.find((p) => p.manifesto.id === 'integracao-fdv')!;
     // BKO do tenant só de leitura (ADR 0013 §6, T-0056): a credencial, a configuração e a operação são do portal `/config`.
     // T-0086 §4: o Log por cadastro e o "Baixar erros (.csv)" do BKO, também só de leitura.
     expect(integracao.rotas.map((r) => `${r.metodo} ${r.caminho}`)).toEqual([
-      'GET /monitor', 'GET /status', 'GET /entidades/:entidade/log', 'GET /entidades/:entidade/log.csv', 'GET /lotes', 'GET /lotes/exportar',
+      'GET /monitor', 'GET /ligacoes', 'GET /status', 'GET /entidades/:entidade/log', 'GET /entidades/:entidade/log.csv', 'GET /lotes', 'GET /lotes/exportar',
       'GET /clientes-recebidos', 'GET /clientes-recebidos/exportar', 'GET /lotes/:id/erros',
     ]);
     expect(integracao.rotas.every((r) => r.acao === 'integracao-fdv.ver')).toBe(true);
@@ -357,6 +358,79 @@ describe('integração FDV montada na API (T-0011, RN-CORE-02)', () => {
   });
 
   // O 503 sem a chave mestra e a escrita do conector ficam no portal: `integracao-fdv-portal.db.test.ts` (T-0056, ADR 0013).
+});
+
+describe('fiscal montado na API (T-0127, regra 6: perfil, tenant e licença)', () => {
+  const OUTRO_TENANT = '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d';
+  const LICENCAS: Licenca[] = ['cadastros', 'fiscal'].map((modulo) => ({ modulo: modulo as Licenca['modulo'], ativo: true, valido_ate: null }));
+  /** Dublê das portas do fiscal: guarda o tenant da transação de cada chamada (RLS vem da `tx` aberta pela API). */
+  const tenantsVistos: (string | null)[] = [];
+  const vazio = async () => [];
+  const deps: DependenciasRegras = {
+    regras: (tx) => (tenantsVistos.push(tenantDaTx(tx)), {
+      listar: vazio, listarTodos: vazio, obter: async () => null, inserir: async () => { throw new Error('não chega'); },
+      atualizar: async () => null, excluir: async () => null,
+    }),
+    catalogo: (tx) => (tenantsVistos.push(tenantDaTx(tx)), { listar: vazio, obter: async () => null }),
+  };
+  /** Licença por tenant: só o TENANT tem o fiscal. */
+  const montarFiscal = (licencas: Licenca[]) =>
+    montar([], undefined, registrarModulos([coreDuble, cadastrosDuble, criarPluginFiscal(deps)]), {
+      idempotencia: new IdempotenciaMemoria(),
+      licencas: { ler: async (_tx, tenantId) => (tenantId === TENANT ? licencas : []) },
+    });
+  const pedir = (app: Awaited<ReturnType<typeof montar>>, metodo: 'GET' | 'POST' | 'PUT' | 'DELETE', url: string, perfil: Perfil, tenant = TENANT) =>
+    app.inject({
+      method: metodo, url, ...(metodo === 'GET' || metodo === 'DELETE' ? {} : { payload: {} }),
+      headers: { authorization: `Bearer ${emitirTokenAcesso({ usuario_id: USUARIO, tenant_id: tenant, perfil, filial_ids: [FILIAL] }, SEGREDO, AGORA, 900).token}`, 'if-match': 'x' },
+    });
+  const REGRA = '/v1/fiscal/regras/5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f80';
+  const ESCRITAS = [['POST', '/v1/fiscal/regras'], ['PUT', REGRA], ['DELETE', REGRA], ['POST', '/v1/fiscal/catalogo/5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f80/aplicar']] as const;
+  afterEach(() => void (tenantsVistos.length = 0));
+
+  it('montarModulos: leitura com fiscal.ver e toda escrita com fiscal.regra.editar', () => {
+    const fiscal = modulosDeTeste().find((p) => p.manifesto.id === 'fiscal')!;
+    expect(fiscal.rotas.map((r) => `${r.metodo} ${r.caminho}`)).toEqual(expect.arrayContaining(['GET /regras', 'POST /regras', 'PUT /regras/:id', 'DELETE /regras/:id', 'GET /catalogo', 'POST /catalogo/:id/aplicar']));
+    for (const r of fiscal.rotas) expect([r.metodo, r.caminho, r.acao]).toEqual([r.metodo, r.caminho, r.metodo === 'GET' ? 'fiscal.ver' : 'fiscal.regra.editar']);
+  });
+
+  it('sem licença do fiscal (ou vencida) é 403 MODULO_INATIVO; sem sessão é 401', async () => {
+    const sem = await pedir(await montarFiscal([LICENCAS[0]!]), 'GET', '/v1/fiscal/regras', 'administrador');
+    expect([sem.statusCode, sem.json().codigo]).toEqual([403, 'MODULO_INATIVO']);
+    const vencida = await pedir(await montarFiscal([{ modulo: 'fiscal', ativo: true, valido_ate: new Date('2026-11-20T00:00:00Z') }]), 'GET', '/v1/fiscal/regras', 'fiscal');
+    expect(vencida.json().codigo).toBe('MODULO_INATIVO');
+    expect((await (await montarFiscal(LICENCAS)).inject({ url: '/v1/fiscal/regras' })).statusCode).toBe(401);
+    expect(tenantsVistos).toEqual([]);
+  });
+
+  it('tenant: a rota lê na transação do tenant da sessão; outro tenant sem a licença é 403 e não chega às portas', async () => {
+    const app = await montarFiscal(LICENCAS);
+    const ok = await pedir(app, 'GET', '/v1/fiscal/regras', 'leitura');
+    expect([ok.statusCode, ok.json().itens]).toEqual([200, []]);
+    expect((await pedir(app, 'GET', '/v1/fiscal/catalogo', 'fiscal')).statusCode).toBe(200);
+    expect(tenantsVistos).toEqual([TENANT, TENANT]);
+    const outro = await pedir(app, 'GET', '/v1/fiscal/regras', 'administrador', OUTRO_TENANT);
+    expect([outro.statusCode, outro.json().codigo]).toEqual([403, 'MODULO_INATIVO']);
+    expect(tenantsVistos).toEqual([TENANT, TENANT]);
+  });
+
+  it('escrita só com fiscal.regra.editar: leitura, vendedor e faturista 403; administrador e fiscal passam do perfil', async () => {
+    const app = await montarFiscal(LICENCAS);
+    for (const perfil of ['leitura', 'vendedor', 'faturista'] as const) {
+      for (const [metodo, url] of ESCRITAS) {
+        const r = await pedir(app, metodo, url, perfil);
+        expect([perfil, metodo, url, r.statusCode, r.json().codigo]).toEqual([perfil, metodo, url, 403, 'PERFIL_SEM_PERMISSAO']);
+      }
+    }
+    expect(tenantsVistos).toEqual([]);
+    for (const perfil of ['administrador', 'fiscal'] as const) {
+      // Corpo vazio: passa do perfil e da licença e cai na validação (400); a regra não existe (404). Nenhum é 403.
+      for (const [metodo, url] of ESCRITAS) {
+        const r = await pedir(app, metodo, url, perfil);
+        expect([perfil, metodo, url, r.statusCode !== 403]).toEqual([perfil, metodo, url, true]);
+      }
+    }
+  });
 });
 
 describe('faturamento na API: emissão em produção desligada até a T-0046 (RN-FAT-04, regra 7)', () => {
