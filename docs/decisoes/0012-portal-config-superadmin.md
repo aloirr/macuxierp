@@ -250,7 +250,7 @@ Pedido do Alexandre, pelo PO, em 26/11 às 21h21: "quando eu clicar em esquecer 
   - o compose entrega a senha só à api;
   - a API abre um **segundo pool**, `criarPool('macuxierp-api-config')`, com `PGUSER=macuxierp_config`, e confere na partida (`conferirPapel('macuxierp_config')`, sem superusuário e sem BYPASSRLS);
   - o `BancoPlataformaPg` passa a usar esse pool **sem `SET ROLE`**;
-  - o TOTP passa a ser obrigatório no `/config` (premissa PROVISÓRIA d da ADR 0022, decisão do PO de 28/11 07h13, até a resposta do Alexandre).
+  - o TOTP passa a ser obrigatório no `/config` (regra pela decisão 130 A do Alexandre; regra d da ADR 0022).
 - **Falha cedo:** com a `MACUXIERP_SENHA_CONFIG` e sem a `MACUXIERP_CHAVE_TOTP`, a API não sobe. O aviso cita só o nome da variável (T-0076).
 - **Chave do segredo TOTP:** é a `MACUXIERP_CHAVE_TOTP` (32 bytes, hex ou base64), gerada na VM pelo `preparar-vm.sh` se faltar e nunca trocada, como a `MACUXIERP_CHAVE_INTEGRACAO`. É separada da chave do A1 e da chave da integração: nunca reaproveitar.
 - **A membership sai depois:** o `GRANT macuxierp_config TO macuxierp_app` da 0033 só pode ser revogado depois de a produção rodar com o pool próprio. Revogar antes quebraria o `/config` enquanto a senha não existe. A revogação é a migração **0087** (banco-dados, reservada pelo gerente). Ela entra só depois disso, e é ela que fecha o "Risco aberto". Até ela entrar, vale a regra de operação de não criar a 2ª empresa (Risco aberto).
