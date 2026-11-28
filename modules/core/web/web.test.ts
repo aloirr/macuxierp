@@ -44,14 +44,14 @@ describe('BKO do core: permissões refletidas na UI (a proteção real é da API
 });
 
 describe('BKO do core: CSV das colunas do core', () => {
-  it('CSV de usuários: cabeçalho das colunas e sim/não', () => {
+  it('CSV de usuários: cabeçalho das colunas e a situação por extenso (RN-CORE-17)', () => {
     const csv = paraCsv(COLUNAS_USUARIOS, [
-      { id: 'a', nome: '=SOMA(A1)', email: 'a;b@x.test', perfil: 'leitura', filial_ids: [], ativo: true, external_id: null, ultimo_acesso_em: null, updated_at: '2026-11-21T15:00:00.000Z' },
-      { id: 'b', nome: 'Maria "M"', email: 'm@x.test', perfil: 'gerente', filial_ids: [], ativo: false, external_id: null, ultimo_acesso_em: '2026-11-20T10:00:00.000Z', updated_at: '2026-11-21T15:00:00.000Z' },
+      { id: 'a', nome: '=SOMA(A1)', email: 'a;b@x.test', perfil: 'leitura', filial_ids: [], ativo: true, situacao: 'ativo', external_id: null, ultimo_acesso_em: null, updated_at: '2026-11-21T15:00:00.000Z' },
+      { id: 'b', nome: 'Maria "M"', email: 'm@x.test', perfil: 'gerente', filial_ids: [], ativo: false, situacao: 'inativo', external_id: null, ultimo_acesso_em: '2026-11-20T10:00:00.000Z', updated_at: '2026-11-21T15:00:00.000Z' },
     ]);
-    expect(csv.startsWith('﻿Nome;E-mail;Perfil;Ativo;Último acesso\r\n')).toBe(true);
-    expect(csv).toContain(';Leitura;sim;');
-    expect(csv).toContain(';Gerente;não;');
+    expect(csv.startsWith('﻿Nome;E-mail;Perfil;Situação;Último acesso\r\n')).toBe(true);
+    expect(csv).toContain(';Leitura;Ativo;');
+    expect(csv).toContain(';Gerente;Inativo;');
   });
 
   it('RF-CORE-04: o aviso do A1 aparece a 30 dias ou menos e muda quando vence', () => {
@@ -68,7 +68,7 @@ describe('BKO do core: CSV das colunas do core', () => {
 });
 
 describe('BKO do core: cliente da API', () => {
-  const USUARIO = { id: '11111111-1111-4111-8111-111111111111', nome: 'Maria', email: 'm@x.test', perfil: 'gerente', filial_ids: [], ativo: true, external_id: null, ultimo_acesso_em: null, updated_at: '2026-11-21T15:00:00.000Z' };
+  const USUARIO = { id: '11111111-1111-4111-8111-111111111111', nome: 'Maria', email: 'm@x.test', perfil: 'gerente', filial_ids: [], ativo: true, situacao: 'ativo', external_id: null, ultimo_acesso_em: null, updated_at: '2026-11-21T15:00:00.000Z' };
 
   it('RF-CORE-02: envia o token, valida a resposta pelo contrato e a senha provisória é lida uma vez', async () => {
     const vistos: { url: string; headers: Record<string, string>; body?: string }[] = [];

@@ -9,7 +9,7 @@ import { definirPaginaLista, type ColunaLista, type ValorCsv } from '@macuxierp/
 import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
 import { ROTULOS_PERFIL, type Perfil } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
-import { AuditoriaItemLista, Id, Licenca, Usuario } from '../contracts';
+import { AuditoriaItemLista, Id, Licenca, ROTULOS_SITUACAO_USUARIO, Usuario, type SituacaoUsuario } from '../contracts';
 
 const Instante = z.string().datetime();
 
@@ -27,6 +27,8 @@ export const ROTULO_ACAO_AUDITORIA: Readonly<Record<string, string>> = {
   'core.usuario.criado': 'Usuário criado',
   'core.usuario.alterado': 'Usuário alterado',
   'core.usuario.inativado': 'Usuário inativado',
+  'core.usuario.reativado': 'Usuário reativado',
+  'core.usuario.excluido': 'Usuário excluído',
   'core.usuario.senha_redefinida': 'Senha redefinida',
   'core.empresa.alterada': 'Empresa alterada',
   'core.certificado.alterado': 'Certificado A1 alterado',
@@ -36,12 +38,18 @@ export const ROTULO_ACAO_AUDITORIA: Readonly<Record<string, string>> = {
 
 const sim = (b: boolean) => (b ? 'sim' : 'não');
 
-export const COLUNAS_USUARIOS: readonly ColunaLista<Usuario>[] = [
+/**
+ * Coluna do core com o tipo da `TabelaDensa` (o `ColunaLista` do sdk ainda não tem `tipo`). MC-0201: `data` = instante ISO
+ * exibido no fuso do tenant (`linhaDe`); o texto fixo da coluna ("Nunca entrou") sai como veio.
+ */
+export type ColunaCore<L> = ColunaLista<L> & { tipo?: 'data' | 'status' };
+
+export const COLUNAS_USUARIOS: readonly ColunaCore<Usuario>[] = [
   { id: 'nome', titulo: 'Nome', valor: (u) => u.nome },
   { id: 'email', titulo: 'E-mail', valor: (u) => u.email },
   { id: 'perfil', titulo: 'Perfil', valor: (u) => ROTULOS_PERFIL[u.perfil] ?? u.perfil },
-  { id: 'ativo', titulo: 'Ativo', valor: (u) => sim(u.ativo) },
-  { id: 'ultimo_acesso_em', titulo: 'Último acesso', valor: (u) => u.ultimo_acesso_em ?? 'Nunca entrou' },
+  { id: 'situacao', titulo: 'Situação', tipo: 'status', valor: (u) => ROTULOS_SITUACAO_USUARIO[u.situacao] },
+  { id: 'ultimo_acesso_em', titulo: 'Último acesso', tipo: 'data', valor: (u) => u.ultimo_acesso_em ?? 'Nunca entrou' },
 ];
 
 export const COLUNAS_LICENCAS: readonly ColunaLista<Licenca>[] = [
@@ -50,13 +58,20 @@ export const COLUNAS_LICENCAS: readonly ColunaLista<Licenca>[] = [
   { id: 'valido_ate', titulo: 'Válido até', valor: (l) => l.valido_ate ?? 'Sem prazo' },
 ];
 
-export const COLUNAS_AUDITORIA: readonly ColunaLista<AuditoriaItemLista>[] = [
-  { id: 'ocorrido_em', titulo: 'Quando', valor: (a) => a.ocorrido_em },
+export const COLUNAS_AUDITORIA: readonly ColunaCore<AuditoriaItemLista>[] = [
+  { id: 'ocorrido_em', titulo: 'Quando', tipo: 'data', valor: (a) => a.ocorrido_em },
   { id: 'usuario_id', titulo: 'Usuário', valor: (a) => a.usuario_id ?? 'Sistema' },
   { id: 'acao', titulo: 'Ação', valor: (a) => ROTULO_ACAO_AUDITORIA[a.acao] ?? a.acao },
   { id: 'entidade', titulo: 'Entidade', valor: (a) => a.entidade },
   { id: 'entidade_id', titulo: 'Registro', valor: (a) => a.entidade_id ?? '' },
 ];
+
+/** Tom do selo da coluna Situação (RN-CORE-17) na `TabelaDensa`; o texto é o de `ROTULOS_SITUACAO_USUARIO`. */
+export const TOM_SITUACAO_USUARIO: Readonly<Record<SituacaoUsuario, 'ok' | 'alerta' | 'neutro'>> = {
+  ativo: 'ok',
+  bloqueado: 'alerta',
+  inativo: 'neutro',
+};
 
 export const paginaUsuarios = definirPaginaLista({
   id: 'usuarios',

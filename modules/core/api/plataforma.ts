@@ -32,6 +32,7 @@ import {
   type PrimeiroAdminResposta,
   type Transacao,
   type Violacao,
+  uuidDaRota,
 } from '@macuxierp/platform-sdk';
 import {
   CampoContato,
@@ -49,8 +50,17 @@ import {
   type ResultadoReceitaPlana,
   type ResultadoSalvarFicha,
   type ResultadoTrocaCnpj,
+  UsuarioConfigCriar,
+  UsuarioConfigEditar,
+  ROTAS_USUARIOS_CONFIG,
+  type ListaUsuariosConfig,
+  type UsuarioConfig,
+  type UsuarioConfigComSenha,
+  type UsuarioExcluido,
 } from '../contracts';
 import {
+  acoesDoUsuario,
+  avaliarAlteracaoUsuario,
   avaliarPrimeiroAdmin,
   avaliarRedefinirSenhaPrimeiroAdmin,
   aplicarEdicao,
@@ -67,6 +77,10 @@ import {
 } from '../domain';
 
 type NovaSituacao = SituacaoEmpresaEntrada['situacao'];
+
+/** Item do banco (`plataforma.usuario_json`, 0078): a linha da Config sem as `acoes`, que a API calcula pelo domain. */
+export type ItemUsuarioBanco = Omit<UsuarioConfig, 'acoes'>;
+export type AcaoSituacaoUsuario = 'inativar' | 'reativar' | 'excluir';
 
 /** Porta das funções da 0033 e 0035 (lista fechada). O adaptador SQL chama só `plataforma.empresa_*` e `empresas_listar`. */
 export interface RepositorioPlataforma {
@@ -103,6 +117,16 @@ export interface RepositorioPlataforma {
   trocarCnpj(tx: Transacao, p: { id: string; cnpj: string; request_id: string }): Promise<{ cnpj: string; event_id: string } |{ bloqueado: MotivoBloqueioCnpj }>;
   /** RN-CORE-16: outra empresa viva (não excluída, fora a de referência) já usa o CNPJ. Só leitura, sem auditoria; o banco confere de novo na troca (23505). */
   cnpjEmUso(tx: Transacao, p: { id: string; cnpj: string }): Promise<boolean>;
+  /**
+   * Usuários da empresa (0078, RN-CORE-01 e RN-CORE-17): e-mail só mascarado; o banco audita só a ação e os nomes de campo.
+   * Erros já em HTTP: P0002 = 404, MXU01 = 422 (RN-CORE-01), 23505 = 409 (e-mail em uso), 23514 = 422.
+   */
+  listarUsuarios(tx: Transacao, id: string): Promise<ItemUsuarioBanco[]>;
+  criarUsuario(tx: Transacao, p: { id: string; email: string; nome: string; perfil: string; senha_hash: string; filial_ids: readonly string[]; request_id: string }): Promise<ItemUsuarioBanco>;
+  editarUsuario(tx: Transacao, p: { id: string; usuario: string; patch: UsuarioConfigEditar; request_id: string }): Promise<ItemUsuarioBanco>;
+  redefinirSenhaUsuario(tx: Transacao, p: { id: string; usuario: string; senha_hash: string; request_id: string }): Promise<ItemUsuarioBanco>;
+  /** Inativar (reversível), Reativar e Excluir (deleted_at); no excluir, `situacao` = 'excluido'. */
+  mudarSituacaoUsuario(tx: Transacao, p: { id: string; usuario: string; acao: AcaoSituacaoUsuario; request_id: string }): Promise<ItemUsuarioBanco | UsuarioExcluido>;
 }
 
 /** Porta de consulta de CNPJ dos cadastros (`ConsultaCnpjParaCore`, RF-CAD-02), declarada de forma estrutural: a apps/api liga uma na outra. */
@@ -153,8 +177,11 @@ const paraLicencas = (ms: readonly LicencaModuloPlataforma[]): Licenca[] =>
 /** RN-CORE-11: o código do FDV vem do slug quando o banco não o devolve. */
 const comCodigo = (e: EmpresaPlataforma): EmpresaPlataforma => ({ ...e, codigo: e.codigo ?? codigoDaEmpresa(e.slug) });
 
-/** Caminho de `ROTAS_FICHA` (com o prefixo do portal) no formato do plugin, que registra sem o prefixo. */
-const rotaFicha = (r: { caminho: string }) => r.caminho.slice(PREFIXO_ROTAS_PLATAFORMA.length);
+/** Caminho de `ROTAS_FICHA` e `ROTAS_USUARIOS_CONFIG` (com o prefixo do portal) no formato do plugin, que registra sem o prefixo. */
+export const semPrefixoPortal = (r: { caminho: string }) => r.caminho.slice(PREFIXO_ROTAS_PLATAFORMA.length);
+
+/** A linha da Config: o item do banco com as ações do menu (52 A), calculadas pelo domain (RN-CORE-01, RN-CORE-17). */
+const linhaUsuarioConfig = (u: ItemUsuarioBanco): UsuarioConfig => ({ ...u, acoes: acoesDoUsuario(u) });
 
 /** Resposta de dado da empresa (ficha e contato): nunca em cache do navegador nem de proxy. */
 const semCache = <T>(corpo: T) => ({ corpo, cabecalhos: { ...CABECALHOS_SENHA_PROVISORIA } });
@@ -311,7 +338,7 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
     // RN-CORE-16 (v0.3.24): Ficha editável. Salvar usa 'salvar_ficha'; situação e troca do CNPJ usam 'trocar_cnpj'; a prévia da Receita segue 'atualizar_receita'.
     definirRotaPlataforma({
       metodo: ROTAS_FICHA.salvar.metodo,
-      caminho: rotaFicha(ROTAS_FICHA.salvar),
+      caminho: semPrefixoPortal(ROTAS_FICHA.salvar),
       acao: 'plataforma.empresa.salvar_ficha',
       corpo: EdicaoFicha,
       async executar(c, { corpo, params }) {
@@ -336,7 +363,7 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
     definirRotaPlataforma({
       transacoes: 'por_etapa',
       metodo: ROTAS_FICHA.previaReceita.metodo,
-      caminho: rotaFicha(ROTAS_FICHA.previaReceita),
+      caminho: semPrefixoPortal(ROTAS_FICHA.previaReceita),
       acao: 'plataforma.empresa.atualizar_receita',
       async executar(c, { params }) {
         const id = idDoParam(params);
@@ -366,7 +393,7 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
     definirRotaPlataforma({
       transacoes: 'por_etapa',
       metodo: ROTAS_FICHA.situacaoCnpj.metodo,
-      caminho: rotaFicha(ROTAS_FICHA.situacaoCnpj),
+      caminho: semPrefixoPortal(ROTAS_FICHA.situacaoCnpj),
       acao: 'plataforma.empresa.trocar_cnpj',
       async executar(c, { params }) {
         const id = idDoParam(params);
@@ -389,7 +416,7 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
     definirRotaPlataforma({
       transacoes: 'por_etapa',
       metodo: ROTAS_FICHA.trocarCnpj.metodo,
-      caminho: rotaFicha(ROTAS_FICHA.trocarCnpj),
+      caminho: semPrefixoPortal(ROTAS_FICHA.trocarCnpj),
       acao: 'plataforma.empresa.trocar_cnpj',
       corpo: TrocaCnpj,
       async executar(c, { corpo, params }) {
@@ -448,5 +475,97 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
         return semCache(revelado);
       },
     }),
+    // Usuários da empresa na Config (v0.3.28, 0078). E-mail só mascarado; respostas sem cache (dado pessoal). A API revalida
+    // a RN-CORE-01 pelo domain com a linha lida (ultimo_admin_ativo) e o banco confere de novo com o tenant travado (MXU01).
+    definirRotaPlataforma({
+      metodo: ROTAS_USUARIOS_CONFIG.listar.metodo,
+      caminho: semPrefixoPortal(ROTAS_USUARIOS_CONFIG.listar),
+      acao: 'plataforma.usuario.ver',
+      async executar(c, { params }) {
+        const lista: ListaUsuariosConfig = { itens: (await repo.listarUsuarios(c.tx, idDoParam(params))).map(linhaUsuarioConfig) };
+        return semCache(lista);
+      },
+    }),
+    definirRotaPlataforma({
+      metodo: ROTAS_USUARIOS_CONFIG.criar.metodo,
+      caminho: semPrefixoPortal(ROTAS_USUARIOS_CONFIG.criar),
+      acao: 'plataforma.usuario.criar',
+      idempotencia: 'obrigatoria',
+      corpo: UsuarioConfigCriar,
+      async executar(c, { corpo, params }) {
+        const id = idDoParam(params);
+        const { senha, senha_hash } = await senhaProvisoria();
+        const u = await repo.criarUsuario(c.tx, { id, email: corpo.email, nome: corpo.nome, perfil: corpo.perfil, senha_hash, filial_ids: corpo.filial_ids, request_id: c.request_id });
+        const resposta: UsuarioConfigComSenha = { usuario: linhaUsuarioConfig(u), senha_provisoria: senha };
+        return { status: 201, ...semCache(resposta) };
+      },
+    }),
+    definirRotaPlataforma({
+      metodo: ROTAS_USUARIOS_CONFIG.editar.metodo,
+      caminho: semPrefixoPortal(ROTAS_USUARIOS_CONFIG.editar),
+      acao: 'plataforma.usuario.editar',
+      corpo: UsuarioConfigEditar,
+      async executar(c, { corpo, params }) {
+        const id = idDoParam(params);
+        const alvo = await usuarioOuErro(c.tx, id, params);
+        if (corpo.perfil) exigirOutroAdmin(alvo, { perfil: corpo.perfil });
+        return semCache(linhaUsuarioConfig(await repo.editarUsuario(c.tx, { id, usuario: alvo.id, patch: corpo, request_id: c.request_id })));
+      },
+    }),
+    definirRotaPlataforma({
+      metodo: ROTAS_USUARIOS_CONFIG.redefinirSenha.metodo,
+      caminho: semPrefixoPortal(ROTAS_USUARIOS_CONFIG.redefinirSenha),
+      acao: 'plataforma.usuario.redefinir_senha',
+      idempotencia: 'obrigatoria',
+      async executar(c, { params }) {
+        const id = idDoParam(params);
+        const { senha, senha_hash } = await senhaProvisoria();
+        const u = await repo.redefinirSenhaUsuario(c.tx, { id, usuario: uuidDaRota(params, 'usuario'), senha_hash, request_id: c.request_id });
+        const resposta: UsuarioConfigComSenha = { usuario: linhaUsuarioConfig(u), senha_provisoria: senha };
+        return semCache(resposta);
+      },
+    }),
+    rotaSituacaoUsuario('inativar'),
+    rotaSituacaoUsuario('reativar'),
+    rotaSituacaoUsuario('excluir'),
   ]);
+
+  /** O alvo pela listagem da 0078 (a mesma leitura da tela): fora da lista = 404. */
+  async function usuarioOuErro(tx: Transacao, id: string, params: Record<string, string>): Promise<ItemUsuarioBanco> {
+    const usuarioId = uuidDaRota(params, 'usuario');
+    const alvo = (await repo.listarUsuarios(tx, id)).find((u) => u.id === usuarioId);
+    if (!alvo) throw erros.naoEncontrado('Usuário');
+    return alvo;
+  }
+
+  /** Inativar (reversível), Reativar e Excluir (deleted_at), RN-CORE-17; o último administrador ativo não sai (RN-CORE-01). */
+  function rotaSituacaoUsuario(acao: AcaoSituacaoUsuario) {
+    return definirRotaPlataforma({
+      metodo: ROTAS_USUARIOS_CONFIG[acao].metodo,
+      caminho: semPrefixoPortal(ROTAS_USUARIOS_CONFIG[acao]),
+      acao: `plataforma.usuario.${acao}`,
+      async executar(c, { params }) {
+        const id = idDoParam(params);
+        const alvo = await usuarioOuErro(c.tx, id, params);
+        if (acao !== 'reativar') exigirOutroAdmin(alvo, { ativo: false });
+        const u = await repo.mudarSituacaoUsuario(c.tx, { id, usuario: alvo.id, acao, request_id: c.request_id });
+        // O banco devolve o item completo no 1º excluir e só {id, situacao} na repetição: a resposta é sempre a curta.
+        const corpo: UsuarioConfig | UsuarioExcluido = u.situacao === 'excluido' ? { id: u.id, situacao: 'excluido' } : linhaUsuarioConfig(u);
+        return semCache(corpo);
+      },
+    });
+  }
+}
+
+/**
+ * RN-CORE-01 pelo domain com a linha lida: ativo e bloqueado contam como ativos; `ultimo_admin_ativo` do banco diz se há
+ * outro administrador ativo (0 ou ao menos 1). Inativar e Excluir tiram dos ativos (`ativo: false`); rebaixar troca o perfil.
+ */
+function exigirOutroAdmin(u: ItemUsuarioBanco, alteracao: { perfil?: ItemUsuarioBanco['perfil']; ativo?: boolean }): void {
+  const r = avaliarAlteracaoUsuario({
+    atual: { id: u.id, perfil: u.perfil, ativo: u.situacao !== 'inativo' },
+    alteracao,
+    outrosAdministradoresAtivos: u.ultimo_admin_ativo ? 0 : 1,
+  });
+  if (!r.ok) throw erros.regra('RN-CORE-01', r.mensagem);
 }

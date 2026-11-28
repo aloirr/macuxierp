@@ -5,10 +5,20 @@
  * O unique_violation (23505) de slug ou e-mail repetido vira `null` (409 na rota); os demais SQLSTATE seguem para a apps/api.
  */
 import { DETALHE_CODIGO_RESERVADO, erros, MENSAGEM_CODIGO_RESERVADO, type EmpresaPlataforma, type Licenca, type SituacaoEmpresaEntrada, type Transacao } from '@macuxierp/platform-sdk';
-import type { CampoContato, CnaeDescrito, FichaReceitaPlana, FichaReceitaPlanaMascarada, MotivoBloqueioCnpj } from '../contracts';
+import {
+  MENSAGEM_EMAIL_EM_USO,
+  MENSAGEM_ULTIMO_ADMIN,
+  type CampoContato,
+  type CnaeDescrito,
+  type FichaReceitaPlana,
+  type FichaReceitaPlanaMascarada,
+  type MotivoBloqueioCnpj,
+  type UsuarioConfigEditar,
+  type UsuarioExcluido,
+} from '../contracts';
 import { codigosParaDescrever, descreverFicha, MENSAGEM_SEM_CNPJ } from '../domain';
 import { sqlstate } from './erro-pg';
-import type { RepositorioPlataforma } from './plataforma';
+import type { AcaoSituacaoUsuario, ItemUsuarioBanco, RepositorioPlataforma } from './plataforma';
 
 /** SQLSTATE da `empresa_trocar_cnpj` que viram bloqueio tratado (RN-CORE-16). */
 const BLOQUEIOS_TROCA_CNPJ: Record<string, MotivoBloqueioCnpj> = {
@@ -76,6 +86,33 @@ async function comErrosDaFicha<R>(fn: () => Promise<R>): Promise<R> {
     }
   }
 }
+
+/**
+ * Erros das funções de usuário da 0078 em HTTP, com mensagem fixa (o texto do banco não sai): P0002 = empresa ou usuário
+ * inexistente ou de outro tenant (404), MXU01 = último administrador ativo (RN-CORE-01, 422), 23505 = e-mail em uso
+ * (RN-CORE-17, 409), 23514 = perfil, nome ou campo recusado (422). MXS01 segue para o mapa da apps/api (401).
+ */
+async function comErrosDeUsuario<R>(fn: () => Promise<R>): Promise<R> {
+  try {
+    return await fn();
+  } catch (e) {
+    switch (sqlstate(e)) {
+      case 'P0002':
+        throw erros.naoEncontrado('Usuário');
+      case 'MXU01':
+        throw erros.regra('RN-CORE-01', MENSAGEM_ULTIMO_ADMIN);
+      case '23505':
+        throw erros.conflito(MENSAGEM_EMAIL_EM_USO);
+      case '23514':
+        throw erros.regra('RN-CORE-17', 'Os dados do usuário foram recusados', { usuario: 'Dados inválidos' });
+      default:
+        throw e;
+    }
+  }
+}
+
+const usuario = <R = ItemUsuarioBanco>(tx: Transacao, sql: string, parametros: readonly unknown[]): Promise<R> =>
+  comErrosDeUsuario(async () => (await primeiraLinha<{ u: R }>(tx, sql, parametros)).u);
 
 const empresa = async (tx: Transacao, sql: string, parametros: readonly unknown[]): Promise<EmpresaPlataforma> =>
   (await primeiraLinha<{ e: EmpresaPlataforma }>(tx, sql, parametros)).e;
@@ -220,5 +257,30 @@ export class RepositorioPlataformaSql implements RepositorioPlataforma {
 
   async revelarEmailPrimeiroAdmin(tx: Transacao, p: { id: string; request_id: string }): Promise<string> {
     return (await primeiraLinha<{ email: string }>(tx, 'SELECT plataforma.empresa_primeiro_admin_email($1::uuid, $2) email', [p.id, p.request_id])).email;
+  }
+
+  // Usuários da empresa (0078, RN-CORE-01 e RN-CORE-17): o banco revalida a sessão do superadmin, trava e audita.
+  listarUsuarios(tx: Transacao, id: string): Promise<ItemUsuarioBanco[]> {
+    return usuario<ItemUsuarioBanco[]>(tx, 'SELECT plataforma.empresa_usuarios_listar($1::uuid) u', [id]);
+  }
+
+  criarUsuario(tx: Transacao, p: { id: string; email: string; nome: string; perfil: string; senha_hash: string; filial_ids: readonly string[]; request_id: string }): Promise<ItemUsuarioBanco> {
+    return usuario(tx, 'SELECT plataforma.empresa_usuario_criar($1::uuid, $2, $3, $4, $5, $6::uuid[], $7) u', [
+      p.id, p.email, p.nome, p.perfil, p.senha_hash, p.filial_ids, p.request_id,
+    ]);
+  }
+
+  editarUsuario(tx: Transacao, p: { id: string; usuario: string; patch: UsuarioConfigEditar; request_id: string }): Promise<ItemUsuarioBanco> {
+    return usuario(tx, 'SELECT plataforma.empresa_usuario_editar($1::uuid, $2::uuid, $3::jsonb, $4) u', [p.id, p.usuario, JSON.stringify(p.patch), p.request_id]);
+  }
+
+  redefinirSenhaUsuario(tx: Transacao, p: { id: string; usuario: string; senha_hash: string; request_id: string }): Promise<ItemUsuarioBanco> {
+    return usuario(tx, 'SELECT plataforma.empresa_usuario_redefinir_senha($1::uuid, $2::uuid, $3, $4) u', [p.id, p.usuario, p.senha_hash, p.request_id]);
+  }
+
+  mudarSituacaoUsuario(tx: Transacao, p: { id: string; usuario: string; acao: AcaoSituacaoUsuario; request_id: string }): Promise<ItemUsuarioBanco | UsuarioExcluido> {
+    // Lista fechada: a ação escolhe uma de três funções fixas (nada de SQL montado com o valor).
+    const funcao = { inativar: 'empresa_usuario_inativar', reativar: 'empresa_usuario_reativar', excluir: 'empresa_usuario_excluir' }[p.acao];
+    return usuario(tx, `SELECT plataforma.${funcao}($1::uuid, $2::uuid, $3) u`, [p.id, p.usuario, p.request_id]);
   }
 }

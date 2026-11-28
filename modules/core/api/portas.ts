@@ -32,6 +32,8 @@ export interface LinhaUsuario {
   ativo: boolean;
   external_id: string | null;
   ultimo_acesso_em: Date | null;
+  /** Trava do login (falhas): vigente = situação bloqueado (RN-CORE-17). */
+  bloqueado_ate?: Date | null;
   updated_at: Date;
 }
 
@@ -103,6 +105,8 @@ export interface RepositorioCore {
   criarUsuario(tx: Transacao, u: NovoUsuario, agora: Date): Promise<LinhaUsuario>;
   /** token: 0 linhas = null */
   atualizarUsuario(tx: Transacao, id: string, patch: PatchUsuario, agora: Date, token?: Date): Promise<LinhaUsuario | null>;
+  /** RN-CORE-17: exclusão lógica (ativo = false e deleted_at); some da lista e libera o e-mail. Já excluído = null. */
+  excluirUsuario(tx: Transacao, id: string, agora: Date): Promise<LinhaUsuario | null>;
   /** Zera também `senha_temporaria_hash` e `senha_temporaria_expira_em` (RN-CORE-13). */
   definirSenha(tx: Transacao, id: string, senhaHash: string, agora: Date): Promise<void>;
   /**
