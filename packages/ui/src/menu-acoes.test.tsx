@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { MenuAcoes, acaoTeclaGatilho, acaoTeclaMenu, itemDesligado, motivoDoItem, ordenarAcoes, posicaoMenu, proximoItemMenu, type AcaoMenu, type MenuAcoesProps } from './MenuAcoes.js';
+import { MenuAcoes, acaoTeclaGatilho, cliqueFora, rolagemFechaMenu, acaoTeclaMenu, itemDesligado, motivoDoItem, ordenarAcoes, posicaoMenu, proximoItemMenu, type AcaoMenu, type MenuAcoesProps } from './MenuAcoes.js';
 import * as pacote from './index.js';
 
 const nada = () => {};
@@ -240,5 +240,30 @@ describe('MC-0212 (decisão 52 A): "Ações ▾" das tabelas', () => {
       { chave: 'excluir', rotulo: 'Excluir', aoAcionar: f, perigo: true, oculto: true },
     ]);
     expect(ultimoAdmin.perigos).toEqual([]);
+  });
+});
+
+describe('MenuAcoes (auditoria v0.3.32): clique fora, rolagem e redimensionar', () => {
+  const caixa = (filhos: unknown[]) => ({ contains: (n: unknown) => filhos.includes(n) });
+  it('clique no menu ou no gatilho não fecha; fora fecha', () => {
+    const item = {};
+    const menu = caixa([item]);
+    const gat = caixa([]);
+    expect(cliqueFora(item, [menu, gat])).toBe(false);
+    expect(cliqueFora({}, [menu, gat])).toBe(true);
+    expect(cliqueFora({}, [null, undefined])).toBe(true);
+  });
+  it('rolagem do próprio menu não fecha; a da página fecha', () => {
+    const item = {};
+    expect(rolagemFechaMenu(item, caixa([item]))).toBe(false);
+    expect(rolagemFechaMenu({}, caixa([item]))).toBe(true);
+    expect(rolagemFechaMenu({}, null)).toBe(true);
+  });
+  it('Esc fecha com o foco no gatilho ou em um item (mesma ação); Tab fecha devolvendo o foco', () => {
+    expect(acaoTeclaGatilho('Escape', true)).toBe('fechar');
+    expect(acaoTeclaMenu('Tab')).toBe('fechar-e-focar-gatilho');
+  });
+  it('alvo de 44 px: o gatilho, a principal e os itens têm .mx-acoes-alvo (44 px até 640 px)', () => {
+    expect(aberto({ principal: { rotulo: 'Log', aoAcionar: nada } }).match(/mx-acoes-alvo/g)?.length).toBe(4);
   });
 });

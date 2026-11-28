@@ -56,6 +56,16 @@ export function acaoTeclaMenu(tecla: string): 'fechar-e-focar-gatilho' | null {
   return tecla === 'Tab' ? 'fechar-e-focar-gatilho' : null;
 }
 
+/** Clique fora: só conta o alvo que não está no menu nem no gatilho (T-0099, auditoria v0.3.32). */
+export function cliqueFora(alvo: unknown, dentro: Array<{ contains(n: Node): boolean } | null | undefined>): boolean {
+  return !dentro.some((el) => el?.contains(alvo as Node));
+}
+
+/** Rolagem da página fecha o menu; a rolagem do próprio menu (janela baixa) não. */
+export function rolagemFechaMenu(origem: unknown, menu: { contains(n: Node): boolean } | null | undefined): boolean {
+  return !menu?.contains(origem as Node);
+}
+
 /** Itens visíveis na ordem final: normais, depois (após um separador) os de perigo. */
 export function ordenarAcoes(acoes: AcaoMenu[]): { normais: AcaoMenu[]; perigos: AcaoMenu[] } {
   const visiveis = acoes.filter((a) => !a.oculto);
@@ -158,15 +168,19 @@ export function MenuAcoes({ acoes, principal, rotuloLinha, abertoInicial = false
   useEffect(() => {
     if (!aberto) return;
     const fora = (e: MouseEvent) => {
-      const alvo = e.target as Node;
-      if (!menu.current?.contains(alvo) && !gatilho.current?.contains(alvo)) fechar(false);
+      if (cliqueFora(e.target, [menu.current, gatilho.current])) fechar(false);
     };
-    const rolagem = () => fechar(false);
+    const rolagem = (e: Event) => {
+      if (rolagemFechaMenu(e.target, menu.current)) fechar(false);
+    };
+    const redimensionar = () => fechar(false);
     document.addEventListener('mousedown', fora);
     window.addEventListener('scroll', rolagem, true);
+    window.addEventListener('resize', redimensionar);
     return () => {
       document.removeEventListener('mousedown', fora);
       window.removeEventListener('scroll', rolagem, true);
+      window.removeEventListener('resize', redimensionar);
     };
   }, [aberto, fechar]);
 

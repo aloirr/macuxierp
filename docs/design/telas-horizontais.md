@@ -120,3 +120,10 @@ Rótulos (CNPJ, RAZÃO SOCIAL…) em caixa-alta pequena azul-noite; valores em t
 Prints de 390 e 1440 das abas Empresa e Integração (mais 768 e 1280 quando a grade mudar de colunas) vão à PO antes do merge. O designer-ux confere os prints da Ficha no PR do engenheiro-apps; o `corretor-redundancias` confere que nenhuma tela nova volta à coluna estreita nem à pilha vertical.
 
 Prints deste lote (cabeçalho de tabela em azul-noite, `TabelaDensa` do `packages/ui` com dados fictícios): `docs/design/prints/v0324-tabela-cabecalho-390.png` e `docs/design/prints/v0324-tabela-cabecalho-1440.png`. Em 390 a tabela de exemplo ainda rola para o lado: as colunas de apoio que somem no celular e as Ações à vista são a correção do §4 (a), no PR do engenheiro-apps.
+
+## Grade dos formulários: itens da lista do PO (v0.3.32, regra 11)
+Formulário em grade de 12 colunas: campo curto em 1 a 2 colunas, médio em 3 a 4, largo em 6 ou mais. O dono da tela aplica; o designer-ux confere no print de 1366 e 1920.
+1. **Filial, "Número inicial da NF-e": 2 colunas**, na linha de série e ambiente. São no máximo 9 dígitos; mais que isso é sobra vazia.
+2. **Dica da IE curta**: uma linha só, sem explicação longa; modelo: "Só números, ou ISENTO." A dica não repete o que o erro de campo já diz. Se quebra em duas linhas em 1366, está longa.
+3. **Filial com CRT diferente de 3: 3 colunas** (4 campos por linha). Os campos que só o CRT 3 pede ficam ocultos e o resto se reorganiza, sem reservar o espaço dos ocultos.
+Para todos: altura de campo, fonte e espaçamento só dos tokens; a barra de botões fica no rodapé do bloco.
