@@ -168,9 +168,9 @@ export function calcularIcmsItem(c: ContextoIcmsItem): ResultadoIcmsItem {
     if (regra.aliquota_interna_destino === null) return { ok: false, codigo: 'REGRA_INCOMPLETA', mensagem: `A regra ${regra.id} (código ${cod}) exige a alíquota interna do destino para o ST.` };
     // Só o ST por MVA (modBCST 4, ou não informado) é calculado. Pauta/preço tabelado/lista (0..3 e 5) ainda não existem: recusar é melhor que errar a BC-ST.
     if (regra.mod_bc_st !== null && regra.mod_bc_st !== 4) return { ok: false, codigo: 'CODIGO_NAO_SUPORTADO', mensagem: `A regra ${regra.id} usa modBCST ${regra.mod_bc_st} (pauta, preço tabelado ou lista): o motor calcula o ST só por MVA (modBCST 4).` };
-    // O campo `ajustar_mva` é booleano com padrão false, então "não ajusta" explícito não se distingue de "não informado" depois do parse do contrato:
-    // a recusa vale só para regra sem o campo (nulo/ausente, chamador que não passou pelo schema). Com false vale a MVA original, como antes.
-    if (c.interestadual && (regra.ajustar_mva as boolean | null | undefined) == null && regra.mva_ajustada === null) return { ok: false, codigo: 'REGRA_INCOMPLETA', mensagem: `A regra ${regra.id} (ST interestadual) não diz se ajusta a MVA (ajustar_mva).` };
+    // `ajustar_mva` não tem default no contrato: nulo é "não informado". Interestadual sem a decisão (e sem MVA ajustada cadastrada) não é calculado:
+    // CODIGO_NAO_SUPORTADO (fail-closed, T-0127). Com false explícito vale a MVA original; intraestadual não ajusta.
+    if (c.interestadual && (regra.ajustar_mva as boolean | null | undefined) == null && regra.mva_ajustada === null) return { ok: false, codigo: 'CODIGO_NAO_SUPORTADO', mensagem: `A regra ${regra.id} (ST interestadual) não diz se ajusta a MVA (ajustar_mva nulo): o motor não escolhe por ela.` };
     let mva = regra.mva_original;
     if (regra.mva_ajustada !== null && c.interestadual) mva = regra.mva_ajustada;
     else if (regra.ajustar_mva && c.interestadual && mva !== null) {

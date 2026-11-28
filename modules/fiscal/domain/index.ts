@@ -8,3 +8,4 @@ export * from './pis-cofins';
 export * from './ibs-cbs';
 export * from './carga-aproximada';
 export * from './cfop';
+export * from './catalogo';

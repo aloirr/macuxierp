@@ -1,4 +1,4 @@
-import { cnaesSecundariosNoCampo } from './ficha';
+import { cnaesSecundariosNoCampo, formatarCnae } from './ficha';
 import { EdicaoFicha, FORMATO_FICHA, type FichaReceitaPlanaMascarada, type RegimeFicha } from '@macuxierp/core/contracts';
 
 /**
@@ -158,7 +158,7 @@ export function formDaFicha(f: FichaReceitaPlanaMascarada | null, razaoEmpresa: 
     natureza_juridica: t(f?.natureza_juridica),
     porte: t(f?.porte),
     regime_receita: t(f?.regime_receita),
-    cnae_principal: t(f?.cnae_principal),
+    cnae_principal: formatarCnae(t(f?.cnae_principal)),
     cnae_secundarios: cnaesSecundariosNoCampo(f?.cnae_secundarios),
     email: '',
     telefone: '',
