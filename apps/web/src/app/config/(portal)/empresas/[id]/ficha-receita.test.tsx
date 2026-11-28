@@ -46,6 +46,13 @@ describe('Ficha da Receita editável na aba Empresa (RN-CORE-16, v0.3.24)', () =
     expect(h).not.toContain('>Descartar<');
     expect(h).toContain('Consultada em 24/11/2026 12:00');
   });
+  it('MC-2: Endereço e Na Receita fecham as 12 colunas, sem buraco (CEP 2 + Logradouro 8 + Número 2; Complemento 6 + Bairro 2 + IBGE 2 + UF 2; os 6 de Na Receita em 2)', () => {
+    const h = render();
+    const classe = (c: string) => new RegExp(`<div class="campo([^"]*)"><label for="ficha-${c}"`).exec(h)?.[1] ?? null;
+    expect(classe('logradouro')).toBe(' campo-oito');
+    expect(classe('complemento')).toBe('');
+    for (const c of ['cep', 'numero', 'bairro', 'municipio_ibge', 'uf', 'situacao_cadastral', 'situacao_cadastral_data', 'data_abertura', 'natureza_juridica', 'porte', 'regime_receita']) expect(classe(c)).toBe(' campo-curto');
+  });
   it('RD-2373: sem o placeholder "Vazio mantém o salvo" e sem as dicas de quantidade; "Só números ou ISENTO." fica; a data mostra o formato no placeholder', () => {
     const h = render();
     expect(h).not.toContain('Vazio mantém o salvo');

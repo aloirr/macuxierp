@@ -16,7 +16,6 @@ export function EnviosRecentes({ lotes, fuso, barra, retorno }: { lotes: readonl
   const linhas = [...lotes].sort((a, b) => Date.parse(b.recebido_em) - Date.parse(a.recebido_em)).slice(0, LIMITE_ENVIOS_RECENTES);
   const colunas: ColunaTabela<LoteEntradaResumo>[] = [
     { id: 'quando', titulo: 'Quando', tipo: 'data', celula: (l) => formatarDataHora(l.recebido_em, fuso) },
-    { id: 'direcao', titulo: 'Direção', celula: () => 'Cliente → ERP' },
     { id: 'cadastro', titulo: 'Cadastro', celula: (l) => rotuloDoLote(l.entidade) },
     { id: 'registros', titulo: 'Registros', tipo: 'numero', celula: (l) => l.recebidos },
     { id: 'comErro', titulo: 'Com erro', tipo: 'numero', celula: (l) => (l.com_erro > 0 ? <strong className="erro-numero">{l.com_erro}</strong> : l.com_erro) },

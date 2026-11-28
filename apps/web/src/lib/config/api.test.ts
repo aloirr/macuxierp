@@ -72,8 +72,8 @@ describe('cliente da plataforma', () => {
 describe('mensagens', () => {
   it('textos da spec por contexto', () => {
     expect(mensagemDoErro(new ErroPlataforma(409, 'CONFLITO'), 'criar_empresa').campos.codigo).toBe('Já existe uma empresa com esse código. Escolha outro.');
-    expect(mensagemDoErro(new ErroPlataforma(409, 'CONFLITO'), 'criar_admin').texto).toBe('Esta empresa já tem administrador. Redefina a senha dele.');
-    expect(mensagemDoErro(new ErroPlataforma(409, 'CONFLITO'), 'redefinir')).toMatchObject({ texto: 'A senha já foi exibida. Redefina para gerar outra.', chaveNova: true });
+    expect(mensagemDoErro(new ErroPlataforma(409, 'CONFLITO'), 'usuario_senha')).toMatchObject({ texto: 'A senha já foi exibida. Redefina para gerar outra.', chaveNova: true });
+    expect(mensagemDoErro(new ErroPlataforma(409, 'CONFLITO'), 'usuario').texto).toBe('O pedido já foi feito ou o usuário mudou. Atualize a lista e tente de novo.');
     expect(mensagemDoErro(new ConfigNaoAutenticado(), 'situacao').expirou).toBe(true);
     expect(mensagemDoErro(new ConfigMuitasTentativas(), 'entrar').texto).toBe('Muitas tentativas. Aguarde 15 minutos e tente de novo.');
     expect(mensagemDoErro(new ConfigContaBloqueada(), 'entrar').texto).toContain(RESPOSTA_CONTA_BLOQUEADA.titulo);

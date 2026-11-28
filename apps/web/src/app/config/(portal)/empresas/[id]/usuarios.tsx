@@ -1,5 +1,6 @@
 'use client';
 import { type AcaoUsuario, type UsuarioConfig } from '@macuxierp/core/contracts';
+import { AVISO_USUARIO } from '@/lib/usuarios-textos';
 import { PERFIS } from '@macuxierp/platform-sdk';
 import { Chip, Dialogo, DialogoMotivo, MenuAcoes, ResultadoAcao, TabelaDensa, useResultado, type ColunaTabela } from '@macuxierp/ui';
 import { useRouter } from 'next/navigation';
@@ -19,11 +20,11 @@ type Formulario = { tipo: 'criar' } | { tipo: 'editar'; usuario: UsuarioConfig }
 type Confirmacao = { acao: Exclude<AcaoUsuario, 'editar'>; usuario: UsuarioConfig };
 type SenhaMostrada = { nome: string; senha: string };
 
-const TEXTOS_CONFIRMACAO: Readonly<Record<Confirmacao['acao'], { titulo: (n: string) => string; aviso: string; botao: string; fechar: string; sucesso: string; destrutivo?: boolean }>> = {
-  redefinir_senha: { titulo: (n) => `Redefinir a senha de ${n}?`, aviso: 'A senha atual deixa de valer. Uma senha provisória nova aparece uma única vez.', botao: 'Redefinir senha', fechar: 'Cancelar', sucesso: 'Senha redefinida.' },
-  inativar: { titulo: (n) => `Inativar ${n}?`, aviso: 'A pessoa deixa de entrar. Dá para reativar depois.', botao: 'Inativar', fechar: 'Cancelar', sucesso: 'Usuário inativado.' },
-  reativar: { titulo: (n) => `Reativar ${n}?`, aviso: 'A pessoa volta a entrar com a senha atual.', botao: 'Reativar', fechar: 'Cancelar', sucesso: 'Usuário reativado.' },
-  excluir: { titulo: (n) => `Excluir ${n}?`, aviso: 'O usuário some da lista e o e-mail fica livre para outro cadastro. Não dá para desfazer; para só impedir a entrada, use Inativar.', botao: 'Excluir', fechar: 'Manter usuário', sucesso: 'Usuário excluído.', destrutivo: true },
+const TEXTOS_CONFIRMACAO: Readonly<Record<Confirmacao['acao'], { titulo: (n: string) => string; aviso: string; botao: string; fechar: string; sucesso?: string; destrutivo?: boolean }>> = {
+  redefinir_senha: { titulo: (n) => `Redefinir a senha de ${n}?`, aviso: 'A senha atual deixa de valer.', botao: 'Redefinir senha', fechar: 'Cancelar' },
+  inativar: { titulo: (n) => `Inativar ${n}?`, aviso: AVISO_USUARIO.inativar, botao: 'Inativar', fechar: 'Cancelar', sucesso: 'Usuário inativado.' },
+  reativar: { titulo: (n) => `Reativar ${n}?`, aviso: AVISO_USUARIO.reativar, botao: 'Reativar', fechar: 'Cancelar', sucesso: 'Usuário reativado.' },
+  excluir: { titulo: (n) => `Excluir ${n}?`, aviso: AVISO_USUARIO.excluir, botao: 'Excluir', fechar: 'Manter usuário', sucesso: 'Usuário excluído.', destrutivo: true },
 };
 
 export function BlocoUsuarios({ empresaId, itens, fuso, editavel = true }: { empresaId: string; itens: UsuarioConfig[] | null; fuso: string; editavel?: boolean }) {
@@ -65,12 +66,13 @@ export function BlocoUsuarios({ empresaId, itens, fuso, editavel = true }: { emp
         const r = await redefinirSenhaUsuarioAcao(empresaId, c.usuario.id, chaves.current.de(id));
         chaves.current.aposResposta(id, r);
         if (!r.ok) return falhou(r.erro);
+        // o diálogo da senha já diz que deu certo: sem o retorno "Senha redefinida." por baixo
         setSenha({ nome: r.valor.usuario.nome, senha: r.valor.senha_provisoria });
-        return terminar(texto.sucesso);
+        return router.refresh();
       }
       const r = await (c.acao === 'inativar' ? inativarUsuarioAcao : c.acao === 'reativar' ? reativarUsuarioAcao : excluirUsuarioAcao)(empresaId, c.usuario.id);
       if (!r.ok) return falhou(r.erro);
-      terminar(texto.sucesso);
+      terminar(texto.sucesso ?? '');
     });
   };
 
@@ -91,7 +93,7 @@ export function BlocoUsuarios({ empresaId, itens, fuso, editavel = true }: { emp
     { id: 'ultimo', titulo: 'Último acesso', tipo: 'data', celula: (u) => textoUltimoAcesso(u, fuso) },
     {
       id: 'acoes',
-      titulo: 'Ações',
+      titulo: '', // o botão da linha já diz "Ações de <nome>" ao leitor de tela
       celula: (u) => <MenuDoUsuario usuario={u} desabilitado={pendente || !editavel} aoAcionar={(chave) => (chave === 'editar' ? setFormulario({ tipo: 'editar', usuario: u }) : setConfirmacao({ acao: chave, usuario: u }))} />,
     },
   ];
@@ -102,11 +104,11 @@ export function BlocoUsuarios({ empresaId, itens, fuso, editavel = true }: { emp
         <h2 id="h-usuarios">Usuários <span className="contagem">· {itens.length}</span></h2>
         <input type="search" className="busca-usuarios" aria-label="Buscar nome ou e-mail" placeholder="Buscar nome ou e-mail" value={busca} onChange={(e) => setBusca(e.target.value)} />
       </div>
-      <div className="tabela-rolavel com-sinal-rolagem">
+      <div className="tabela-rolavel com-sinal-rolagem legenda-so-leitor">
         <TabelaDensa colunas={colunas} linhas={visiveis} chaveLinha={(u) => u.id} textoVazio={itens.length === 0 ? 'Nenhum usuário. Adicione o primeiro administrador.' : 'Nenhum usuário encontrado.'} legenda="Usuários da empresa" />
       </div>
       <div className="barra-acoes">
-        <button className="mx-botao-secundario" type="button" disabled={pendente || !editavel} onClick={() => { limpar(); setFormulario({ tipo: 'criar' }); }}>+ Adicionar usuário</button>
+        <button className="mx-botao-secundario" type="button" disabled={pendente || !editavel} onClick={() => { limpar(); setFormulario({ tipo: 'criar' }); }}>Adicionar usuário</button>
       </div>
       <ResultadoAcao resultado={resultado} chave={chaveResultado} />
       {formulario && (

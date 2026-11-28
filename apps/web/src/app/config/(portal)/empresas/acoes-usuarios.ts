@@ -3,7 +3,7 @@ import { UsuarioConfigCriar, UsuarioConfigEditar } from '@macuxierp/core/contrac
 import { PADRAO_UUID } from '@macuxierp/platform-sdk';
 import { revalidatePath } from 'next/cache';
 import { criarUsuario, editarUsuario, excluirUsuario, inativarUsuario, reativarUsuario, redefinirSenhaUsuario } from '@/lib/config/api';
-import { USUARIO_NAO_ENCONTRADO } from '@/lib/config/erros';
+import { USUARIO_DADO_RECUSADO, USUARIO_NAO_ENCONTRADO } from '@/lib/config/erros';
 import { executarConfig, falha, type Resultado } from '@/lib/config/executar';
 
 /**
@@ -23,7 +23,7 @@ const MSG: Readonly<Record<string, string>> = {
 };
 const camposDe = (erro: { issues: readonly { path: readonly (string | number)[] }[] }): Record<string, string> =>
   Object.fromEntries(erro.issues.map((i) => [String(i.path[0] ?? 'nome'), MSG[String(i.path[0])] ?? 'Confira este campo.']));
-const invalido = (erro: Parameters<typeof camposDe>[0]) => falha('Confira os dados e tente de novo.', camposDe(erro));
+const invalido = (erro: Parameters<typeof camposDe>[0]) => falha(USUARIO_DADO_RECUSADO, camposDe(erro));
 
 export async function criarUsuarioAcao(id: string, entrada: { nome: string; email: string; perfil: string; filial_ids?: string[] }, chave: string) {
   const p = UsuarioConfigCriar.safeParse({ nome: entrada.nome, email: entrada.email.trim(), perfil: entrada.perfil, filial_ids: entrada.filial_ids ?? [] });
@@ -44,7 +44,7 @@ export async function editarUsuarioAcao(id: string, usuario: string, entrada: { 
 
 export async function redefinirSenhaUsuarioAcao(id: string, usuario: string, chave: string) {
   if (!PADRAO_UUID.test(usuario)) return semUsuario();
-  const r = await executarConfig('usuario', (t) => redefinirSenhaUsuario(t, id, usuario, chave));
+  const r = await executarConfig('usuario_senha', (t) => redefinirSenhaUsuario(t, id, usuario, chave));
   if (r.ok) atualizar(id);
   return r;
 }

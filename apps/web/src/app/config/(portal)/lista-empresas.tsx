@@ -15,7 +15,7 @@ import { SeloSituacao } from './selo-situacao';
 function CelulaModulos({ modulos }: { modulos: EmpresaPlataforma['modulos'] }) {
   const ligados = modulosLigados(modulos);
   if (ligados.length === 0) return <span>{resumoModulos(0)}</span>;
-  const lista = ligados.map(nomeModulo).join(', ');
+  const lista = ligados.map(nomeModulo).join(' · ');
   return (
     <span title={lista} aria-label={lista} className="modulos-celula">
       <span className="modulos-lista">{lista}</span>
@@ -51,13 +51,13 @@ export function ListaEmpresas({ empresas, vazio, proximo = null, busca = '' }: {
     });
   };
   const colunas: ColunaTabela<EmpresaPlataforma>[] = [
-    { id: 'nome', titulo: 'Empresa', celula: (e) => <b>{e.nome}</b> },
-    { id: 'codigo', titulo: 'Código', celula: (e) => (
-        <Link href={`/config/empresas/${e.id}`} className="codigo" onClick={(ev) => ev.stopPropagation()}>
-          {codigoExibido(e)}
+    { id: 'nome', titulo: 'Empresa', celula: (e) => (
+        <Link href={`/config/empresas/${e.id}`} onClick={(ev) => ev.stopPropagation()}>
+          {e.nome}
         </Link>
       ),
     },
+    { id: 'codigo', titulo: 'Código', celula: (e) => <span className="codigo">{codigoExibido(e)}</span> },
     { id: 'cnpj', titulo: 'CNPJ', celula: (e) => <span className="sem-quebra">{e.cnpj ? formatarDocumento(e.cnpj) : AUSENTE}</span> },
     { id: 'situacao', titulo: 'Situação', celula: (e) => <SeloSituacao situacao={e.situacao} /> },
     { id: 'modulos', titulo: 'Módulos', celula: (e) => <CelulaModulos modulos={e.modulos} /> },
@@ -66,7 +66,8 @@ export function ListaEmpresas({ empresas, vazio, proximo = null, busca = '' }: {
   return (
     <>
     <div className="titulo-lista">
-      <h1>Empresas <span className="contagem">· {visiveis.length}</span></h1>
+      {/* A API não manda o total: com "Carregar mais" à vista, o número só das linhas carregadas daria a entender o total, e fica de fora. */}
+      <h1>Empresas{cursor === null && <> <span className="contagem">· {visiveis.length}</span></>}</h1>
       <form method="get" action="/config" role="search" className="busca-lista" onSubmit={(ev) => ev.preventDefault()}>
         <input
           type="search"

@@ -1,7 +1,7 @@
 import { MENSAGEM_ULTIMO_ADMIN, type UsuarioConfig } from '@macuxierp/core/contracts';
 import { CODIGO_EMAIL_EM_USO, MENSAGEM_EMAIL_EM_USO } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
-import { ErroPlataforma, SENHA_JA_EXIBIDA, USUARIO_NAO_ENCONTRADO, mensagemDoErro } from './erros';
+import { ErroPlataforma, SENHA_JA_EXIBIDA, USUARIO_CONFLITO, USUARIO_NAO_ENCONTRADO, mensagemDoErro } from './erros';
 import { etiquetaUltimoAdmin, filtrarUsuarios, itensDoMenuUsuario, seloDoUsuario, textoUltimoAcesso } from './usuarios';
 
 const ID = '3f1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c70';
@@ -54,7 +54,9 @@ describe('Usuários da Config: mensagens de erro (ctx "usuario")', () => {
   });
   it('409 email_em_uso (ADR 0021) → o texto do SDK no campo e-mail; outro 409 (chave repetida) → senha já exibida, com chave nova', () => {
     expect(mensagemDoErro(new ErroPlataforma(409, 'CONFLITO', {}, 'outro texto', { codigo: CODIGO_EMAIL_EM_USO }), 'usuario')).toMatchObject({ texto: MENSAGEM_EMAIL_EM_USO, campos: { email: MENSAGEM_EMAIL_EM_USO } });
-    expect(erro(409, 'CONFLITO', 'Requisição já concluída')).toMatchObject({ texto: SENHA_JA_EXIBIDA, chaveNova: true });
+    // "a senha já foi exibida" só no Redefinir senha; no Criar e nas outras ações, o conflito genérico
+    expect(mensagemDoErro(new ErroPlataforma(409, 'CONFLITO', {}, 'Requisição já concluída'), 'usuario_senha')).toMatchObject({ texto: SENHA_JA_EXIBIDA, chaveNova: true });
+    expect(erro(409, 'CONFLITO', 'Requisição já concluída')).toMatchObject({ texto: USUARIO_CONFLITO, chaveNova: true });
   });
   it('404 → usuário fora da empresa; 400 → campos', () => {
     expect(erro(404, 'NAO_ENCONTRADO').texto).toBe(USUARIO_NAO_ENCONTRADO);

@@ -51,7 +51,7 @@ function Campo({ def, valor, erro, daReceita, desabilitado, aoMudar, extra }: { 
   const id = `ficha-${def.campo}`;
   const comum = { id, name: def.campo, value: valor, disabled: desabilitado, 'aria-invalid': erro ? true : undefined, 'aria-describedby': erro ? `${id}-erro` : undefined } as const;
   return (
-    <div className={`campo${def.curto ? ' campo-curto' : ''}${def.medio ? ' campo-medio' : ''}${def.largo ? ' campo-largo' : ''}${daReceita ? ' veio-da-receita' : ''}`}>
+    <div className={`campo${def.curto ? ' campo-curto' : ''}${def.medio ? ' campo-medio' : ''}${def.oito ? ' campo-oito' : ''}${def.largo ? ' campo-largo' : ''}${daReceita ? ' veio-da-receita' : ''}`}>
       <label htmlFor={id} className="rotulo-campo">{def.rotulo}</label>
       {def.tipo === 'regime' ? (
         <select {...comum} onChange={(e) => aoMudar(e.target.value)}>
@@ -212,7 +212,7 @@ export function FichaReceita({ empresaId, ficha, razaoEmpresa, lugar = null, fus
       </button>
       {acaoCnpj}
       <span className="rodape-estado apoio" role="status">
-        {mudados.length === 0 ? 'Nenhuma alteração pendente' : mudados.length === 1 ? '1 campo alterado' : `${mudados.length} campos alterados`}
+        {mudados.length === 0 ? '' : mudados.length === 1 ? '1 campo alterado' : `${mudados.length} campos alterados`}
       </span>
     </>
   );

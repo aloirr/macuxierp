@@ -9,6 +9,7 @@ vi.mock('next/navigation', () => ({
     estado.redirecionou.push(d);
     throw new Error(`REDIRECT ${d}`);
   },
+  useRouter: () => ({ refresh: () => undefined, push: () => undefined }),
 }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
@@ -16,6 +17,10 @@ import { MENSAGEM_ULTIMO_ADMIN, type UsuarioConfig } from '@macuxierp/core/contr
 import { CODIGO_EMAIL_EM_USO, MENSAGEM_EMAIL_EM_USO } from '@macuxierp/platform-sdk';
 import { criarUsuarioAcao, editarUsuarioAcao, excluirUsuarioAcao, inativarUsuarioAcao, reativarUsuarioAcao, redefinirSenhaUsuarioAcao } from './acoes-usuarios';
 import { listarUsuarios } from '@/lib/config/api';
+import { ErroPlataforma, mensagemDoErro } from '@/lib/config/erros';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { createElement } from 'react';
+import { BlocoUsuarios } from './[id]/usuarios';
 
 const EMP = '11111111-1111-4111-8111-111111111111';
 const ADM = '3f1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c70';
@@ -32,7 +37,7 @@ function recalcular(): void {
   const ativos = lista.filter((u) => u.perfil === 'administrador' && u.situacao !== 'inativo');
   for (const u of lista) {
     u.ultimo_admin_ativo = ativos.length === 1 && ativos[0]!.id === u.id;
-    u.acoes = u.situacao === 'inativo' ? ['editar', 'reativar', 'excluir'] : u.ultimo_admin_ativo ? ['editar', 'redefinir_senha'] : ['editar', 'redefinir_senha', 'inativar', 'excluir'];
+    u.acoes = [...(u.situacao === 'inativo' ? ['editar', 'reativar'] : ['editar', 'redefinir_senha', 'inativar']), ...(u.ultimo_admin_ativo ? [] : ['excluir'])] as UsuarioConfig['acoes']; // = acoesDoUsuario do domain do core
   }
 }
 const novo = (id: string, nome: string, perfil: UsuarioConfig['perfil']): UsuarioConfig => ({
@@ -124,7 +129,7 @@ describe('Usuários da Config: fluxo completo contra a API falsa (criar → senh
 
     const final = await listarUsuarios('tok', EMP);
     expect(final.itens.map((u) => u.nome)).toEqual(['Ana Exemplo']);
-    expect(final.itens[0]).toMatchObject({ ultimo_admin_ativo: true, acoes: ['editar', 'redefinir_senha'] });
+    expect(final.itens[0]).toMatchObject({ ultimo_admin_ativo: true, acoes: ['editar', 'redefinir_senha', 'inativar'] });
     expect(log).not.toHaveBeenCalled();
     log.mockRestore();
   });
@@ -172,5 +177,38 @@ describe('Usuários da Config: fluxo completo contra a API falsa (criar → senh
     estado.cookie = undefined;
     await expect(inativarUsuarioAcao(EMP, ADM)).rejects.toThrow('REDIRECT /');
     expect(chamadas).toHaveLength(0);
+  });
+});
+
+describe('regra 9 (LGPD): a senha provisória conhecida não vaza no fluxo de Usuários (criar e redefinir senha)', () => {
+  it('nem no texto de erro (erros.ts), nem no HTML depois de fechar o diálogo, nem em nenhum console.*', async () => {
+    const espias = (['log', 'warn', 'error', 'info'] as const).map((m) => vi.spyOn(console, m));
+    const criado = await criarUsuarioAcao(EMP, { nome: 'Bruno Exemplo', email: 'bruno@exemplo.com', perfil: 'faturista' }, 'k-criar');
+    expect(criado).toMatchObject({ ok: true, valor: { senha_provisoria: SENHA } });
+    const BRUNO = criado.ok ? criado.valor.usuario.id : '';
+    const redefinida = await redefinirSenhaUsuarioAcao(EMP, BRUNO, 'k-senha');
+    expect(redefinida).toMatchObject({ ok: true, valor: { senha_provisoria: SENHA } });
+    // a repetição das duas chaves volta erro: o texto devolvido não traz a senha
+    const repetidas = [await criarUsuarioAcao(EMP, { nome: 'Bruno Exemplo', email: 'bruno@exemplo.com', perfil: 'faturista' }, 'k-criar'), await redefinirSenhaUsuarioAcao(EMP, BRUNO, 'k-senha')];
+    for (const r of repetidas) {
+      expect(r.ok).toBe(false);
+      expect(JSON.stringify(r)).not.toContain(SENHA);
+    }
+    // erros.ts: mesmo que a API devolvesse a senha no corpo do erro, o texto de erro dos Usuários não a repete
+    for (const ctx of ['usuario', 'usuario_senha'] as const) {
+      for (const status of [400, 403, 404, 409, 500, 503]) {
+        const m = mensagemDoErro(new ErroPlataforma(status, 'X', {}, SENHA), ctx);
+        expect(JSON.stringify(m)).not.toContain(SENHA);
+      }
+    }
+    // HTML: o diálogo da senha fechado (estado inicial do bloco, como depois do "Já entreguei"), com a lista relida da API
+    const relida = await listarUsuarios('tok', EMP);
+    const h = renderToStaticMarkup(createElement(BlocoUsuarios, { empresaId: EMP, itens: relida.itens, fuso: 'America/Manaus' }));
+    expect(h).toContain('Bruno Exemplo');
+    expect(h).not.toContain(SENHA);
+    expect(h).not.toContain('senha-provisoria');
+    // console.*: nenhuma chamada leva a senha
+    expect(JSON.stringify(espias.map((e) => e.mock.calls))).not.toContain(SENHA);
+    for (const e of espias) e.mockRestore();
   });
 });

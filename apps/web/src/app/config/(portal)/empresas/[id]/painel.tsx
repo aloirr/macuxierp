@@ -136,7 +136,7 @@ function SuspenderEmpresa({ empresa, chave, aoErro }: Comum & { chave: string })
   const [resultado, chaveResultado, mostrar, limpar] = useResultado();
   const [pendente, iniciar] = useTransition();
   const suspender = empresa.situacao === 'ativo';
-  if (empresa.situacao === 'encerrado') return <span className="rodape-estado apoio">Empresa encerrada.</span>;
+  if (empresa.situacao === 'encerrado') return null; // o selo do título já diz "Encerrado"
   const confirmar = (motivo: string) => {
     setAberto(false);
     iniciar(async () => {

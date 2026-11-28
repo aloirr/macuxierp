@@ -4,6 +4,7 @@
  * colunas, filtros, rótulos, validação e o aviso da senha provisória (RN-CORE-10) vêm de `@macuxierp/core/web` e `contracts`; a API revalida
  * perfil, tenant e licença (RN-CORE-02, RN-CORE-09). Sem dado pessoal em log. A senha provisória só passa pela resposta da escrita.
  */
+import { AVISO_USUARIO, tomAmarelo } from '@/lib/usuarios-textos';
 import {
   AVISO_SENHA_PROVISORIA, COLUNAS_USUARIOS, PAGINAS_CORE, ROTULO_MODULO, TOM_SITUACAO_USUARIO, linhaAuditoria, linhaLicenca, linhaUsuario, opcoesDePerfil, paginaAuditoria, paginaLicencas, paginaUsuarios, quadroEmpresaFiscal,
 } from '@macuxierp/core/web';
@@ -98,10 +99,10 @@ export function acoesDoUsuario(l: Linha, perfil: Perfil): readonly AcaoVista[] {
   // RN-CORE-17: Inativar é reversível (Reativar) e Excluir é definitivo (some da lista e libera o e-mail); Excluir fica por último, em vermelho.
   const excluir: AcaoVista = {
     id: 'excluir', rotulo: 'Excluir', metodo: 'POST', caminho: `${caminho}/excluir`, entrada: 'confirmar', destrutivo: true, tituloDialogo: 'Excluir este usuário?',
-    aviso: 'O usuário some da lista e o e-mail fica livre para outro cadastro. Não dá para desfazer; para só impedir a entrada, use Inativar.', rotuloConfirmar: 'Excluir', textoCarregando: 'Excluindo…', dados,
+    aviso: AVISO_USUARIO.excluir, rotuloConfirmar: 'Excluir', textoCarregando: 'Excluindo…', dados,
   };
   if (!u.ativo) {
-    return [{ id: 'reativar', rotulo: 'Reativar', metodo: 'POST', caminho: `${caminho}/reativar`, entrada: 'confirmar', tituloDialogo: 'Reativar este usuário?', aviso: 'A pessoa volta a entrar no ERP com a senha atual.', rotuloConfirmar: 'Reativar', textoCarregando: 'Reativando…', dados }, editar, excluir];
+    return [{ id: 'reativar', rotulo: 'Reativar', metodo: 'POST', caminho: `${caminho}/reativar`, entrada: 'confirmar', tituloDialogo: 'Reativar este usuário?', aviso: AVISO_USUARIO.reativar, rotuloConfirmar: 'Reativar', textoCarregando: 'Reativando…', dados }, editar, excluir];
   }
   return [
     editar,
@@ -111,7 +112,7 @@ export function acoesDoUsuario(l: Linha, perfil: Perfil): readonly AcaoVista[] {
     },
     {
       id: 'inativar', rotulo: 'Inativar', metodo: 'POST', caminho: `${caminho}/inativar`, entrada: 'confirmar', tituloDialogo: 'Inativar este usuário?',
-      aviso: 'A pessoa deixa de entrar no ERP. Dá para reativar depois.', rotuloConfirmar: 'Inativar', textoCarregando: 'Inativando…', dados,
+      aviso: AVISO_USUARIO.inativar, rotuloConfirmar: 'Inativar', textoCarregando: 'Inativando…', dados,
     },
     excluir,
   ];
@@ -133,8 +134,6 @@ const FILTROS_USUARIOS = [
   { chave: 'inativos', rotulo: 'Situação', tipo: 'selecao', vazio: 'Só ativos', opcoes: [{ valor: 'true', rotulo: 'Ativos e inativos' }] },
 ] as const;
 
-/** O contrato chama o amarelo de 'alerta'; o selo do shell, de 'aviso'. */
-const tomDoSelo = (t: 'ok' | 'alerta' | 'neutro'): 'ok' | 'aviso' | 'neutro' => (t === 'alerta' ? 'aviso' : t);
 
 export const LISTA_USUARIOS: TelaLista = {
   tipo: 'lista',
@@ -145,7 +144,7 @@ export const LISTA_USUARIOS: TelaLista = {
   linha: (item, fuso) => linhaUsuario(item as unknown as Usuario, fuso),
   selos: (item) => {
     const u = item as unknown as Usuario;
-    return { situacao: [{ texto: ROTULOS_SITUACAO_USUARIO[u.situacao], tom: tomDoSelo(TOM_SITUACAO_USUARIO[u.situacao]) }] };
+    return { situacao: [{ texto: ROTULOS_SITUACAO_USUARIO[u.situacao], tom: tomAmarelo(TOM_SITUACAO_USUARIO[u.situacao]) }] };
   },
   novo: { rota: ROTA_USUARIO_NOVO, rotulo: 'Novo usuário', criar: GERIR },
   acaoDaLinha: {

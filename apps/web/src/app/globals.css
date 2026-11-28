@@ -142,7 +142,6 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 .titulo-lista h1 { grid-column: span 8; margin: 0; }
 .titulo-lista .contagem { font-size: var(--mx-tamanho-texto); font-weight: var(--mx-peso-normal); color: var(--mx-cor-texto-secundario); }
 .titulo-lista .busca-lista { grid-column: span 4; margin: 0; }
-.busca-lista input { width: 100%; height: var(--mx-medida-altura-campo); padding: 0 12px; border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; font: inherit; font-size: var(--mx-tamanho-texto); background: var(--mx-cor-branco); color: var(--mx-cor-grafite); }
 @media (max-width: 767px) { .titulo-lista h1, .titulo-lista .busca-lista { grid-column: 1 / -1; } }
 .rodape-lista { justify-content: flex-end; margin: 12px 0 0; }
 .codigo, .senha-provisoria { font-family: var(--mx-fonte-codigo); }
@@ -157,19 +156,21 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 .cabecalho-ficha p { margin: 0; }
 @media (max-width: 640px) { .cabecalho-ficha .mx-botao-secundario { min-height: 44px } }
 .lista-modulos, .lista-cnae { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }
-.lista-modulos label { display: inline-flex; gap: 8px; align-items: center; }
+.lista-modulos label { display: inline-flex; gap: 8px; align-items: center; white-space: nowrap; font-size: var(--mx-tamanho-texto); }
+/* MC-1: o .formulario input (largura 100%, padding e canto) não alcança o checkbox dos Módulos, que fica no tamanho do packages/ui. */
+.formulario .lista-modulos input.mx-checkbox { flex: none; width: 16px; height: 16px; padding: 0; border-radius: 3px; }
 /* Formulários na grade de 12 colunas, a dos filtros (regra 11, T-0121): campo curto 2, médio 4, longo 6, largo 12; até 1100 px 3/6/12; até 640 px tudo em coluna. */
 .formulario { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; align-items: start; margin: 0 0 16px; }
 .formulario > * { grid-column: 1 / -1; min-width: 0; margin-top: 0; margin-bottom: 0; }
 .formulario > .campo { grid-column: span 6; }
 .formulario > .campo.campo-curto { grid-column: span 2; }
 .formulario > .campo.campo-medio { grid-column: span 4; }
+.formulario > .campo.campo-oito { grid-column: span 8; }
 .formulario > .campo.campo-largo { grid-column: 1 / -1; }
-@media (max-width: 1100px) { .formulario > .campo { grid-column: 1 / -1; } .formulario > .campo.campo-curto { grid-column: span 3; } .formulario > .campo.campo-medio { grid-column: span 6; } }
+@media (max-width: 1100px) { .formulario > .campo, .formulario > .campo.campo-oito { grid-column: 1 / -1; } .formulario > .campo.campo-curto { grid-column: span 3; } .formulario > .campo.campo-medio { grid-column: span 6; } }
 @media (max-width: 640px) { .formulario > .campo, .formulario > .campo.campo-curto, .formulario > .campo.campo-medio { grid-column: 1 / -1; } }
 /* Texto corrido: no máximo 72 caracteres por linha, só nos blocos de texto (nunca no contêiner). */
 .apoio, p.erro, .aviso-sucesso, .faixa-aviso { max-width: 72ch; }
-.painel-senha { margin-top: 16px; padding: 12px 16px; border: 1px solid var(--mx-cor-borda-tabela); border-radius: 6px; background: var(--mx-cor-perola); }
 .senha-provisoria { display: block; font-size: var(--mx-tamanho-grande); font-weight: 600; padding: 8px 0; word-break: break-all; user-select: all; }
 
 /* Troca de senha (T-0052): lista de regras e aviso de sucesso; só tokens do @macuxierp/ui. */
@@ -262,7 +263,7 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
   .corpo-log .selo { padding-inline: 6px; }
   /* Aba Dados no celular (#840): ficam Cadastro (com a última carga sob o nome), Situação e Ações, com Importar e "Ações" um sobre o outro;
      a posição está presa à ordem das colunas por aba-dados.test.tsx. */
-  .tabela-dados th:nth-child(3), .tabela-dados td:nth-child(3), .tabela-dados th:nth-child(4), .tabela-dados td:nth-child(4), .tabela-dados th:nth-child(5), .tabela-dados td:nth-child(5), .tabela-dados th:nth-child(6), .tabela-dados td:nth-child(6) { display: none; }
+  .tabela-dados th:nth-child(3), .tabela-dados td:nth-child(3), .tabela-dados th:nth-child(4), .tabela-dados td:nth-child(4), .tabela-dados th:nth-child(5), .tabela-dados td:nth-child(5) { display: none; }
   .tabela-dados th, .tabela-dados td { padding: 6px 4px !important; }
   .corpo-log .selo, .corpo-log td span { white-space: normal; }
 }
@@ -387,7 +388,12 @@ button.link { background: none; border: 0; padding: 0; color: inherit; font: inh
 .cabecalho-bloco h2 { margin: 0; border: 0; padding: 0; }
 .casca-plataforma .bloco > .cabecalho-bloco { padding-bottom: 8px; border-bottom: 1px solid var(--mx-cor-borda-tabela); }
 .cabecalho-bloco .contagem { font-weight: var(--mx-peso-normal); color: var(--mx-cor-texto-secundario); }
-.busca-usuarios { height: var(--mx-medida-altura-campo); width: 100%; padding: 0 12px; border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; font: inherit; font-size: var(--mx-tamanho-texto); background: var(--mx-cor-branco); color: var(--mx-cor-grafite); box-sizing: border-box; }
+.bloco-usuarios > .cabecalho-bloco { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); }
+.bloco-usuarios > .cabecalho-bloco h2 { grid-column: span 8; }
+.bloco-usuarios > .cabecalho-bloco .busca-usuarios { grid-column: span 4; }
+@media (max-width: 767px) { .bloco-usuarios > .cabecalho-bloco h2, .bloco-usuarios > .cabecalho-bloco .busca-usuarios { grid-column: 1 / -1; } }
+/* Busca única das listas que filtram ao digitar (Empresas e Usuários): uma regra só. */
+.busca-lista input, .busca-usuarios { height: var(--mx-medida-altura-campo); width: 100%; padding: 0 12px; border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; font: inherit; font-size: var(--mx-tamanho-texto); background: var(--mx-cor-branco); color: var(--mx-cor-grafite); box-sizing: border-box; }
 .etiqueta-ultimo-admin { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: var(--mx-cor-nevoa); color: var(--mx-cor-texto-secundario); font-size: var(--mx-tamanho-micro); white-space: nowrap; }
 .rodape-pagina { position: sticky; bottom: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 8px; margin: 16px 0 0; padding: 12px 0; background: var(--mx-cor-perola); border-top: 1px solid var(--mx-cor-borda-tabela); }
 .rodape-alvo { display: contents; }
@@ -447,8 +453,8 @@ button.link { background: none; border: 0; padding: 0; color: inherit; font: inh
 .cartao-ligacao .tabela-fdv table { min-width: 0; }
 .cartao-ligacao .tabela-fdv th:nth-child(4), .cartao-ligacao .tabela-fdv td:nth-child(4), .cartao-ligacao .tabela-fdv th:nth-child(5), .cartao-ligacao .tabela-fdv td:nth-child(5) { min-width: 0; }
 .cartao-ficha > .bloco { border: 0; padding: 0; background: none; }
-/* Cartão da ligação de entrada: a última carga sobe para sob o nome e a Origem sai da vista; Registros, Com erro e Ações ficam. O cartão é um só (sem borda dupla). */
-.cartao-ligacao .tabela-dados th:nth-child(3), .cartao-ligacao .tabela-dados td:nth-child(3), .cartao-ligacao .tabela-dados th:nth-child(6), .cartao-ligacao .tabela-dados td:nth-child(6) { display: none; }
+/* Cartão da ligação de entrada: a última carga sobe para sob o nome; Registros, Com erro e Ações ficam (a Origem saiu das colunas). O cartão é um só (sem borda dupla). */
+.cartao-ligacao .tabela-dados th:nth-child(3), .cartao-ligacao .tabela-dados td:nth-child(3) { display: none; }
 .cartao-ligacao .tabela-dados .carga-sob-nome { display: block; font-size: var(--mx-tamanho-micro); color: var(--mx-cor-texto-secundario); font-weight: var(--mx-peso-normal); margin-top: 2px; }
 .cartao-ligacao .tabela-dados table { min-width: 0; }
 .casca-plataforma .bloco.ligacao, .casca-plataforma .bloco.envios-recentes { border: 0; padding: 0; background: none; }

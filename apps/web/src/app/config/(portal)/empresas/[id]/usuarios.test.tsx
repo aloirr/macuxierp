@@ -16,7 +16,7 @@ const u = (id: string, extra: Partial<UsuarioConfig> = {}): UsuarioConfig => ({
   id, nome: 'Ana Exemplo', email_mascarado: 'an****@exemplo.com', perfil: 'administrador', filial_ids: [], situacao: 'ativo', ultimo_acesso_em: '2026-11-27T20:42:00.000Z',
   deve_trocar_senha: false, ultimo_admin_ativo: false, acoes: ['editar', 'redefinir_senha', 'inativar', 'excluir'], ...extra,
 });
-const ANA = u('3f1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c70', { ultimo_admin_ativo: true, acoes: ['editar', 'redefinir_senha'] });
+const ANA = u('3f1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c70', { ultimo_admin_ativo: true, acoes: ['editar', 'redefinir_senha', 'inativar'] }); // acoesDoUsuario do domain do core
 const BRUNO = u('8a2b4c6d-1e3f-4a5b-9c7d-0e1f2a3b4c5d', { nome: 'Bruno Exemplo', email_mascarado: 'br****@exemplo.com', perfil: 'faturista' });
 const ELISA = u('9b3c5d7e-2f40-4b6c-8d8e-1f2a3b4c5d6e', { nome: 'Elisa Exemplo', perfil: 'fiscal', situacao: 'inativo', acoes: ['editar', 'reativar', 'excluir'] });
 const bloco = (itens: UsuarioConfig[] | null) => renderToStaticMarkup(<BlocoUsuarios empresaId={EMP} itens={itens} fuso="America/Manaus" />);
@@ -37,9 +37,9 @@ describe('Bloco Usuários da aba Empresa (Config v4, MC-0212)', () => {
     expect(h.match(/último administrador/g)).toHaveLength(1);
     expect(h).toMatch(/Administrador<span class="etiqueta-ultimo-admin">último administrador<\/span>/);
   });
-  it('barra do bloco: "+ Adicionar usuário" embaixo da tabela; nenhum diálogo nem senha na saída inicial', () => {
+  it('barra do bloco: "Adicionar usuário" embaixo da tabela; nenhum diálogo nem senha na saída inicial', () => {
     const h = bloco([ANA]);
-    expect(h.indexOf('+ Adicionar usuário')).toBeGreaterThan(h.lastIndexOf('</table>'));
+    expect(h.indexOf('>Adicionar usuário</button>')).toBeGreaterThan(h.lastIndexOf('</table>'));
     expect(h).not.toContain('role="dialog"');
     expect(h).not.toContain('senha-provisoria');
   });
@@ -57,11 +57,11 @@ describe('Bloco Usuários da aba Empresa (Config v4, MC-0212)', () => {
     expect(aberto(ELISA)).toContain('>Reativar<');
     expect(aberto(ELISA)).not.toContain('>Inativar<');
   });
-  it('último administrador: sem Excluir nem Inativar no menu (a API não os manda); sem ações, sem menu', () => {
+  it('último administrador: sem Excluir no menu; o Inativar fica e a API recusa (RN-CORE-01, MXU01); sem ações, sem menu', () => {
     const h = aberto(ANA);
     expect(h).toContain('>Editar<');
     expect(h).not.toContain('>Excluir<');
-    expect(h).not.toContain('>Inativar<');
+    expect(h).toContain('>Inativar<');
     expect(renderToStaticMarkup(<MenuDoUsuario usuario={u(ANA.id, { acoes: [] })} aoAcionar={() => undefined} />)).toBe('');
   });
 });

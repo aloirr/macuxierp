@@ -25,6 +25,8 @@ export interface DefCampo {
   /** Largura na grade de 12 (.formulario): curto = 2, médio = 4, largo = 12 e, sem nenhum, 6 (regra 11). */
   curto?: boolean;
   medio?: boolean;
+  /** 8 colunas (o Logradouro, para a linha do Endereço fechar as 12 com CEP e Número). */
+  oito?: boolean;
   largo?: boolean;
   /** Texto curto de formato, abaixo do campo. */
   dica?: string;
@@ -41,7 +43,7 @@ const M = FORMATO_FICHA.max;
 
 /**
  * Os cartões do formulário, na ordem da tela (Config v4: grade de 12, como a simulação aprovada 445e459; o CNPJ entra depois do nome fantasia).
- * RD-2373: sem as dicas de quantidade (o limite de caracteres e o erro sob o campo já dizem); a data mostra o formato no placeholder.
+ * RD-2373: só a dica "Só números ou ISENTO." fica (o limite de caracteres e o erro sob o campo já dizem o resto); a data mostra o formato no placeholder.
  */
 export const GRUPOS_FICHA: GrupoFicha[] = [
   {
@@ -60,10 +62,10 @@ export const GRUPOS_FICHA: GrupoFicha[] = [
     titulo: 'Endereço',
     campos: [
       { campo: 'cep', curto: true, rotulo: 'CEP', tipo: 'texto', max: 9 },
-      { campo: 'logradouro', medio: true, rotulo: 'Logradouro', tipo: 'texto', max: M.logradouro },
+      { campo: 'logradouro', oito: true, rotulo: 'Logradouro', tipo: 'texto', max: M.logradouro },
       { campo: 'numero', curto: true, rotulo: 'Número', tipo: 'texto', max: M.numero },
-      { campo: 'complemento', medio: true, rotulo: 'Complemento', tipo: 'texto', max: M.complemento },
-      { campo: 'bairro', medio: true, rotulo: 'Bairro', tipo: 'texto', max: M.bairro },
+      { campo: 'complemento', rotulo: 'Complemento', tipo: 'texto', max: M.complemento },
+      { campo: 'bairro', curto: true, rotulo: 'Bairro', tipo: 'texto', max: M.bairro },
       { campo: 'municipio_ibge', curto: true, rotulo: 'Código IBGE do município', tipo: 'texto', max: 7 },
       { campo: 'uf', curto: true, rotulo: 'UF', tipo: 'texto', max: 2 },
     ],
@@ -74,7 +76,7 @@ export const GRUPOS_FICHA: GrupoFicha[] = [
     titulo: 'Atividades (CNAE)',
     campos: [
       { campo: 'cnae_principal', medio: true, rotulo: 'CNAE principal', tipo: 'texto', max: 9 },
-      { campo: 'cnae_secundarios', largo: true, rotulo: 'CNAE secundários', tipo: 'lista', dica: 'Um por linha.' },
+      { campo: 'cnae_secundarios', largo: true, rotulo: 'CNAE secundários', tipo: 'lista' },
     ],
   },
   {
@@ -83,7 +85,7 @@ export const GRUPOS_FICHA: GrupoFicha[] = [
     titulo: 'Contato',
     campos: [
       { campo: 'email', largo: true, rotulo: 'E-mail', tipo: 'email', max: 254 },
-      { campo: 'telefone', largo: true, rotulo: 'Telefone', tipo: 'telefone', max: 16, dica: 'DDD e número.' },
+      { campo: 'telefone', largo: true, rotulo: 'Telefone', tipo: 'telefone', max: 16 },
     ],
   },
   {
@@ -91,12 +93,12 @@ export const GRUPOS_FICHA: GrupoFicha[] = [
     colunas: 12,
     titulo: 'Na Receita',
     campos: [
-      { campo: 'situacao_cadastral', medio: true, rotulo: 'Situação cadastral', tipo: 'texto', max: M.situacao },
+      { campo: 'situacao_cadastral', curto: true, rotulo: 'Situação cadastral', tipo: 'texto', max: M.situacao },
       { campo: 'situacao_cadastral_data', curto: true, rotulo: 'Data da situação', tipo: 'data' },
       { campo: 'data_abertura', curto: true, rotulo: 'Abertura', tipo: 'data' },
-      { campo: 'natureza_juridica', medio: true, rotulo: 'Natureza jurídica', tipo: 'texto', max: M.natureza },
-      { campo: 'porte', medio: true, rotulo: 'Porte', tipo: 'texto', max: M.porte },
-      { campo: 'regime_receita', medio: true, rotulo: 'Regime', tipo: 'regime' },
+      { campo: 'natureza_juridica', curto: true, rotulo: 'Natureza jurídica', tipo: 'texto', max: M.natureza },
+      { campo: 'porte', curto: true, rotulo: 'Porte', tipo: 'texto', max: M.porte },
+      { campo: 'regime_receita', curto: true, rotulo: 'Regime', tipo: 'regime' },
     ],
   },
 ];

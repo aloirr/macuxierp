@@ -42,7 +42,7 @@ function recalcular() {
   const ativos = usuarios.filter((u) => u.perfil === 'administrador' && u.situacao !== 'inativo');
   for (const u of usuarios) {
     u.ultimo_admin_ativo = ativos.length === 1 && ativos[0].id === u.id;
-    u.acoes = u.situacao === 'inativo' ? ['editar', 'reativar', 'excluir'] : u.ultimo_admin_ativo ? ['editar', 'redefinir_senha'] : ['editar', 'redefinir_senha', 'inativar', 'excluir'];
+    u.acoes = [...(u.situacao === 'inativo' ? ['editar', 'reativar'] : ['editar', 'redefinir_senha', 'inativar']), ...(u.ultimo_admin_ativo ? [] : ['excluir'])]; // = acoesDoUsuario do domain do core
   }
 }
 const FICHA = { razao_social: 'EMPRESA EXEMPLO COMÉRCIO LTDA', nome_fantasia: null, ie: null, logradouro: null, numero: null, complemento: null, bairro: 'CENTRO', cep: '69000000', municipio_ibge: '1302603', uf: 'AM', email_mascarado: 'co****@exemplo.com', telefone_mascarado: '(92) ****-0000', cnae_principal: '4781400', regime_receita: 'simples', situacao_cadastral: 'Ativa', situacao_cadastral_data: '2020-01-31', data_abertura: '2020-01-31', natureza_juridica: 'Sociedade Empresária Limitada', porte: 'Demais', cnae_secundarios: ['4751201', '7319002'], receita_fonte: 'fonte-ficticia', receita_consultada_em: '2026-11-27T14:10:00.000Z' };
@@ -159,18 +159,28 @@ try {
   };
   const abrir = async (p, caminho) => { await p.goto(`${BASE}${caminho}`, { waitUntil: 'networkidle', timeout: 120000 }); };
   const linha = (p, nome) => p.locator('tr', { hasText: nome });
-  const menu = async (p, nome) => { await p.getByRole('button', { name: `Ações de ${nome}` }).click(); };
+  // o clique antes da hidratação não abre o menu: tenta de novo até o menu aparecer
+  const menu = async (p, nome) => {
+    for (let i = 0; i < 20; i++) {
+      await p.getByRole('button', { name: `Ações de ${nome}` }).click();
+      if (await p.getByRole('menu').first().isVisible().catch(() => false)) return;
+      await pausa(300);
+    }
+  };
   const item = (p, rotulo) => p.getByRole('menuitem', { name: rotulo, exact: true });
   const aguardarSemDialogo = (p) => p.locator('[role="dialog"]').waitFor({ state: 'detached', timeout: 15000 });
 
   const ctx = await contexto(1366, 900);
   const p = await ctx.newPage();
+  const consoleDoNavegador = []; // regra 9: a senha provisória nunca passa pelo console
+  p.on('console', (m) => consoleDoNavegador.push(m.text()));
   await abrir(p, `/config/empresas/${EMP}`);
   if ((await p.locator('#h-usuarios').count()) === 0) console.log(`pagina: ${p.url()} :: ${(await p.locator('body').innerText()).slice(0, 600)}`);
   confere((await p.locator('#h-usuarios').count()) === 1, 'a aba Empresa mostra o bloco Usuários');
   confere((await p.getByText('último administrador').count()) === 1, 'a etiqueta "último administrador" aparece uma vez (Ana)');
   await menu(p, 'Ana Exemplo');
-  confere((await item(p, 'Excluir').count()) === 0 && (await item(p, 'Inativar').count()) === 0, 'a Ana (último administrador) não tem Excluir nem Inativar no menu');
+  const menuAna = (await p.getByRole('menuitem').allInnerTexts()).join('|');
+  confere(menuAna === 'Editar|Redefinir senha|Inativar', `a Ana (${menuAna}) não tem Excluir; o Inativar fica e a API recusa (RN-CORE-01)`);
   await p.keyboard.press('Escape');
   await menu(p, 'Bruno Exemplo');
   const rotulos = await p.getByRole('menuitem').allInnerTexts();
@@ -180,7 +190,7 @@ try {
   if (PRINTS) await p.screenshot({ path: join(PRINTS, 'empresa-usuarios-1366.png'), fullPage: true });
 
   // criar → senha provisória uma vez
-  await p.getByRole('button', { name: '+ Adicionar usuário' }).click();
+  await p.getByRole('button', { name: 'Adicionar usuário' }).click();
   await p.getByRole('dialog').getByLabel('Nome', { exact: true }).fill('Diego Exemplo');
   await p.getByRole('dialog').getByLabel('E-mail', { exact: true }).fill('ana@exemplo.com');
   await p.getByRole('button', { name: 'Criar usuário' }).click();
@@ -199,6 +209,7 @@ try {
   await p.reload({ waitUntil: 'networkidle' });
   const armazenado = await p.evaluate(() => JSON.stringify({ s: { ...sessionStorage }, l: { ...localStorage }, u: location.href }));
   confere(!armazenado.includes(SENHA) && !(await p.content()).includes(SENHA), 'a senha não está em storage, URL nem na página recarregada');
+  confere(!consoleDoNavegador.join('\n').includes(SENHA), 'a senha não aparece no console do navegador');
 
   // redefinir senha → nova senha uma vez
   await menu(p, 'Diego Exemplo');

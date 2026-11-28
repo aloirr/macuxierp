@@ -39,11 +39,11 @@ describe('ADR 0021: 403 EMPRESA_SUSPENSA e 409 email_em_uso mostram o texto do S
   it('o texto da suspensão é o do PO (vindo do SDK)', () => {
     expect(MENSAGEM_EMPRESA_SUSPENSA).toBe('Sua empresa está suspensa. Fale com o administrador da Macuxi.');
   });
-  it('409 email_em_uso no primeiro admin do /config: texto e campo e-mail do SDK, sem confundir com "admin já existe"', () => {
+  it('409 email_em_uso nos Usuários do /config: texto e campo e-mail do SDK, sem confundir com outro conflito', () => {
     const e = new ErroPlataforma(409, 'CONFLITO', { email: 'qualquer outro texto' }, 'qualquer outro texto', { codigo: CODIGO_EMAIL_EM_USO });
-    expect(mensagemDoErro(e, 'criar_admin')).toMatchObject({ texto: MENSAGEM_EMAIL_EM_USO, campos: { email: MENSAGEM_EMAIL_EM_USO } });
-    const jaExiste = new ErroPlataforma(409, 'CONFLITO');
-    expect(mensagemDoErro(jaExiste, 'criar_admin').texto).toBe('Esta empresa já tem administrador. Redefina a senha dele.');
+    expect(mensagemDoErro(e, 'usuario')).toMatchObject({ texto: MENSAGEM_EMAIL_EM_USO, campos: { email: MENSAGEM_EMAIL_EM_USO } });
+    const outro = new ErroPlataforma(409, 'CONFLITO');
+    expect(mensagemDoErro(outro, 'usuario').texto).not.toBe(MENSAGEM_EMAIL_EM_USO);
   });
   it('409 email_em_uso no cadastro de usuário (descritor): texto do SDK no campo e-mail, sem pedir recarga', () => {
     const r = resultadoDaResposta(409, false, { codigo: 'CONFLITO', mensagem: 'outro texto', campos: { email: 'outro texto' }, detalhes: { codigo: CODIGO_EMAIL_EM_USO } });

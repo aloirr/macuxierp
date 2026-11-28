@@ -27,9 +27,9 @@ describe('lista de empresas', () => {
   const h = renderToStaticMarkup(<ListaEmpresas empresas={[acme, beta]} vazio="Nenhuma empresa ainda. Crie a primeira." />);
   it('colunas como a simulação 124 A (Empresa, Código, CNPJ, Situação, Módulos, Criada em), linha com rótulo "Abrir empresa <código>"', () => {
     expect([...h.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1])).toEqual(['Empresa', 'Código', 'CNPJ', 'Situação', 'Módulos', 'Criada em']);
-    expect(h).toContain('<b>Acme Ltda</b>');
+    expect(h).toContain('<span class="codigo">AM2808</span>'); // o código é texto; o link é o nome
     expect(h).toContain('Abrir empresa AM2808');
-    expect(h).toMatch(/<a [^>]*href="\/config\/empresas\/11111111-1111-4111-8111-111111111111"[^>]*>AM2808<\/a>/);
+    expect(h).toMatch(/<a [^>]*href="\/config\/empresas\/11111111-1111-4111-8111-111111111111"[^>]*>Acme Ltda<\/a>/);
     expect(h).toContain('tabela-rolavel com-sinal-rolagem');
     expect(h).not.toContain('>acme<');
     expect(readFileSync(join(__dirname, '../../globals.css'), 'utf8')).toMatch(/\.tabela-rolavel\.com-sinal-rolagem \{[^}]*local/);
@@ -38,9 +38,9 @@ describe('lista de empresas', () => {
   it('situação em texto (não só cor) e módulos ligados sem o core', () => {
     expect(h).toContain('Ativo');
     expect(h).toContain('Suspenso');
-    expect(h).toContain('Cadastros, Fiscal');
-    expect(h).toContain('title="Cadastros, Fiscal"');
-    expect(h).toContain('aria-label="Cadastros, Fiscal"');
+    expect(h).toContain('Cadastros · Fiscal'); // separados por " · ", como a 124 A
+    expect(h).toContain('title="Cadastros · Fiscal"');
+    expect(h).toContain('aria-label="Cadastros · Fiscal"');
     expect(h).toContain('>2 módulos<');
     expect(renderToStaticMarkup(<ListaEmpresas empresas={[{ ...acme, modulos: lic('fiscal') }]} vazio="" />)).toContain('>1 módulo<');
     expect(h).toMatch(/<td[^>]*><span>0 módulos<\/span><\/td>/);
@@ -200,7 +200,7 @@ describe('ajustes de marca e componentes do #309', () => {
     expect(css).not.toContain('ui-monospace, monospace');
     expect(readFileSync(join(__dirname, '../../../components/frase-confirmacao.tsx'), 'utf8')).toContain('className="frase-confirmar"');
     expect(css).toMatch(/\.bloco h2 \{ font-size: var\(--mx-tamanho-titulo-cartao\)/);
-    expect(css).toMatch(/\.painel-senha \{[^}]*border: 1px solid var\(--mx-cor-borda-tabela\)/);
+    expect(css).not.toContain('.painel-senha'); // o painel da senha do 1º administrador saiu na Config v4
     expect(css).not.toMatch(/outline:\s*none/);
   });
   it('Desligar módulo usa DialogoMotivo semTexto (sem Observação)', () => {
