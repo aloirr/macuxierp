@@ -27,15 +27,12 @@ import {
 } from './apoio.ts';
 import { fixturePlataforma, hashSql, novoTenant } from './fixture.ts';
 
-const MIGRACAO = fileURLToPath(
-  new URL('../migrations/0076_plataforma_superadmin_pelo_bko.sql', import.meta.url),
-);
+const MIGRACAO = fileURLToPath(new URL('../migrations/0076_plataforma_superadmin_pelo_bko.sql', import.meta.url));
 const CONFIG = 'macuxierp_config';
 const REFERENCIA = '00000000-0000-0000-0000-000000000000';
 const HASH = '$argon2id$v=19$m=65536,t=3,p=4$c2FsdGZpY3RpY2lv$aGFzaGZpY3RpY2lv';
 const ACESSO = 'plataforma.superadmin_acesso_pelo_bko(uuid, uuid)';
-const ABRIR =
-  'plataforma.superadmin_abrir_sessao_pelo_bko(plataforma.sha256_hex, plataforma.sha256_hex, timestamptz)';
+const ABRIR = 'plataforma.superadmin_abrir_sessao_pelo_bko(plataforma.sha256_hex, plataforma.sha256_hex, timestamptz)';
 const ACAO = 'plataforma.superadmin.entrar_pelo_bko';
 
 const A = novoTenant('sa-0076-a');
@@ -87,12 +84,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — /config pelo BKO (0076, 45 
     consultar<{ superadmin_id: string; expira_em: string }>(banco.conexao, abrirSql(refresh, token, expira), {
       papel: CONFIG,
     });
-  const recusa = (
-    refresh: string,
-    codigo: string,
-    mensagem: RegExp,
-    expira = "now() + interval '1 hour'",
-  ): void =>
+  const recusa = (refresh: string, codigo: string, mensagem: RegExp, expira = "now() + interval '1 hour'"): void =>
     recusaCompleta(
       banco.conexao,
       `${abrirSql(refresh, randomUUID(), expira)};`,
@@ -100,25 +92,20 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — /config pelo BKO (0076, 45 
       { papel: CONFIG },
     );
   const acesso = (tenant: string, usuario: string): string[] =>
-    linhas(
-      rodarComo(banco.conexao, `SELECT plataforma.superadmin_acesso_pelo_bko('${tenant}', '${usuario}');`, {
-        papel: CONFIG,
-      }),
-    );
+    linhas(rodarComo(banco.conexao, `SELECT plataforma.superadmin_acesso_pelo_bko('${tenant}', '${usuario}');`, {
+      papel: CONFIG,
+    }));
   const um = <T>(sql: string): T => consultar<T>(banco.conexao, sql)[0] as T;
   const sessaoBko = (refresh: string): string =>
-    um<{ j: string }>(
-      `SELECT to_jsonb(s)::text AS j FROM plataforma.sessao s WHERE refresh_hash = ${hashSql(refresh)}`,
-    ).j;
+    um<{ j: string }>(`SELECT to_jsonb(s)::text AS j FROM plataforma.sessao s WHERE refresh_hash = ${hashSql(refresh)}`)
+      .j;
   const contaSuperadmin = (sa: string): string =>
     um<{ j: string }>(
       `SELECT jsonb_build_object('falhas', falhas_login, 'trava', bloqueado_ate, 'acesso', ultimo_acesso_em,
          'atualizado', updated_at)::text AS j FROM plataforma.superadmin WHERE id = '${sa}'`,
     ).j;
   const sessoesConfig = (sa: string): number =>
-    um<{ n: number }>(
-      `SELECT count(*)::int AS n FROM plataforma.sessao_superadmin WHERE superadmin_id = '${sa}'`,
-    ).n;
+    um<{ n: number }>(`SELECT count(*)::int AS n FROM plataforma.sessao_superadmin WHERE superadmin_id = '${sa}'`).n;
 
   beforeAll(() => {
     banco = criarBancoDeTeste();
@@ -190,9 +177,8 @@ INSERT INTO plataforma.sessao (tenant_id, usuario_id, familia, refresh_hash, exp
     for (const r of ['r-suspenso', 'r-inativo', 'r-excluido']) {
       expect({ r, linhas: abrir(r) }).toEqual({ r, linhas: [] });
     }
-    expect(
-      sessoesConfig(SA.ok1) + sessoesConfig(SA.ok2) + sessoesConfig(SA.ok4) + sessoesConfig(SA.ok5),
-    ).toBe(0);
+    const aptos = [SA.ok1, SA.ok2, SA.ok4, SA.ok5];
+    expect(aptos.reduce((n, sa) => n + sessoesConfig(sa), 0)).toBe(0);
   });
 
   it('(c) usuário com troca de senha pendente: MXS11, mesmo com superadmin apto no e-mail', () => {
@@ -248,15 +234,7 @@ INSERT INTO plataforma.sessao (tenant_id, usuario_id, familia, refresh_hash, exp
        WHERE a.acao = '${ACAO}' AND a.superadmin_id = '${SA.ok3}'`,
     );
     expect(r).toEqual([
-      {
-        tenant: REFERENCIA,
-        usuario_id: null,
-        sa: SA.ok3,
-        entidade: 'superadmin',
-        antes: null,
-        depois: true,
-        limpo: true,
-      },
+      { tenant: REFERENCIA, usuario_id: null, sa: SA.ok3, entidade: 'superadmin', antes: null, depois: true, limpo: true },
     ]);
     expect(
       um<{ n: number }>(
@@ -274,9 +252,9 @@ INSERT INTO plataforma.sessao (tenant_id, usuario_id, familia, refresh_hash, exp
     expect(r).toEqual({ teto: true });
     const max = new Date(Date.now() + 3_600_000).toISOString();
     const [menor] = abrir('r-ok', randomUUID(), `'${max}'::timestamptz`);
-    expect(
-      um<{ ok: boolean }>(`SELECT '${menor?.expira_em}'::timestamptz = '${max}'::timestamptz AS ok`).ok,
-    ).toBe(true);
+    expect(um<{ ok: boolean }>(`SELECT '${menor?.expira_em}'::timestamptz = '${max}'::timestamptz AS ok`).ok).toBe(
+      true,
+    );
     const [curta] = abrir('r-curta', randomUUID(), "now() + interval '8 hours'");
     expect(
       um<{ ok: boolean }>(

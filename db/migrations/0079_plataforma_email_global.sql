@@ -23,7 +23,7 @@ END $checagem$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS usuario_email_global_uq ON plataforma.usuario (email) WHERE deleted_at IS NULL;
 COMMENT ON INDEX plataforma.usuario_email_global_uq IS
-  'E-mail único entre os usuários não excluídos de todas as empresas (0079, T-0133): o login não pede o código da empresa. O de um excluído pode voltar. O superadmin fica fora.';
+  'E-mail único entre os usuários não excluídos de todas as empresas (0079, T-0133): o login não pede o código da empresa. O de um excluído pode voltar.';
 DROP INDEX IF EXISTS plataforma.usuario_email_vivo_uq;
 
 -- ---------------------------------------------------------------------------------------------------------------
@@ -59,7 +59,7 @@ CREATE OR REPLACE FUNCTION plataforma.conta_por_email(p_email text)
   ) x ORDER BY x.ordem
 $$;
 COMMENT ON FUNCTION plataforma.conta_por_email(text) IS
-  'Login sem o código da empresa (0079, T-0133, ADR 0021): as contas do e-mail, o usuário da empresa antes do superadmin, só com {tipo, tenant_id, suspensa} (sem hash, nome nem situação do usuário). Empresa encerrada, excluída ou de referência não devolve linha; ativa = suspensa false; suspensa = true; superadmin = tenant_id nulo e suspensa false. No máximo uma de cada tipo. Para macuxierp_app.';
+  'Login sem o código da empresa (0079, T-0133, ADR 0021): as contas do e-mail, o usuário antes do superadmin. Regras e retorno: docs/banco/README.md. Só macuxierp_app.';
 
 -- ---------------------------------------------------------------------------------------------------------------
 -- Criar usuário (0078) e 1º administrador (0036): o e-mail livre no sistema todo.
@@ -104,14 +104,15 @@ DECLARE
   v_sa uuid := plataforma.exigir_superadmin();
   t plataforma.tenant;
   v_usuario uuid := gen_random_uuid();
+  v_email text := lower(btrim(p_email));
 BEGIN
   t := plataforma.empresa_alvo(p_id, true);
   IF plataforma.primeiro_admin(t.id) IS NOT NULL THEN
     RAISE EXCEPTION 'a empresa já tem administrador' USING ERRCODE = 'unique_violation';
   END IF;
-  PERFORM plataforma.exigir_email_livre(lower(btrim(p_email)));
+  PERFORM plataforma.exigir_email_livre(v_email);
   INSERT INTO plataforma.usuario (id, tenant_id, email, nome, senha_hash, perfil, deve_trocar_senha)
-  VALUES (v_usuario, t.id, lower(btrim(p_email)), btrim(p_nome), p_senha_hash, 'administrador', true);
+  VALUES (v_usuario, t.id, v_email, btrim(p_nome), p_senha_hash, 'administrador', true);
   PERFORM plataforma.auditar_superadmin(t.id, v_sa, 'plataforma.admin.criar', 'usuario', v_usuario, NULL,
     jsonb_build_object('perfil', 'administrador', 'ativo', true), p_request_id);
   RETURN v_usuario;

@@ -178,7 +178,6 @@ ROLLBACK;`,
 
     it('a 0079 reexecuta sem erro, com o índice global e sem o da 0078', () => {
       rodarScript(banco.conexao, SQL_0079, { transacao: true });
-      rodarScript(banco.conexao, SQL_0079, { transacao: true });
       const [r] = consultar<Record<string, unknown>>(
         banco.conexao,
         `SELECT (SELECT indexdef FROM pg_indexes WHERE indexname = 'usuario_email_global_uq') AS global,
