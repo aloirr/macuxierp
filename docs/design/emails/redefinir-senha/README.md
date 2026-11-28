@@ -21,7 +21,7 @@
 - **Senha selecionável inteira:** texto puro num único bloco, com `user-select: all` (um toque seleciona tudo). Não separar em partes nem usar imagem.
 - **Sem código da empresa (T-0133, v0.3.30):** a empresa some de qualquer tela; o e-mail mostra só e-mail e senha, e o link abre o login já com o e-mail (`/#email=…`). Nenhum prefixo "Erro.", "Aviso." ou "Pronto." nos textos (decisão 125 B).
   As 4 prévias foram regeradas sem a linha, em 2x (1280 → 2560 px, 390 → 780 px).
-- Sem dado real: os exemplos são fictícios (`EXEMPLO`, `ana.souza@exemplo.com.br`, `Tr4m-Qa7p-Zx2k`).
+- Sem dado real: os exemplos são fictícios (`ana.souza@exemplo.com.br`, `Tr4m-Qa7p-Zx2k`).
 
 ## Textos exatos (o core copia sem alterar, em `modules/core/domain`)
 | Item | String |
