@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { manifest } from '../manifest';
+import { paginaEditavel } from '@macuxierp/platform-sdk';
 import { PAGINAS_EDICAO, PAGINAS } from './paginas';
 import { camposDoCliente, corpoAlterarCliente, corpoCriarCliente, indicadorSugerido, paginaClientes, valoresDoCliente, validarCliente, type ClienteResumo } from './clientes';
 import { camposDoProduto, corpoAlterarProduto, corpoCriarProduto, paginaProdutos, valoresDoProduto, validarProduto } from './produtos';
@@ -25,6 +26,14 @@ describe('telas de edição do cadastros (T-0088)', () => {
       expect(p.ocultaNoMenu).toBe(true);
       expect(manifest.web?.menus).toContain(p.menu);
     }
+  });
+  it('T-0129: as páginas de edição declaram `editar` e o perfil sem ela abre só leitura', () => {
+    for (const id of ['cliente', 'produto', 'tabela-preco', 'filial']) {
+      const p = PAGINAS_EDICAO.find((x) => x.id === id)!;
+      expect(p.editar, id).toBe(`cadastros.${id === 'tabela-preco' ? 'preco' : id}.editar`);
+    }
+    expect(paginaEditavel(PAGINAS_EDICAO.find((x) => x.id === 'cliente')!, 'vendedor')).toBe(false);
+    expect(paginaEditavel(PAGINAS_EDICAO.find((x) => x.id === 'cliente')!, 'faturista')).toBe(true);
   });
   it('RN-CAD-01: documento inválido para o tipo de pessoa é recusado na tela', () => {
     expect(validarCliente({ ...novoCliente, documento: '11.222.333/0001-82' }, 'criar', 'faturista').documento).toBeTruthy();
