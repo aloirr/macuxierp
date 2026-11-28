@@ -59,6 +59,14 @@ export const ACOES_PLATAFORMA = [
   // `empresa_trocar_cnpj` da 0077
   'plataforma.empresa.salvar_ficha',
   'plataforma.empresa.trocar_cnpj',
+  // v0.3.28: usuários do tenant pelo /config; gravadas pelas funções da 0078 (#883); .ver é só permissão de rota
+  'plataforma.usuario.ver',
+  'plataforma.usuario.criar',
+  'plataforma.usuario.editar',
+  'plataforma.usuario.redefinir_senha',
+  'plataforma.usuario.inativar',
+  'plataforma.usuario.reativar',
+  'plataforma.usuario.excluir',
 ] as const;
 export type AcaoPlataforma = (typeof ACOES_PLATAFORMA)[number];
 

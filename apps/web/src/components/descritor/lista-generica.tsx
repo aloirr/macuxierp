@@ -76,11 +76,7 @@ export async function ListaGenerica({ tela, rota, rotaDaPagina, busca, perfil, a
           <Link className="mx-botao-secundario" href={rota}>Limpar</Link>
         </div>
       </form>
-      <div className="barra-acoes">
-        {tela.novo && (!tela.novo.criar || pode(perfil, tela.novo.criar)) && <Link className="mx-botao" href={tela.novo.rota}>{tela.novo.rotulo}</Link>}
-        {csv && <a className="mx-botao-secundario" href={csv}>Exportar CSV</a>}
-        {barra && <AcoesDetalhe acoes={[barra]} rota={rota} rotaDaPagina={rotaDaPagina} origem="barra" compacta />}
-      </div>
+      <div className="cartao-tabela">
       <TabelaVista
         colunas={colunas.map((c) => ({ id: c.id, rotulo: c.rotulo, ...(c.tipo ? { tipo: c.tipo } : {}) }))}
         vazio={textoVazio}
@@ -98,6 +94,12 @@ export async function ListaGenerica({ tela, rota, rotaDaPagina, busca, perfil, a
           };
         })}
       />
+      <div className="barra-acoes">
+        {tela.novo && (!tela.novo.criar || pode(perfil, tela.novo.criar)) && <Link className="mx-botao" href={tela.novo.rota}>{tela.novo.rotulo}</Link>}
+        {csv && <a className="mx-botao-secundario" href={csv}>Exportar CSV</a>}
+        {barra && <AcoesDetalhe acoes={[barra]} rota={rota} rotaDaPagina={rotaDaPagina} origem="barra" compacta />}
+      </div>
+      </div>
       {pagina.itens.length === 0 && filtrada && <p><Link className="mx-botao-secundario" href={aoLimpar}>Limpar filtros</Link></p>}
       <nav className="paginacao" aria-label="Paginação">{proxima ? <Link className="mx-botao-secundario" href={proxima}>Próxima página</Link> : pagina.itens.length > 0 ? <span className="apoio">Fim da lista.</span> : null}</nav>
     </section>

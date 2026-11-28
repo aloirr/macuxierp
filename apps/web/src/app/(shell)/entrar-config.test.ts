@@ -28,7 +28,7 @@ describe('C1 (45 A): ação "Configuração" do menu', () => {
   });
   it('401 volta ao login; troca pendente vai à troca de senha', async () => {
     m.r = { tipo: 'sessao' };
-    await expect(acao({})).rejects.toThrow('redirect:/login');
+    await expect(acao({})).rejects.toThrow(/^redirect:\/$/);
     m.r = { tipo: 'trocar_senha' };
     await expect(acao({})).rejects.toThrow(/redirect:\/senha/);
     expect(m.set).not.toHaveBeenCalled();

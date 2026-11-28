@@ -5,8 +5,9 @@
  * Fora do vitest (não é *.test.ts) porque o @playwright/test não está no package.json: usa o Playwright instalado
  * globalmente (require('playwright'), Chromium já instalado; sem `playwright install`, sem trace).
  *
- * As páginas do cadastro ainda mostram "Disponível em breve" (o shell não desenha as listas); a lista de Usuários mostra
- * só os usuários do tenant, com o botão "Ações" em cada linha. Colunas, filtros, CSV e custo por perfil das listas
+ * v0.3.28: o login fica na raiz ("/" sem sessão, #886); o menu de Cadastros tem só as telas prontas (Clientes, Produtos,
+ * Tabelas de preço e Filiais, com lista); Estoque, Condições, Equipe e carteira e Tabelas oficiais ficam ocultos
+ * (`ROTAS_SEM_TELA`). A lista de Usuários mostra só os usuários do tenant, com o botão "Ações" em cada linha. Colunas, filtros, CSV e custo por perfil das listas
  * estão provados contra a API em tests/integracao/web/listas-bko.db.test.ts; aqui fica o que a tela mostra de cada tenant:
  * empresa, filiais, menu, usuários e licenças, e o "não encontrada" por licença e por perfil.
  *
@@ -38,7 +39,14 @@ const VEND_A = usuario('loja-a', 'vendedor');
 const ADM_B = usuario('loja-b', 'administrador');
 const EMPRESA_A = dados.empresas.A.nome;
 const EMPRESA_B = dados.empresas.B.nome;
-const MENU_CADASTROS = ['Clientes', 'Produtos', 'Tabelas de preço', 'Estoque', 'Condições de pagamento', 'Equipe e carteira', 'Filiais', 'Tabelas oficiais'];
+const MENU_CADASTROS = ['Clientes', 'Produtos', 'Tabelas de preço', 'Filiais'];
+/** Decisão do PO (v0.3.28): sem tela pronta, fora do menu. */
+const OCULTOS_CADASTROS = ['Estoque', 'Condições de pagamento', 'Equipe e carteira', 'Tabelas oficiais'];
+/** A tela de login (na raiz desde a v0.3.27) está na tela: URL "/" e o botão Entrar. */
+async function exigirLogin() {
+  await p.waitForURL((u) => new URL(u).pathname === '/');
+  await p.getByRole('button', { name: 'Entrar', exact: true }).waitFor();
+}
 
 const { resultados, prints, passo, print } = criarRoteiro(SAIDA);
 
@@ -64,21 +72,20 @@ async function exigirNaoEncontrada(r) {
 }
 async function sair() {
   await p.getByRole('button', { name: 'Sair' }).click();
-  await p.waitForURL(/\/login/);
+  await exigirLogin();
 }
 
 try {
-  await passo('sem sessão, a raiz manda para o login', async () => {
+  await passo('sem sessão, a raiz é o login (sem redirect)', async () => {
     await p.goto(`${BASE}/`);
-    await p.waitForURL(/\/login/);
-    exigir(await p.getByRole('button', { name: 'Entrar' }).isVisible(), 'sem o botão Entrar');
+    await exigirLogin();
     await print(p, '01-login.png');
   });
 
   await passo('RLS no login: e-mail e senha certos do tenant A na empresa B são recusados (a senha não volta)', async () => {
     await entrar({ ...ADM_A, empresa: 'loja-b' });
-    // O Next também tem um role=alert (anúncio de rota): o do formulário é o p.erro.
-    const alerta = p.locator('form p.erro[role="alert"]');
+    // O Next também tem um role=alert (anúncio de rota): o do formulário é o do ResultadoAcao, logo abaixo do Entrar.
+    const alerta = p.locator('form [data-resultado-acao="erro"] [role="alert"]');
     await alerta.waitFor();
     const texto = await alerta.textContent();
     exigir(texto?.includes('incorretos'), `mensagem de erro diferente: ${texto}`);
@@ -106,6 +113,7 @@ try {
     exigir(!t.includes(EMPRESA_B) && !t.includes('Boa Vista'), 'vazou o tenant B no topo');
     const itens = (await nav().getByRole('region', { name: 'Cadastros' }).getByRole('link').allTextContents()).map((s) => s.trim());
     exigir(JSON.stringify(itens) === JSON.stringify(MENU_CADASTROS), `itens: ${JSON.stringify(itens)}`);
+    for (const oculto of OCULTOS_CADASTROS) exigir(!itens.includes(oculto), `item sem tela no menu: ${oculto}`);
     const menu = (await nav().textContent()) ?? '';
     exigir(menu.includes('Pedidos') && menu.includes('Notas fiscais'), 'faltou módulo licenciado de A');
     exigir(!/Regras fiscais|Integração FDV/.test(menu), 'menu mostra módulo sem licença');
@@ -113,14 +121,15 @@ try {
   });
 
   for (const rotulo of MENU_CADASTROS) {
-    await passo(`tenant A: Cadastros > ${rotulo} abre a página com o título e marca o item atual, sem aviso de falha (lista ainda "Disponível em breve" no shell)`, async () => {
+    await passo(`tenant A: Cadastros > ${rotulo} abre a lista com o título e marca o item atual, sem aviso de falha nem "Disponível em breve"`, async () => {
       await nav().getByRole('link', { name: rotulo, exact: true }).click();
       await p.getByRole('heading', { level: 1, name: rotulo }).waitFor();
       const atual = await p.getByRole('link', { name: rotulo, exact: true }).getAttribute('aria-current');
       exigir(atual === 'page', `aria-current=${atual}`);
       const main = (await p.locator('main').textContent()) ?? '';
       exigir(!/Não foi possível carregar/.test(main), `aviso de falha: ${main.slice(0, 120)}`);
-      exigir(main.includes('Disponível em breve.'), `a página mudou (lista nova?): trocar este passo pelo da lista: ${main.slice(0, 120)}`);
+      exigir(!main.includes('Disponível em breve'), `a página ainda é "Disponível em breve": ${main.slice(0, 120)}`);
+      await p.locator('main table').first().waitFor();
     });
   }
 
@@ -193,7 +202,7 @@ try {
     await p.goto(`${BASE}/`);
     await sair();
     await p.goto(`${BASE}/cadastros/clientes`);
-    await p.waitForURL(/\/login/);
+    await exigirLogin();
   });
 } finally {
   await navegador.close();

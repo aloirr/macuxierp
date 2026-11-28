@@ -9,17 +9,7 @@ import { FONTE_CLIENTE, FONTE_FILIAL, FONTE_VENDEDOR } from './fontes';
 import { podeVerDocumentoCliente } from '../domain/privacidade';
 import { OrigemPedido, StatusPedido } from '../contracts';
 import { formatarCentavos, formatarDataHora } from '@macuxierp/platform-sdk/formatar';
-import { COLUNA_DOCUMENTO, paginaPedidos, type ItemListaPedido } from './paginas';
-
-export const ROTULO_STATUS: Readonly<Record<StatusPedido, string>> = {
-  recebido: 'Recebido',
-  em_analise: 'Em análise',
-  aprovado: 'Aprovado',
-  recusado: 'Recusado',
-  faturado_parcial: 'Faturado parcial',
-  faturado: 'Faturado',
-  cancelado: 'Cancelado',
-};
+import { COLUNA_DOCUMENTO, ROTULO_STATUS, paginaPedidos, type ItemListaPedido } from './paginas';
 
 export const ROTULO_ORIGEM: Readonly<Record<OrigemPedido, string>> = { fdv: 'Macuxi FDV', bko: 'Manual' };
 
@@ -48,9 +38,8 @@ export function linhaDaTela(p: ItemListaPedido, fuso: string): Record<string, st
   };
 }
 
-/** Título da coluna na tabela (a de data mostra o fuso do tenant, não UTC como no CSV). */
+/** Título da coluna na tabela: o total sai sem o "(R$)" do CSV (a célula já traz o símbolo). */
 export function tituloDaColuna(c: ColunaLista<ItemListaPedido>): string {
-  if (c.id === 'emitido_em') return 'Emitido em';
   if (c.id === 'total_centavos') return 'Total';
   return c.titulo;
 }

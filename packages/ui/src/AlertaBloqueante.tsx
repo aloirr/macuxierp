@@ -45,11 +45,11 @@ export function AlertaBloqueante({ titulo, children, acao, focar = true }: Alert
       role="alert"
       tabIndex={-1}
       data-alerta-bloqueante=""
-      style={{ ...texto('base'), display: 'flex', gap: espaco.md, alignItems: 'flex-start', ...faixaLateral(tons.erro), borderRadius: canto, padding: espaco.md }}
+      style={{ ...texto('texto'), display: 'flex', gap: espaco.md, alignItems: 'flex-start', ...faixaLateral(tons.erro), borderRadius: canto, padding: espaco.md }}
     >
       <Icone />
       <div style={{ display: 'grid', gap: espaco.xs, flex: '1 1 auto' }}>
-        <strong data-alerta-titulo="" style={{ ...texto('base', 'rotulo-campo'), color: cor('erroTexto') }}>{titulo}</strong>
+        <strong data-alerta-titulo="" style={{ ...texto('texto', 'rotulo-campo'), color: cor('erroTexto') }}>{titulo}</strong>
         <div>{children}</div>
         {acao ? <div style={{ marginTop: espaco.xs }}>{acao}</div> : null}
       </div>

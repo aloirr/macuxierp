@@ -237,6 +237,8 @@ export interface CampoFormulario {
   fonte?: FonteOpcoes;
   opcoes?: readonly { valor: string; rotulo: string }[];
   ajuda?: string;
+  /** Mostra o campo só quando a condição vale (ex.: regime de PIS/COFINS só com CRT 3). É função: roda no navegador, nunca atravessa do servidor como dado. */
+  mostrarSe?: (valores: Readonly<Record<string, string>>) => boolean;
 }
 export type ValoresFormulario = Readonly<Record<string, string>>;
 /** Linha de itens em texto digitado, no formato do módulo. */
@@ -262,10 +264,21 @@ export interface TelaFormulario {
     /** Total do pedido já formatado, pela regra do módulo, mostrado acima do botão de envio. */
     totalTexto?: (itens: readonly ItemFormulario[]) => string;
   };
-  /** Validação local (a API sempre revalida). Devolve erros por campo (`itens` = erro geral dos itens). */
-  validar: (valores: ValoresFormulario, itens: readonly ItemFormulario[]) => ErrosFormulario;
+  /** Campos que dependem do perfil (ex.: limite de crédito só a quem tem a ação): quando presente, vale no lugar de `campos`. A API revalida. */
+  camposDoPerfil?: (perfil: Perfil) => readonly CampoFormulario[];
+  /** Validação local (a API sempre revalida). Devolve erros por campo (`itens` = erro geral dos itens). `perfil` vem do shell. */
+  validar: (valores: ValoresFormulario, itens: readonly ItemFormulario[], perfil?: Perfil) => ErrosFormulario;
   /** Corpo do POST, a partir dos valores. */
-  montar: (valores: ValoresFormulario, itens: readonly ItemFormulario[]) => unknown;
+  montar: (valores: ValoresFormulario, itens: readonly ItemFormulario[], perfil?: Perfil) => unknown;
+  /** Edição do registro (`PATCH` em `api/:id`): a tela abre com os valores do registro e envia só o que mudou. Ausente = formulário de criação. */
+  edicao?: {
+    /** Caminho GET do registro. */
+    ler: (id: string) => string;
+    /** Valores iniciais e o registro original (para o diff), a partir da resposta da API. */
+    abrir: (corpo: unknown) => { valores: ValoresFormulario; original: unknown };
+    /** Corpo do PATCH com só o que mudou; `null` = nada mudou (nada a enviar). */
+    montarPatch: (valores: ValoresFormulario, original: unknown, perfil: Perfil) => unknown | null;
+  };
   /** POST de criação. */
   api: string;
   /** Campo da resposta do POST que vale uma vez só (senha provisória): a tela o mostra antes de seguir. */

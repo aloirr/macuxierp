@@ -42,3 +42,23 @@ describe('filtros e selo da lista', () => {
     expect(h).toContain('class="sem-quebra"');
   });
 });
+
+describe('grade de 12 colunas do formulário (T-0121, regra 11)', () => {
+  it('campo curto, médio, longo e largo; contêiner sem teto e h1 em azul-noite', async () => {
+    const { larguraDoCampo } = await import('./formulario-generico');
+    const { readFileSync } = await import('node:fs');
+    expect(larguraDoCampo({ nome: 'cep', tipo: 'texto' })).toBe(' campo-curto');
+    expect(larguraDoCampo({ nome: 'validade', tipo: 'data' })).toBe(' campo-curto');
+    expect(larguraDoCampo({ nome: 'filial_id', tipo: 'cadastro' })).toBe(' campo-medio');
+    expect(larguraDoCampo({ nome: 'razao_social', tipo: 'texto' })).toBe('');
+    expect(larguraDoCampo({ nome: 'observacao', tipo: 'area' })).toBe(' campo-largo');
+    expect(larguraDoCampo({ nome: 'nfe_serie', tipo: 'texto' })).toBe(larguraDoCampo({ nome: 'serie', tipo: 'texto' }));
+    expect(larguraDoCampo({ nome: 'nfe_numero_inicial', tipo: 'texto' })).toBe(larguraDoCampo({ nome: 'numero', tipo: 'texto' }));
+    expect(larguraDoCampo({ nome: 'end_numero', tipo: 'texto' })).toBe(' campo-curto');
+    expect(larguraDoCampo({ nome: 'numeroso', tipo: 'texto' })).toBe('');
+    const css = readFileSync(`${__dirname}/../../app/globals.css`, 'utf8');
+    expect(css).not.toMatch(/\.conteudo \{[^}]*max-width/);
+    expect(css).toMatch(/\.conteudo h1 \{[^}]*azul-noite[^}]*margin: 0 0 4px/);
+    expect(css).toMatch(/\.formulario \{ display: grid; grid-template-columns: repeat\(12/);
+  });
+});

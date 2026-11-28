@@ -61,9 +61,9 @@ describe('Dialogo', () => {
     expect(h).toContain('justify-content:flex-end');
     expect(h).toContain('Fechar');
   });
-  it('painel com canto de 8 px', () => {
+  it('painel com o canto do cartão (8 px, medidas.cantoCartao)', () => {
     const h = renderToStaticMarkup(<Dialogo titulo="T" aoFechar={() => {}}>x</Dialogo>);
-    expect(h).toContain('border-radius:8px');
+    expect(h).toContain('border-radius:var(--mx-medida-canto-cartao)');
   });
   it('altura até 90vh: título e rodapé fixos, corpo rola', () => {
     const h = renderToStaticMarkup(

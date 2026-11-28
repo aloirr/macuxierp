@@ -35,7 +35,7 @@ interface LinhaDados {
 /** Tabela densa da ui com linhas em texto. Linha com `destino` abre a rota (mouse, Enter e Espaço). */
 export function TabelaVista({ colunas, linhas, vazio, acoes }: { colunas: readonly ColunaVista[]; linhas: readonly LinhaDados[]; vazio: string; acoes?: { rota: string; rotaDaPagina: string } }) {
   const router = useRouter();
-  const cols: ColunaTabela<LinhaDados>[] = colunas.map((c) => ({ id: c.id, titulo: c.rotulo, tipo: c.tipo ?? (c.numerica ? 'numero' : 'texto'), ...(c.largura ? { largura: c.largura } : {}), celula: (l) => { const x = l.selos?.[c.id]; return x && x.length > 0 ? <span className="selos">{x.map((v) => <Selo key={v.texto} selo={v} />)}</span> : (c.tipo === 'dinheiro' || c.tipo === 'numero' ? <span className="sem-quebra">{l.celulas[c.id] ?? ''}</span> : (l.celulas[c.id] ?? '')); } }));
+  const cols: ColunaTabela<LinhaDados>[] = colunas.map((c) => ({ id: c.id, titulo: c.rotulo, tipo: c.tipo ?? (c.numerica ? 'numero' : 'texto'), ...(c.largura ? { largura: c.largura } : {}), celula: (l) => { const x = l.selos?.[c.id]; return x && x.length > 0 ? <span className="selos">{x.map((v) => <Selo key={v.texto} selo={v} />)}</span> : (c.tipo === 'dinheiro' || c.tipo === 'numero' || c.tipo === 'data' ? <span className="sem-quebra">{l.celulas[c.id] ?? ''}</span> : (l.celulas[c.id] ?? '')); } }));
   if (acoes && linhas.some((l) => l.acao || l.maisAcoes?.length)) {
     cols.push({ id: '__acoes', titulo: 'Ações', celula: (l) => { const todas = [...(l.acao ? [l.acao] : []), ...(l.maisAcoes ?? [])]; return todas.length > 0 ? <AcoesDetalhe acoes={todas} rota={acoes.rota} rotaDaPagina={acoes.rotaDaPagina} origem="linha" menu comPrincipal={Boolean(l.acao)} {...(l.rotulo ? { rotuloLinha: l.rotulo } : {})} /> : null; } });
   }

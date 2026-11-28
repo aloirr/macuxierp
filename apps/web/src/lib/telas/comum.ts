@@ -14,10 +14,15 @@ export const seloDoModulo = (s: { texto: string; tom: keyof typeof TOM; dica?: s
 
 export const novaChave = (): string => globalThis.crypto.randomUUID();
 
-/** Colunas do módulo (`id`, `titulo`) na lista da tela; `status` e `data` pelo id da coluna. A coluna de status se chama "Situação". */
-export function colunasDoModulo(colunas: readonly { id: string; titulo: string }[], tipos: Readonly<Record<string, 'status' | 'data'>> = {}) {
+type TipoColuna = 'texto' | 'numero' | 'dinheiro' | 'data' | 'status';
+
+/**
+ * Colunas do módulo (`id`, `titulo`, `tipo`) na lista da tela. O `tipo` vem da própria coluna do descritor; o mapa `sobrescritas` (id → tipo)
+ * só vale como sobrescrita, quando presente. Coluna sem tipo fica sem `tipo` (texto). A coluna de status se chama "Situação".
+ */
+export function colunasDoModulo(colunas: readonly { id: string; titulo: string; tipo?: TipoColuna }[], sobrescritas: Readonly<Record<string, TipoColuna>> = {}) {
   return colunas.map((c) => {
-    const tipo = tipos[c.id];
+    const tipo = sobrescritas[c.id] ?? c.tipo;
     return { id: c.id, rotulo: tipo === 'status' ? 'Situação' : c.titulo, ...(tipo ? { tipo } : {}) };
   });
 }

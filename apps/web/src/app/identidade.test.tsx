@@ -15,18 +15,18 @@ describe('identidade do shell (T-0021, ajustes B)', () => {
     expect(metadata.icons).toMatchObject({ icon: faviconDataUri, apple: [{ url: appleTouchIconDataUri, sizes: '180x180' }] });
   });
   it('o topo do shell usa a AssinaturaErp (sem texto de assinatura) e o layout importa botoes.css', () => {
-    const casca = fonte('(shell)/layout.tsx');
+    const casca = fonte('(shell)/casca.tsx');
     expect(casca).toContain('<AssinaturaErp />');
     expect(casca).not.toContain('NOME_PRODUTO');
     expect(fonte('layout.tsx')).toContain("@macuxierp/ui/botoes.css");
   });
   it('o CSS do shell não define .btn próprio nem usa borda-cinza em campo', () => {
     expect(css).not.toMatch(/\.btn\b/);
-    expect(css).toMatch(/\.campo input \{[^}]*borda-campo/);
+    expect(css).toMatch(/\.campo input, \.campo select \{[^}]*borda-campo/);
     expect(css).toMatch(/\.entrada[^{]*\{[^}]*borda-campo/);
   });
   it('o foco no topo, no menu e no cartão é branco pela .mx-fundo-escuro do ui', () => {
-    expect(fonte('(shell)/layout.tsx')).toMatch(/<header className="topo mx-fundo-escuro">/);
+    expect(fonte('(shell)/casca.tsx')).toMatch(/<header className="topo mx-fundo-escuro">/);
     expect(renderToStaticMarkup(<CabecalhoCartao titulo="X" />)).toContain('<header class="mx-fundo-escuro">');
     expect(css).not.toMatch(/\.topo[^{]*:focus-visible/);
     expect(css).not.toMatch(/\.lateral[^{]*:focus-visible/);

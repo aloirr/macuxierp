@@ -6,7 +6,8 @@ import { CARGA_GRANDE_DEMAIS, FALHA, SESSAO_EXPIRADA } from '../textos';
 import { somaMantidos } from './cargas';
 import { baixarErros, baixarModelo, gravarCarga, lerPreviaZerar, validarCarga, zerarCargas } from './cargas-api';
 import { ErroPlataforma, mensagemDoErro } from './erros';
-import { ROTA_ENTRAR, ROTA_SENHA } from './constantes';
+import { ROTA_SENHA } from './constantes';
+import { ROTA_LOGIN_SUPERADMIN } from '../rota-login';
 import { tokenConfig } from './sessao';
 
 /**
@@ -61,7 +62,7 @@ type Resposta = Response | Promise<Response>;
 /** Erro da API (ou da rede) vira resposta com mensagem fixa; 401 pede novo login e 403 TROCAR_SENHA leva à troca. */
 function respostaDeErro(e: unknown): Response {
   const m = mensagemDoErro(e, 'carga');
-  if (m.expirou) return falha(m.texto, 401, { redirecionar: ROTA_ENTRAR });
+  if (m.expirou) return falha(m.texto, 401, { redirecionar: ROTA_LOGIN_SUPERADMIN });
   if (e instanceof ErroPlataforma && e.status === 403 && e.codigo === CODIGO_TROCAR_SENHA) return falha('Troque a senha provisória antes de continuar.', 403, { redirecionar: ROTA_SENHA });
   const status = e instanceof ErroPlataforma ? (e.status >= 400 && e.status < 500 ? e.status : 503) : 503;
   return falha(m.texto || FALHA, status, { chaveNova: m.chaveNova });
@@ -70,7 +71,7 @@ function respostaDeErro(e: unknown): Response {
 export async function comSessao(req: Request, fn: (token: string) => Resposta): Promise<Response> {
   if (!origemPermitida(req)) return falha('Origem não permitida.', 403);
   const token = await tokenConfig();
-  if (!token) return falha(SESSAO_EXPIRADA, 401, { redirecionar: ROTA_ENTRAR });
+  if (!token) return falha(SESSAO_EXPIRADA, 401, { redirecionar: ROTA_LOGIN_SUPERADMIN });
   try {
     return await fn(token);
   } catch (e) {

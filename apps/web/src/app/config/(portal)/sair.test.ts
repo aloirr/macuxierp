@@ -20,14 +20,14 @@ vi.mock('@/lib/config/api', () => ({
 
 import { GET as encerrar } from '../sessao/encerrar/route';
 import { sairConfigAcao } from './sair';
-import { ROTA_ENTRAR } from '@/lib/config/constantes';
+import { ROTA_LOGIN_SUPERADMIN } from '@/lib/rota-login';
 import { TopoPlataforma } from './topo-plataforma';
 
 beforeEach(() => Object.assign(estado, { cookie: 'tok', apagados: [], chamadas: [] }));
 
 describe('Sair é POST (server action), nunca GET', () => {
   it('revoga na API, apaga só o cookie do /config e volta ao login', async () => {
-    await expect(sairConfigAcao()).rejects.toThrow('REDIRECT /login');
+    await expect(sairConfigAcao()).rejects.toThrow('REDIRECT /#codigo=MACUXI');
     expect(estado.chamadas).toEqual(['sair:tok']);
     expect(estado.apagados).toEqual([{ name: 'mx_config', path: '/config' }]);
   });
@@ -48,7 +48,7 @@ describe('GET /config/sessao/encerrar não desloga sessão válida', () => {
   it('API confirma 401: apaga o cookie do /config e vai ao login (Location relativo)', async () => {
     estado.cookie = 'velho';
     const r = await encerrar();
-    expect(r.headers.get('location')).toBe(ROTA_ENTRAR);
+    expect(r.headers.get('location')).toBe(ROTA_LOGIN_SUPERADMIN);
     const set = r.headers.get('set-cookie') ?? '';
     expect(set).toContain('mx_config=;');
     expect(set).toContain('Path=/config');
@@ -56,7 +56,7 @@ describe('GET /config/sessao/encerrar não desloga sessão válida', () => {
   it('sem cookie: só vai ao login, sem chamar a API', async () => {
     estado.cookie = undefined;
     const r = await encerrar();
-    expect(r.headers.get('location')).toBe(ROTA_ENTRAR);
+    expect(r.headers.get('location')).toBe(ROTA_LOGIN_SUPERADMIN);
     expect(estado.chamadas).toEqual([]);
   });
 });

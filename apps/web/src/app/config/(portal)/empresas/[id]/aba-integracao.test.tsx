@@ -110,7 +110,7 @@ describe('CSS das ligações (docs/design/integracao-duas-ligacoes)', () => {
     expect(css).toMatch(/\.ligacoes, \.grade-cartoes \{ display: grid; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); gap: 16px; align-items: start; \}/);
     expect(css).toMatch(/@media \(max-width: 767px\) \{ \.ligacoes, \.grade-cartoes \{ grid-template-columns: minmax\(0, 1fr\); \} \}/);
     expect(css).toMatch(/\.ligacao h2 \.seta, \.direcao h2 \.seta \{ color: var\(--mx-cor-texto-secundario\); font-weight: 400; \}/);
-    expect(css).toMatch(/\.casca-plataforma \.conteudo \{ max-width: none; \}/);
+    expect(css).not.toMatch(/\.conteudo \{[^}]*max-width/); // T-0121: sem teto no contêiner, o /config e o BKO preenchem a largura
     expect(css).toMatch(/\.ligacao \.ficha dt \{[^}]*color: var\(--mx-cor-rotulo-destaque\); text-transform: uppercase;/);
   });
   it('.so-leitor não tem mais dois sentidos: a camada clicável ganhou nome próprio', () => {

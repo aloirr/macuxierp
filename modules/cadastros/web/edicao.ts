@@ -5,10 +5,11 @@
  */
 import { pode, type Acao, type Perfil } from '@macuxierp/platform-sdk';
 import { interpretarCentavos } from '@macuxierp/platform-sdk/formatar';
+import type { ColunaLista } from '@macuxierp/platform-sdk/listas';
 import { Cep, Ibge, Uf } from '../contracts';
 import { normalizarCoordenada } from '../domain/coordenada';
 
-export type TipoCampoEdicao = 'texto' | 'selecao' | 'dinheiro' | 'cadastro' | 'booleano';
+export type TipoCampoEdicao = 'texto' | 'selecao' | 'dinheiro' | 'cadastro' | 'booleano' | 'data';
 
 export interface CampoEdicao {
   nome: string;
@@ -84,6 +85,21 @@ export const opcoes = (r: Readonly<Record<string, string>>) => Object.entries(r)
 
 export const simNao = (v: unknown): string => (v ? 'Sim' : 'Não');
 export const situacao = (inativo: unknown): string => (inativo ? 'Inativo' : 'Ativo');
+
+/** Tipos de coluna do `TabelaDensa` do packages/ui (mesmo formato do faturamento): `status` desenha o selo. */
+export type TipoColuna = 'texto' | 'numero' | 'dinheiro' | 'data' | 'status';
+export type TomSelo = 'ok' | 'aviso' | 'erro' | 'neutro';
+/** Selo da célula de status: o CSV usa só o `valor` da coluna (texto curto). */
+export interface Selo { texto: string; tom: TomSelo }
+/** Selo Ativo (ok) ou Inativo (neutro) da coluna "Situação" das listas (MC-0201, regra 11: uma coluna só). */
+export const seloDaSituacao = (inativo: unknown): Selo => ({ texto: situacao(inativo), tom: inativo ? 'neutro' : 'ok' });
+/** Coluna de lista com o que a tela do shell lê além do SDK (o `ColunaLista` do SDK ainda não tem `tipo`). */
+export type ExtrasDeColuna<L> = { tipo?: TipoColuna; selos?: (linha: L) => readonly Selo[] };
+export type ColunaDeLista<L> = ColunaLista<L> & ExtrasDeColuna<L>;
+/** A coluna "Situação" (inativo) das listas: tipo `status`, selo Ativo/Inativo; o CSV segue com o texto. */
+export const colunaSituacao = <L extends { inativo: unknown }>(): ColunaDeLista<L> => ({
+  id: 'inativo', titulo: 'Situação', tipo: 'status', valor: (l) => situacao(l.inativo), selos: (l) => [seloDaSituacao(l.inativo)],
+});
 
 /** Endereço do formulário (cliente na criação e filial): campos `end_*`. */
 export const CAMPOS_ENDERECO: readonly CampoEdicao[] = [
