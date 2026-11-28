@@ -133,12 +133,6 @@ const InsumosLigacoesPortal = z.object({
 });
 export type InsumosLigacoesPortal = z.infer<typeof InsumosLigacoesPortal>;
 
-/**
- * Caminho da Ligação no /config. O `CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.ligacoes` vem no PR #989 do platform-sdk, ainda fora do
- * main: até lá o literal fica aqui (trocar por `C.ligacoes` depois do merge).
- */
-const CAMINHO_LIGACOES = '/empresas/:id/integracao-fdv/ligacoes';
-
 const ResultadoReprocessarPortal = z.object({ falhas: z.number().int().min(0), pendentes: z.number().int().min(0), pedido_em: z.union([Instante, z.date()]) });
 
 /** Porta do banco do portal: uma função SQL por método. O dublê dos testes unitários implementa esta interface. */
@@ -459,7 +453,7 @@ export function criarPluginPlataformaIntegracaoFdv(deps: DependenciasPlataformaI
     }),
     definirRotaPlataforma({
       metodo: 'GET',
-      caminho: CAMINHO_LIGACOES,
+      caminho: C.ligacoes,
       acao: 'plataforma.integracao_fdv.ver',
       async executar(c, { params }) {
         const tenant = idDaRota(params);
