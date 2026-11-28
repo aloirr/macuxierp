@@ -1,7 +1,7 @@
 /**
  * T-0127 (v0.3.32): seed fiscal de EXEMPLO (db/seeds/fiscal-exemplo.sql). Carrega no banco de teste, regras base no
  * tenant de referência e regras tributárias só no tenant de teste (RLS entre dois tenants), ajustar_mva explícito,
- * nada de ST interestadual, marcado EXEMPLO, idempotente (roda de novo sem duplicar), recusa banco que não é de teste
+ * nada de ST interestadual, exemplo marcado na fonte_referencia, idempotente (roda de novo sem duplicar), recusa banco que não é de teste
  * e não faz parte do migrar.
  */
 import { randomUUID } from 'node:crypto';
@@ -28,6 +28,8 @@ const APP_A = { papel: 'macuxierp_app', tenant: A.id };
 const APP_B = { papel: 'macuxierp_app', tenant: B.id };
 const LEITURA_B = { papel: 'macuxierp_leitura', tenant: B.id };
 const REFERENCIA = '00000000-0000-0000-0000-000000000000';
+/** Texto da fonte que aparece na tela (pedido da marca, v0.3.32): sem caminho de arquivo e sem nome de ambiente. */
+const FONTE = 'Exemplo para demonstração, sem valor fiscal';
 
 interface Contagem {
   base: number;
@@ -101,16 +103,24 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — seed fiscal de exemplo (T-0
     expect(aplicadas).toEqual({ n: 6 });
   });
 
-  it('valores marcados EXEMPLO, ajustar_mva explícito (false) e nenhum campo ou CST de ST', () => {
-    const [b] = consultar<{ sem_exemplo: number }>(
+  it('exemplo marcado só na fonte (sem caminho nem e2e), título em português claro, ajustar_mva false e nada de ST', () => {
+    const [b] = consultar<{ sem_exemplo: number; titulo_exemplo: number; texto_tecnico: number }>(
       banco.conexao,
-      `SELECT count(*)::int AS sem_exemplo FROM fiscal.regra_base
-       WHERE titulo NOT LIKE 'EXEMPLO%' OR fonte_referencia NOT LIKE 'EXEMPLO%'`,
+      `SELECT count(*) FILTER (WHERE fonte_referencia IS DISTINCT FROM '${FONTE}')::int AS sem_exemplo,
+              count(*) FILTER (WHERE titulo ILIKE 'exemplo%')::int AS titulo_exemplo,
+              count(*) FILTER (WHERE concat_ws(' ', titulo, descricao, fonte_referencia) ~* '(e2e|/|\\.sql)')::int
+                AS texto_tecnico
+       FROM fiscal.regra_base`,
     );
-    expect(b).toEqual({ sem_exemplo: 0 });
+    expect(b).toEqual({ sem_exemplo: 0, titulo_exemplo: 0, texto_tecnico: 0 });
+    const [titulo] = consultar<{ t: string }>(
+      banco.conexao,
+      `SELECT titulo AS t FROM fiscal.regra_base WHERE chave = 'exemplo.am.icms.interna.00'`,
+    );
+    expect(titulo?.t).toBe('ICMS interno de AM, regime normal, tributado integralmente (CST 00)');
     const [t] = consultar<{ sem_exemplo: number; mva_nao_falso: number; st: number }>(
       banco.conexao,
-      `SELECT count(*) FILTER (WHERE fonte_referencia NOT LIKE 'EXEMPLO%')::int AS sem_exemplo,
+      `SELECT count(*) FILTER (WHERE fonte_referencia IS DISTINCT FROM '${FONTE}')::int AS sem_exemplo,
               count(*) FILTER (WHERE ajustar_mva IS DISTINCT FROM false)::int AS mva_nao_falso,
               count(*) FILTER (WHERE num_nonnulls(mod_bc_st, mva_original, mva_ajustada, reducao_bc_st,
                 aliquota_interna_destino, p_fcp_st) > 0
@@ -150,7 +160,9 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — seed fiscal de exemplo (T-0
     const raiz = conexaoDoAmbiente(process.env, 'postgres');
     rodarScript(raiz, `CREATE DATABASE ${nome};`);
     try {
-      expect(falha(() => carregarSeedFiscalExemplo({ ...raiz, banco: nome }, A.id))).toMatch(/recusado no banco/);
+      expect(falha(() => carregarSeedFiscalExemplo({ ...raiz, banco: nome }, A.id))).toMatch(
+        /recusado no banco/,
+      );
     } finally {
       rodarScript(raiz, `DROP DATABASE IF EXISTS ${nome};`);
     }
