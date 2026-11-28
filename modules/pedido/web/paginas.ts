@@ -74,7 +74,7 @@ export const paginaPedidos = paginaPedidosNoFuso(FUSO_PADRAO);
 
 // ---- Páginas do BKO (T-0015, lote 3): rotas, menu e permissões como dados; o shell desenha ----
 
-export type TipoPaginaPedido = 'lista' | 'detalhe' | 'novo' | 'editar';
+export type TipoPaginaPedido = 'lista' | 'detalhe' | 'novo';
 
 export interface PaginaPedido extends PaginaBase {
   readonly id: string;
@@ -82,12 +82,11 @@ export interface PaginaPedido extends PaginaBase {
 }
 
 /**
- * Ordem: lista, novo, detalhe, editar. `/novo` vem antes de `/:id`, para o fixo vencer o parâmetro; `/:id/editar` tem outro tamanho.
- * `editar` só vale para o pedido `bko` em `em_analise` (`acoesDoPedido`/`possiveis`); usa `formularioDoPedido` e o PUT com `If-Match`.
+ * Ordem: lista, novo, detalhe. `/novo` vem antes de `/:id`, para o fixo vencer o parâmetro.
+ * "Editar pedido" (`/:id/editar`) saiu até a tela existir (decisão do PO, v0.3.30): não caía mais em "Disponível em breve". O PUT com `If-Match` continua na API e no `cliente.editar`.
  */
 export const PAGINAS_PEDIDO: readonly PaginaPedido[] = [
   { id: 'pedidos', tipo: 'lista', menu: 'Pedidos', titulo: 'Pedidos', rota: '/pedido/pedidos', ver: 'pedido.ver' },
   { id: 'novo', tipo: 'novo', menu: 'Pedidos', titulo: 'Novo pedido', rota: '/pedido/pedidos/novo', ver: 'pedido.pedido.lancar', ocultaNoMenu: true },
   { id: 'detalhe', tipo: 'detalhe', menu: 'Pedidos', titulo: 'Pedido', rota: '/pedido/pedidos/:id', ver: 'pedido.ver', ocultaNoMenu: true },
-  { id: 'editar', tipo: 'editar', menu: 'Pedidos', titulo: 'Editar pedido', rota: '/pedido/pedidos/:id/editar', ver: 'pedido.pedido.lancar', ocultaNoMenu: true },
 ];

@@ -37,7 +37,6 @@ describe('páginas do BKO do pedido', () => {
     const oculta = (id: string) => PAGINAS_PEDIDO.find((p) => p.id === id)?.ocultaNoMenu;
     expect(oculta('detalhe')).toBe(true);
     expect(oculta('novo')).toBe(true);
-    expect(oculta('editar')).toBe(true);
     expect(oculta('pedidos')).toBeUndefined();
   });
 
@@ -111,10 +110,10 @@ describe('formatação', () => {
 const pedido = (status: Pedido['status'], origem: Pedido['origem'], bloqueante: boolean[] = []) => ({ status, origem, pendencias: bloqueante.map((b) => ({ bloqueante: b })) });
 
 describe('ações do detalhe por status e perfil (RN-PED-02)', () => {
-  it('gerente e administrador aprovam e recusam o bko em análise; faturista só revalida e edita; vendedor e leitura nada', () => {
+  it('gerente e administrador aprovam e recusam o bko em análise; faturista só revalida; ninguém edita enquanto a tela não existe (v0.3.30); vendedor e leitura nada', () => {
     const p = pedido('em_analise', 'bko', [false]);
-    for (const perfil of ['administrador', 'gerente'] as Perfil[]) expect(acoesDoPedido(perfil, p), perfil).toMatchObject({ aprovar: true, recusar: true, revalidar: true, editar: true, cancelar: false });
-    expect(acoesDoPedido('faturista', p)).toMatchObject({ aprovar: false, recusar: false, revalidar: true, editar: true });
+    for (const perfil of ['administrador', 'gerente'] as Perfil[]) expect(acoesDoPedido(perfil, p), perfil).toMatchObject({ aprovar: true, recusar: true, revalidar: true, editar: false, cancelar: false });
+    expect(acoesDoPedido('faturista', p)).toMatchObject({ aprovar: false, recusar: false, revalidar: true, editar: false });
     for (const perfil of ['vendedor', 'leitura'] as Perfil[]) expect(acoesDoPedido(perfil, p), perfil).toMatchObject({ aprovar: false, recusar: false, revalidar: false, editar: false, cancelar: false });
   });
   it('pendência não bloqueante pede justificativa; bloqueante desabilita o aprovar (RN-PED-03)', () => {
@@ -294,9 +293,9 @@ describe('formulário do pedido manual', () => {
 });
 
 describe('edição, endereço de entrega e fontes dos seletores (T-0015, lote 3b)', () => {
-  it('a página de edição exige lançar pedido e vale só para o pedido bko em análise', () => {
-    const e = PAGINAS_PEDIDO.find((p) => p.id === 'editar');
-    expect(e).toMatchObject({ tipo: 'editar', rota: '/pedido/pedidos/:id/editar', ver: 'pedido.pedido.lancar' });
+  it('sem tela de edição no BKO (v0.3.30): a página "Editar pedido" não é declarada e nenhum perfil vê o botão', () => {
+    expect(PAGINAS_PEDIDO.find((p) => p.id === 'editar' || p.rota.endsWith('/editar'))).toBeUndefined();
+    for (const perfil of ['administrador', 'gerente', 'faturista'] as Perfil[]) expect(acoesDoPedido(perfil, pedido('em_analise', 'bko')).editar, perfil).toBe(false);
   });
   it('o PUT da edição leva o If-Match com o updated_at carregado', async () => {
     const chamadas: { url: string; method: string; headers: Record<string, string> }[] = [];
