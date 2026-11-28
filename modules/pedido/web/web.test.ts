@@ -12,7 +12,7 @@ import { semEspacoDuro } from './apoio-teste';
 import { formularioVazio, novaChaveDoFormulario, retornoDoLancamento, formularioDoPedido, validarFormulario, type Formulario } from './formulario';
 import { colunasDaTela, colunasDoCsv, FILTROS_TELA, linhaDaTela } from './lista';
 import { caminhoDaConsulta, caminhoDosEnderecos, FONTE_CLIENTE, FONTE_PRODUTO, opcoesDeEndereco } from './fontes';
-import { PAGINAS_PEDIDO, paginaPedidos, type ItemListaPedido } from './paginas';
+import { PAGINAS_PEDIDO, paginaPedidos, paginaPedidosNoFuso, type ColunaPedido, type ItemListaPedido } from './paginas';
 
 const U1 = '3f1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c70';
 const U2 = '8a2b6c10-1d3e-4f5a-8b7c-9d0e1f2a3b4c';
@@ -69,6 +69,30 @@ describe('páginas do BKO do pedido', () => {
     expect(l.status).toBe('Em análise');
     expect(l.origem).toBe('Manual');
     expect(Object.keys(l)).toEqual(colunasDaTela('gerente').map((c) => c.id));
+  });
+});
+
+describe('descritor da lista: tipos das colunas (MC-0201)', () => {
+  it('RN-PED-02: status é coluna de status com rótulo e emitido_em é data no fuso, sem (UTC) no título e sem ISO cru', () => {
+    const col = (id: string) => paginaPedidos.colunas.find((c) => c.id === id) as { titulo: string; tipo?: string; valor: (p: ItemListaPedido) => unknown };
+    expect(col('status').tipo).toBe('status');
+    expect((col('status') as ColunaPedido).selos?.(item)).toEqual([{ texto: 'Em análise', tom: 'aviso' }]);
+    expect(col('numero').tipo).toBe('numero');
+    expect(col('pendencias').tipo).toBe('numero');
+    expect(col('total_centavos').tipo).toBe('dinheiro');
+    expect(col('status').valor(item)).toBe('Em análise');
+    expect(col('emitido_em').tipo).toBe('data');
+    expect(col('emitido_em').titulo).not.toContain('UTC');
+    expect(col('emitido_em').valor(item)).toBe(linhaDaTela(item, 'America/Manaus').emitido_em);
+  });
+});
+
+describe('CSV da lista no fuso do tenant', () => {
+  it('CSV: a data segue o fuso do tenant, não o de Manaus', () => {
+    const dt = (fuso: string) => (paginaPedidosNoFuso(fuso).colunas.find((c) => c.id === 'emitido_em')!.valor(item));
+    expect(dt('America/Manaus')).toBe(linhaDaTela(item, 'America/Manaus').emitido_em);
+    expect(dt('America/Sao_Paulo')).toBe(linhaDaTela(item, 'America/Sao_Paulo').emitido_em);
+    expect(dt('America/Sao_Paulo')).not.toBe(dt('America/Manaus'));
   });
 });
 
