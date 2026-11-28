@@ -150,7 +150,16 @@ test('suíte completa uma vez por versão (R-20261120-073449-alexandre): o liber
   assert.match(ci, /index\("testes-pacotes"\) != null and index\("testes-integracao"\) != null and index\("e2e"\) != null/);
 });
 
-test('e2e no liberar (decisão 137 A): um job do ci.yml, um script de tests/e2e/rodar-*.sh por parte, exigido pelo ci-ok', () => {
+/**
+ * A lista EXPLÍCITA dos e2e de tela da versão corrente (PO, 28/11/2026 07h58, dentro da 137 A): a matriz do job e2e do
+ * ci.yml tem de ser exatamente esta. Fora dela: prints (rodar-prints.sh, prints das versões antigas v0312 e v0315).
+ * Vaga reservada: o e2e das Regras fiscais entra aqui e na matriz do ci.yml no mesmo PR, quando o
+ * tests/e2e/rodar-<regras-fiscais>.sh existir.
+ */
+const E2E_DA_VERSAO = ['login-sem-empresa', 'login-config', 'bko-cadastro', 'portal-integracao', 'ficha-receita', 'render-telas'];
+const FORA_DO_LIBERAR = ['prints'];
+
+test('e2e no liberar (decisão 137 A): um job do ci.yml com a lista explícita dos e2e da versão, exigido pelo ci-ok', () => {
   const ci = ler('.github/workflows/ci.yml');
   const ini = ci.indexOf('\n  e2e:\n');
   assert.ok(ini > 0, 'o ci.yml tem o job e2e');
@@ -158,18 +167,19 @@ test('e2e no liberar (decisão 137 A): um job do ci.yml, um script de tests/e2e/
   // só quando o escopo pede (matriz completa: o liberar e o manual com sha ou completo), nunca no PR
   assert.match(e2e, /needs: escopo\n/);
   assert.match(e2e, /if: \$\{\{ !cancelled\(\) && contains\(needs\.escopo\.outputs\.jobs, '"e2e"'\) \}\}/);
-  // a matriz é exatamente a lista dos executores de tests/e2e
-  const scripts = readdirSync(new URL('../../tests/e2e/', import.meta.url))
+  // a matriz é exatamente a lista explícita, e cada item tem o seu tests/e2e/rodar-<x>.sh
+  const matriz = e2e.match(/\n {8}script: \[([^\]]+)\]/)?.[1].split(',').map((s) => s.trim());
+  assert.deepEqual([...matriz].sort(), [...E2E_DA_VERSAO].sort());
+  const executores = readdirSync(new URL('../../tests/e2e/', import.meta.url))
     .filter((f) => /^rodar-.+\.sh$/.test(f))
-    .map((f) => f.slice('rodar-'.length, -'.sh'.length))
-    .sort();
-  const matriz = e2e.match(/\n {8}script: \[([^\]]+)\]/)?.[1].split(',').map((s) => s.trim()).sort();
-  assert.deepEqual(matriz, scripts);
+    .map((f) => f.slice('rodar-'.length, -'.sh'.length));
+  for (const s of E2E_DA_VERSAO) assert.ok(executores.includes(s), `falta tests/e2e/rodar-${s}.sh`);
+  for (const s of FORA_DO_LIBERAR) assert.ok(!matriz.includes(s), `${s} fora do liberar`);
+  assert.doesNotMatch(e2e, /rodar-prints\.sh"? "\$/, 'os prints das versões antigas não rodam no liberar');
   assert.match(e2e, /fail-fast: false/);
   assert.match(e2e, /\n {4}services:\n {6}postgres:\n/);
   assert.match(e2e, /ref: \$\{\{ inputs\.sha \}\}/);
-  assert.match(e2e, /bash "tests\/e2e\/rodar-\$SCRIPT\.sh"/);
-  assert.match(e2e, /bash tests\/e2e\/rodar-prints\.sh "\$v"/);
+  assert.match(e2e, /bash "tests\/e2e\/rodar-\$SCRIPT\.sh" "\$SAIDA"/);
   assert.doesNotMatch(e2e, /secrets\./, 'sem segredo');
   // o ci-ok espera pelo e2e (job fora da lista do escopo tem de ficar "skipped"; na lista, "success")
   assert.match(ci, /\n {2}ci-ok:\n[^]*?needs: \[escopo, governanca, estatico, testes-pacotes, testes-integracao, e2e\]/);

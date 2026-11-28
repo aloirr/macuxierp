@@ -7,7 +7,7 @@ name: producao — liberar versão
 #      o commit está no main e tem CI verde de push no main (scripts/ci/producao-conferir.mjs entrada e commit);
 #   2. suite (R-20261120-073449-alexandre: a suíte completa uma vez por versão, não a cada merge): o ci.yml inteiro por
 #      workflow_call no SHA da versão (todos os pacotes, testes dos pacotes e tests/ com Postgres e, pela decisão 137 A
-#      do Alexandre de 28/11/2026, o job e2e com um script de tests/e2e/rodar-*.sh por parte), sem segredo. A imagem e
+#      do Alexandre de 28/11/2026, o job e2e com a lista explícita dos e2e de tela da versão, sem os prints antigos), sem segredo. A imagem e
 #      a issue só saem com o ci-ok dela verde (needs; o ci-ok exige o e2e): suíte vermelha ou cancelada = nada liberado;
 #   3. imagem (packages: write; ADR 0051, demo desligada em 14/11/2026): se ghcr.io/<dono>/macuxierp-api:<sha> ainda não
 #      existe no GHCR, monta o apps/api/Dockerfile DESSE commit (só depois dos passos 1 e 2) e envia só a tag <sha>.

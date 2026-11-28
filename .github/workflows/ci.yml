@@ -29,7 +29,8 @@ name: CI
 #                       que há código
 #   e2e                 só na matriz completa (manual com "completo" ou "sha" e a chamada do producao-liberar; decisão
 #                       137 A do Alexandre, 28/11/2026: os e2e rodam sempre no liberar), nunca no PR nem no push. Matriz
-#                       por script (tests/e2e/rodar-*.sh, a lista é conferida no scripts/ci/producao-conferir.test.mjs),
+#                       com a lista explícita dos e2e de tela da versão (tests/e2e/rodar-<x>.sh, sem o rodar-prints.sh;
+#                       conferida no scripts/ci/producao-conferir.test.mjs; vaga para o e2e das Regras fiscais),
 #                       Postgres de serviço, o caminho dos scripts (apoio-e2e.sh, rodar_roteiro_dev) e o Playwright
 #                       global (require('playwright') pelo NODE_PATH), como na sessão. Sem segredo
 #   ci-ok              agrega: é o check a olhar. Verde com as suítes, grava o artefato ci-verde-<matriz>-<árvore>.
@@ -436,10 +437,14 @@ jobs:
     if: ${{ !cancelled() && contains(needs.escopo.outputs.jobs, '"e2e"') }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    # A lista EXPLÍCITA dos e2e de tela da versão corrente (PO, 28/11/2026 07h58, dentro da 137 A), um tests/e2e/rodar-<x>.sh
+    # por parte; o producao-conferir.test.mjs confere esta lista. Fora dela: o rodar-prints.sh (prints de versões antigas,
+    # v0312 e v0315, que não são e2e da versão). Vaga reservada: o e2e das Regras fiscais entra aqui (nome do script sem
+    # "rodar-" e ".sh") quando o tests/e2e/rodar-<regras-fiscais>.sh existir, junto com a lista do teste.
     strategy:
       fail-fast: false
       matrix:
-        script: [bko-cadastro, ficha-receita, login-config, login-sem-empresa, portal-integracao, prints, render-telas]
+        script: [login-sem-empresa, login-config, bko-cadastro, portal-integracao, ficha-receita, render-telas]
 
     services:
       postgres:
@@ -475,25 +480,13 @@ jobs:
           echo "NODE_PATH=$(npm root -g)" >> "$GITHUB_ENV"
           playwright install --with-deps chromium
 
-      # prints: todas as versões com massa e roteiro (tests/e2e/api-prints-<v>.ts e prints-<v>.mjs), uma depois da outra.
       - name: e2e
         env:
           SCRIPT: ${{ matrix.script }}
           SAIDA: ${{ runner.temp }}/e2e
         run: |
           mkdir -p "$SAIDA"
-          if [ "$SCRIPT" != prints ]; then
-            exec bash "tests/e2e/rodar-$SCRIPT.sh" "$SAIDA"
-          fi
-          codigo=0
-          for massa in tests/e2e/api-prints-*.ts; do
-            v="${massa#tests/e2e/api-prints-}"
-            v="${v%.ts}"
-            echo "::group::prints $v"
-            bash tests/e2e/rodar-prints.sh "$v" "$SAIDA/$v" || codigo=1
-            echo "::endgroup::"
-          done
-          exit "$codigo"
+          bash "tests/e2e/rodar-$SCRIPT.sh" "$SAIDA"
 
       - uses: actions/upload-artifact@v4
         if: ${{ failure() }}
