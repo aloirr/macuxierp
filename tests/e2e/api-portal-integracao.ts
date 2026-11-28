@@ -15,7 +15,8 @@ await subirApiE2e({
   adm: 'adm-e2e-ifdv@exemplo.invalid',
   versao: 'api-portal-integracao',
   porta: '3201',
+  registrarRotas: true,
   extra: ({ tenant }) => ({
-    portal: { prefixo: PREFIXO_PLATAFORMA, cookie: COOKIE_CONFIG, csrf: CABECALHO_CSRF_CONFIG, ler: `${PREFIXO_PLATAFORMA}${C.ler.replace(':id', tenant)}` },
+    portal: { prefixo: PREFIXO_PLATAFORMA, cookie: COOKIE_CONFIG, csrf: CABECALHO_CSRF_CONFIG, ler: `${PREFIXO_PLATAFORMA}${C.ler.replace(':id', tenant)}`, cargaCompleta: `${PREFIXO_PLATAFORMA}${C.cargaCompleta}` },
   }),
 });

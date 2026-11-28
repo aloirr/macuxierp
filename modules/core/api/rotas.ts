@@ -10,6 +10,7 @@ import {
   ErroCertificado,
   csvDaLista,
   definirRota,
+  armazenamentoIndisponivel,
   erros,
   paginar,
   PERFIS,
@@ -163,6 +164,8 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
   const { repo } = deps;
   const aleatorios = deps.aleatorios ?? ((n: number) => randomBytes(n));
   const novoId = deps.novoId ?? randomUUID;
+  /** T-0124: o armazenamento padrão do SDK é o "indisponível" (sem MACUXI_S3_*); qualquer outro conta como ligado. */
+  const exportacaoDisponivel = deps.armazenamento !== armazenamentoIndisponivel;
 
   async function empresaOuErro(c: ContextoRota): Promise<LinhaEmpresa> {
     const e = await repo.empresa(c.tx);
@@ -497,10 +500,21 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
       caminho: '/exportacoes',
       acao: 'core.exportacao.pedir',
       async executar(c) {
+        // T-0124: sem os secrets MACUXI_S3_* o armazenamento é o "indisponível": recusa antes de gravar ou enfileirar.
+        if (!exportacaoDisponivel) throw erros.indisponivel('Exportação de dados');
         const e = await repo.criarExportacao(c.tx, novoId(), c.sessao.usuario_id, c.agora);
         await c.enfileirar({ tipo: TRABALHO_EXPORTAR, payload: { exportacao_id: e.id }, external_id: e.id });
         await c.auditar({ acao: 'core.exportacao.pedida', entidade: 'exportacao', entidade_id: e.id });
         return { status: 202, corpo: exportacaoDto(e) };
+      },
+    }),
+    // Caminho fixo antes do `:id`. O shell esconde a página de exportação quando `disponivel` é falso (T-0124).
+    definirRota({
+      metodo: 'GET',
+      caminho: '/exportacoes/disponibilidade',
+      acao: 'core.exportacao.pedir',
+      async executar() {
+        return { corpo: { disponivel: exportacaoDisponivel } };
       },
     }),
     definirRota({

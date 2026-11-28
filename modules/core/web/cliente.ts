@@ -79,6 +79,8 @@ export function criarClienteCore(cfg: { baseUrl: string; token: () => string; fe
       chamar('PUT', `/ambientes-fiscais/${filialId}`, AmbienteFiscal, { ambiente: 'homologacao' }),
     auditoria: (f?: Record<string, string>) => chamar('GET', `/auditoria${q(f)}`, ListaAuditoria),
     pedirExportacao: () => chamar('POST', '/exportacoes', Exportacao, {}),
+    /** T-0124: falso quando o servidor não tem o armazenamento S3; a página de exportação fica oculta. */
+    exportacaoDisponivel: () => chamar('GET', '/exportacoes/disponibilidade', z.object({ disponivel: z.boolean() })),
     exportacao: (id: string) => chamar('GET', `/exportacoes/${id}`, Exportacao),
   };
 }
