@@ -9,9 +9,9 @@ export interface AtalhoInicio {
 
 /** Os três atalhos do Início (decisão 58): módulo e rótulo do item de menu a que cada um leva. */
 const ATALHOS: readonly { modulo: ModuloId; rotulo: string; descricao: string }[] = [
-  { modulo: 'pedido', rotulo: 'Pedidos', descricao: 'Lançar e acompanhar pedidos' },
-  { modulo: 'faturamento', rotulo: 'Notas fiscais', descricao: 'Emitir e consultar NF-e' },
-  { modulo: 'cadastros', rotulo: 'Clientes', descricao: 'Cadastro de clientes' },
+  { modulo: 'pedido', rotulo: 'Pedidos', descricao: 'Lançar e acompanhar' },
+  { modulo: 'faturamento', rotulo: 'Notas fiscais', descricao: 'Emitir e consultar' },
+  { modulo: 'cadastros', rotulo: 'Clientes', descricao: 'Incluir e consultar' },
 ];
 
 /** Atalhos visíveis: saem do mesmo menu do shell (`montarMenu`: licença, manifesto e perfil), sem regra nova. */

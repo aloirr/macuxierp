@@ -410,7 +410,6 @@ button.link { background: none; border: 0; padding: 0; color: inherit; font: inh
 /* Início do BKO (decisões 58 e 59): atalhos em uma linha que distribui o espaço; em 390 px, um por linha. */
 .atalhos { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
 @media (min-width: 768px) { .atalhos-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .atalhos-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-.titulo-secao { margin: 16px 0 6px; text-transform: uppercase; letter-spacing: var(--mx-letras-caixa-alta); }
 .atalho { display: flex; align-items: center; gap: 12px; min-height: 72px; background: var(--mx-cor-branco); border: 1px solid var(--mx-cor-borda-tabela); border-radius: var(--mx-medida-canto-cartao); padding: 16px; color: var(--mx-cor-grafite); text-decoration: none; }
 .atalho:hover { border-color: var(--mx-cor-azul-noite); }
 .atalho b { display: block; font-size: var(--mx-tamanho-medio); color: var(--mx-cor-azul-noite); }

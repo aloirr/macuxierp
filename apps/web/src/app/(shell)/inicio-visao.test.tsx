@@ -20,9 +20,9 @@ describe('Início do BKO (decisões 58 e 59)', () => {
     expect(h).toContain('atalhos-3');
     expect(h).toContain('<h1>Início</h1>');
     expect(h).toContain('Olá, Ana. Por onde quer começar?');
-    expect(h).toContain('<h2 class="titulo-secao">Atalhos</h2>');
+    expect(h).not.toContain('Atalhos');
     for (const r of ['Pedidos', 'Notas fiscais', 'Clientes']) expect(h).toContain(`<b>${r}</b>`);
-    for (const d of ['Lançar e acompanhar pedidos', 'Emitir e consultar NF-e', 'Cadastro de clientes']) expect(h).toContain(`<span>${d}</span>`);
+    for (const d of ['Lançar e acompanhar', 'Emitir e consultar', 'Incluir e consultar']) expect(h).toContain(`<span>${d}</span>`);
     expect(h.match(/<span class="seta" aria-hidden="true">→<\/span>/g)).toHaveLength(3);
     expect(h).not.toMatch(/\d{2,}/); // sem números nem contadores
   });
@@ -46,7 +46,7 @@ describe('Início do BKO (decisões 58 e 59)', () => {
     expect(cartoes(h)).toBe(0);
     expect(h).toContain('<h1>Início</h1>');
     expect(h).toContain('Olá, Ana. Por onde quer começar?');
-    expect(h).toContain('Nenhum atalho disponível. Use o menu para abrir as telas liberadas.');
+    expect(h).toContain('Nenhuma tela liberada para o seu perfil. Fale com o administrador.');
     expect(h).not.toContain('Atalhos');
     expect(h).not.toContain('<button');
   });
