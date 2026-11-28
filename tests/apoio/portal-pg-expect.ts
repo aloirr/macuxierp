@@ -7,8 +7,8 @@ import { expect } from 'vitest';
 import { ContaBloqueadaResposta, COOKIE_CONFIG } from '../../packages/platform-sdk/src/index';
 import type { RespostaPortal } from './portal-pg';
 
-/** Texto literal do ADR 0012 §6 (não importado da API: o teste confere o valor, não a constante). */
-const MENSAGEM_UNICA = 'E-mail ou senha inválidos';
+/** Texto literal do ADR 0012 §6, travado pelo PO na ADR 0021 (com o ponto final; não importado: o teste confere o valor). */
+const MENSAGEM_UNICA = 'E-mail ou senha inválidos.';
 
 /** ADR 0012 §6: 401 com a mensagem única e sem cookie de sessão. */
 export function esperarRecusaUnica(r: RespostaPortal): void {

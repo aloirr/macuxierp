@@ -37,8 +37,7 @@ const FORMULARIOS_DE_ACESSO = [
   'apps/web/src/components/esqueci-senha.tsx', // esqueci a senha
   'apps/web/src/app/senha', // troca de senha e primeiro acesso do BKO
   'apps/web/src/components/formulario-troca-senha.tsx',
-  'apps/web/src/app/config/senha', // troca de senha do superadmin
-  'apps/web/src/app/config/entrar', // rota antiga do login do portal
+  'apps/web/src/app/config/senha', // troca de senha do superadmin (o /config/entrar saiu na v0.3.27: 308 para a raiz)
 ];
 
 function fontes(caminho: string): string[] {

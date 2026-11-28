@@ -95,7 +95,7 @@ describe('T-0052 (RN-CORE-10): o que fica liberado com a senha provisória', () 
     const refresh = await chamar('POST', '/v1/auth/refresh');
     expect(refresh.statusCode).toBe(401);
     expect(refresh.json()).toMatchObject({ codigo: 'NAO_AUTENTICADO' });
-    const login = await chamar('POST', '/v1/auth/login', { empresa: 'loja-a', email: 'adm@loja-a.teste', senha: 'x' });
+    const login = await chamar('POST', '/v1/auth/login', { email: 'adm@loja-a.teste', senha: 'x' });
     expect([400, 401]).toContain(login.statusCode);
     expect(login.body).not.toContain(CODIGO_TROCAR_SENHA);
     const inexistente = await chamar('GET', '/v1/core/rota-que-nao-existe');

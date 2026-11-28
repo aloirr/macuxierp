@@ -94,8 +94,9 @@ describe.skipIf(!PG_DISPONIVEL)('integração FDV no portal /config: borda das r
     (
       await b.admin.query("SELECT payload FROM plataforma.evento WHERE tenant_id = $1 AND nome = 'integracao-fdv.carga_inicial.solicitada@1' ORDER BY created_at, id", [t])
     ).rows.map((r) => (r.payload as { payload: { entidades: string[] } }).payload.entidades);
-  const loginTenant = async (slug: string, email: string) => {
-    const r = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa: slug, email, senha: SENHA_DE_TESTE } });
+  /** Login só com e-mail e senha (T-0133, ADR 0021): o e-mail diz a empresa. */
+  const loginTenant = async (email: string) => {
+    const r = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { email, senha: SENHA_DE_TESTE } });
     expect(r.statusCode).toBe(200);
     return r.json<{ token_acesso: string }>().token_acesso;
   };
@@ -188,7 +189,7 @@ describe.skipIf(!PG_DISPONIVEL)('integração FDV no portal /config: borda das r
 
   describe('E2: portal grava → BKO lê → carga completa chega ao Hub pelo worker', () => {
     it('antes da credencial, o BKO do tenant mostra tudo desligado', async () => {
-      const r = await status(await loginTenant('t0056-ifdv-a', EMAIL_ADM_A));
+      const r = await status(await loginTenant(EMAIL_ADM_A));
       expect(r.statusCode).toBe(200);
       const s = r.json<{ conector_id: string | null; cadastros: { ligada: boolean }[] }>();
       expect(s.conector_id).toBeNull();
@@ -218,7 +219,7 @@ describe.skipIf(!PG_DISPONIVEL)('integração FDV no portal /config: borda das r
     });
 
     it('BKO de A: status configurado com o prefixo, só o produto ligado; o tenant B (RLS) continua sem nada', async () => {
-      const r = await status(await loginTenant('t0056-ifdv-a', EMAIL_ADM_A));
+      const r = await status(await loginTenant(EMAIL_ADM_A));
       expect(r.statusCode).toBe(200);
       const s = r.json<{ conector_id: string; ambiente: string; chave_prefixo: string; cadastros: { entidade: string; ligada: boolean }[] }>();
       expect(s).toMatchObject({ conector_id: CONECTOR, ambiente: 'teste' });
@@ -228,7 +229,7 @@ describe.skipIf(!PG_DISPONIVEL)('integração FDV no portal /config: borda das r
       expect(Object.keys(s)).not.toContain('credencial_id');
       expect(Object.keys(s)).not.toContain('entidades_habilitadas');
 
-      const rb = await status(await loginTenant('t0056-ifdv-b', EMAIL_ADM_B));
+      const rb = await status(await loginTenant(EMAIL_ADM_B));
       expect(rb.statusCode).toBe(200);
       expect(rb.json()).toMatchObject({ conector_id: null, ambiente: null, chave_prefixo: null });
       expect(rb.body).not.toContain(CONECTOR);
