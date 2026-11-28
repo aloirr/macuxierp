@@ -9,7 +9,9 @@ import {
   requisicaoCancelar, requisicaoCartaCorrecao, requisicaoConsultar, requisicaoEmitir, requisicaoEstornar, requisicaoInutilizar, requisicaoReenviar, rotuloReenviar, situacaoDoTitulo, urlDoDanfe, urlDoPedidoAFaturar, urlDoXml,
   type AcaoDaNota, type NotaParaAcao,
 } from './index';
-import { DANFE_DISPONIVEL } from './notas';
+import { DANFE_DISPONIVEL, ROTULO_STATUS_NOTA, ROTULO_STATUS_PEDIDO } from './notas';
+import { ROTULO_MODALIDADE, ROTULO_PRAZO_EPEC } from './contingencia';
+import { ROTULO_STATUS_TITULO } from './titulos';
 import { paginaNotas, paginaPedidosAFaturar, paginaRejeicoes, paginaTitulos } from './paginas';
 
 const ID = '3f1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c70';
@@ -56,6 +58,22 @@ describe('páginas do BKO do faturamento', () => {
   });
 });
 
+describe('rótulos das opções dos filtros', () => {
+  const grupos: Record<string, string[]> = {
+    'status da nota': Object.values(ROTULO_STATUS_NOTA).map((s) => s.texto),
+    'status do pedido': Object.values(ROTULO_STATUS_PEDIDO),
+    'status do título': Object.values(ROTULO_STATUS_TITULO),
+    'modalidade de contingência': Object.values(ROTULO_MODALIDADE).map((m) => m.rotulo),
+    'prazo da EPEC': Object.values(ROTULO_PRAZO_EPEC).map((s) => s.texto),
+  };
+  for (const [nome, rotulos] of Object.entries(grupos)) {
+    it(`RD-2390: ${nome} não repete rótulo entre as opções do filtro`, () => {
+      expect(rotulos.length).toBeGreaterThan(0);
+      expect(new Set(rotulos.map((r) => r.trim().toLowerCase())).size).toBe(rotulos.length);
+    });
+  }
+});
+
 describe('selos da nota', () => {
   it('RN-FAT-04: nota de homologação mostra "Homologação — sem valor fiscal" antes do status', () => {
     const b = badgesDaNota({ status: 'autorizada', ambiente: 'homologacao' });
@@ -69,7 +87,7 @@ describe('selos da nota', () => {
     expect(badgesDaNota({ status: 'em_autorizacao', ambiente: 'producao' })[0]?.dica).toBe('Aguardando a SEFAZ');
     expect(badgesDaNota({ status: 'denegada', ambiente: 'producao' })[0]?.dica).toBe('A SEFAZ recusou em definitivo. Fale com o fiscal');
     expect(badgesDaNota({ status: 'emitida_contingencia', ambiente: 'producao' })[0]?.dica).toBe('Emitida sem a SEFAZ no ar. Será enviada depois');
-    expect(badgesDaNota({ status: 'autorizada_guarda_pendente', ambiente: 'producao' })[0]?.texto).toBe('Autorizada');
+    expect(badgesDaNota({ status: 'autorizada_guarda_pendente', ambiente: 'producao' })[0]?.texto).toBe('Autorizada, salvando o arquivo');
   });
 });
 
