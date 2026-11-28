@@ -26,6 +26,7 @@ import {
   type SituacaoEmpresaEntrada,
   type TrocarSenhaEntrada,
 } from '@macuxierp/platform-sdk';
+import { LigacoesResposta } from '@macuxierp/integracao-fdv/contracts';
 import {
   ListaFiliaisConfig,
   ListaUsuariosConfig,
@@ -243,6 +244,11 @@ export async function retomarFdv(token: string, id: string, entidade: string, ch
 /** Monitor do conector (T-0086): `GET .../integracao-fdv/monitor`, só leitura. */
 export async function lerMonitorFdv(token: string, id: string): Promise<MonitorConectorFdv> {
   return validado(await chamar('GET', rotaFdv(CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.monitor, id), { token }), MonitorConectorFdv);
+}
+
+/** Ligações (T-0131, C-6): contadores Enviados e Aceitos, histórico de envios (até 50) e cabeçalho do Contato da ERP → Macuxi FDV, só leitura. */
+export async function lerLigacoesFdv(token: string, id: string): Promise<LigacoesResposta> {
+  return validado(await chamar('GET', rotaFdv(CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.ligacoes, id), { token }), LigacoesResposta);
 }
 
 /** Reprocessar só falhas e pendentes (T-0086): `Idempotency-Key` obrigatória; com lote em voo a API responde 409 `CONFLITO`. */

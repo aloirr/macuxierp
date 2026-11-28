@@ -126,6 +126,10 @@ tbody tr:nth-child(even) { background: var(--mx-cor-linha-alternada); }
 /* Aba Integração do /config (v0.3.24, docs/design/integracao-duas-ligacoes): duas ligações lado a lado; uma embaixo da outra só no celular (R-20261127-110345). */
 .ligacoes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
 @media (max-width: 767px) { .ligacoes { grid-template-columns: minmax(0, 1fr); } }
+.contadores { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0 0 16px; }
+.contador { border: 1px solid var(--mx-cor-borda-tabela); border-radius: 8px; padding: 8px 12px; background: var(--mx-cor-branco); }
+.contador dt { font-size: var(--mx-tamanho-rotulo-dado); font-weight: var(--mx-peso-rotulo-dado); color: var(--mx-cor-rotulo-destaque); text-transform: uppercase; letter-spacing: 0.04em; }
+.contador dd { margin: 0; font-size: 1.25rem; font-weight: var(--mx-peso-titulo); font-variant-numeric: tabular-nums; }
 .ligacao .ficha { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
 .ligacao h2 .seta, .direcao h2 .seta { color: var(--mx-cor-texto-secundario); font-weight: 400; }
 .apoio-situacao { display: block; margin-top: 4px; }
@@ -265,13 +269,15 @@ fieldset.campo-filiais { border: 0; padding: 0; margin: 0; min-width: 0; }
   .tabela-fdv-bko th:nth-child(4), .tabela-fdv-bko td:nth-child(4) { display: none; }
   .tabela-fdv-bko .falha-sob-nome { display: block; font-size: 13px; color: var(--mx-cor-grafite); font-weight: normal; }
 }
+/* T-0131: no /config a tabela da ligação não tem coluna de erro; o motivo da falha de um cadastro fica sempre sob o nome. */
+.tabela-fdv-config .falha-sob-nome { display: block; font-size: var(--mx-tamanho-micro); color: var(--mx-cor-grafite); font-weight: var(--mx-peso-normal); margin-top: 2px; }
 /* /config, abas Dados e ERP → Força de vendas em 390 (#840): nada cortado. A tabela cabe na largura (sem min-width), o último envio,
    a última carga e a falha sobem para sob o nome (as colunas deles somem) e a ação principal fica sobre o "Ações". */
 .envio-sob-nome, .carga-sob-nome { display: none; }
 @media (max-width: 640px) {
   .tabela-fdv-config table { min-width: 0; }
-  .tabela-fdv-config th:nth-child(3), .tabela-fdv-config td:nth-child(3), .tabela-fdv-config th:nth-child(4), .tabela-fdv-config td:nth-child(4) { display: none; }
-  .tabela-fdv-config th:nth-child(5), .tabela-fdv-config td:nth-child(5) { min-width: 0; }
+  .tabela-fdv-config th:nth-child(3), .tabela-fdv-config td:nth-child(3) { display: none; }
+  .tabela-fdv-config th:nth-child(4), .tabela-fdv-config td:nth-child(4) { min-width: 0; }
   .tabela-fdv-config th, .tabela-fdv-config td { padding: 6px 4px !important; }
   .tabela-fdv-config .envio-sob-nome, .tabela-dados .carga-sob-nome { display: block; font-size: var(--mx-tamanho-micro); color: var(--mx-cor-texto-secundario); font-weight: var(--mx-peso-normal); margin-top: 2px; }
   .tabela-fdv-config .falha-sob-nome { display: block; font-size: var(--mx-tamanho-micro); color: var(--mx-cor-grafite); font-weight: var(--mx-peso-normal); margin-top: 2px; }

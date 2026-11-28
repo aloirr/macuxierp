@@ -9,7 +9,7 @@ import { rotuloDoLote } from '@/lib/config/ligacoes';
 export const LIMITE_ENVIOS_RECENTES = 8;
 
 /**
- * "Envios recentes" da aba Integrações (simulação aprovada 445e459): o que o sistema do cliente mandou ao ERP, do mais novo para o mais
+ * "Envios do sistema do cliente ao ERP" da aba Integrações (simulação aprovada 445e459): o que o sistema do cliente mandou ao ERP, do mais novo para o mais
  * antigo, na largura toda, com a barra do bloco embaixo (o Atualizar). Só contagens: sem dado de cadastro.
  */
 export function EnviosRecentes({ lotes, fuso, barra, retorno }: { lotes: readonly LoteEntradaResumo[]; fuso: string; barra: ReactNode; retorno?: ReactNode }) {
@@ -22,10 +22,10 @@ export function EnviosRecentes({ lotes, fuso, barra, retorno }: { lotes: readonl
   ];
   return (
     <section className="bloco envios-recentes" aria-labelledby="h-envios-recentes">
-      <h2 id="h-envios-recentes">Envios recentes</h2>
+      <h2 id="h-envios-recentes">Envios do sistema do cliente ao ERP</h2>
       <div className="cartao-ligacao">
         <div className="tabela-rolavel com-sinal-rolagem legenda-so-leitor">
-          <TabelaDensa colunas={colunas} linhas={linhas} chaveLinha={(l) => l.lote_id} textoVazio="Nenhum envio ainda." legenda="Envios recentes" />
+          <TabelaDensa colunas={colunas} linhas={linhas} chaveLinha={(l) => l.lote_id} textoVazio="Nenhum envio ainda." legenda="Envios do sistema do cliente ao ERP" />
         </div>
         <div className="barra-acoes barra-bloco">{barra}</div>
         {retorno}

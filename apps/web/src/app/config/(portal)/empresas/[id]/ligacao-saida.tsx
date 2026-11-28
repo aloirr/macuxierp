@@ -1,4 +1,5 @@
 'use client';
+import type { LigacaoSaida as LigacaoSaidaLida } from '@macuxierp/integracao-fdv/contracts';
 import type { IntegracaoFdvPlataforma, MonitorConectorFdv } from '@macuxierp/platform-sdk';
 import { Dialogo, ResultadoAcao, useResultado } from '@macuxierp/ui';
 import { MSG_SEM_LICENCA } from '@macuxierp/integracao-fdv/contracts';
@@ -6,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { cloneElement, useId, useRef, useState, useTransition, type ReactElement, type ReactNode } from 'react';
 import { AMBIENTES_FDV } from '@/lib/config/integracao-fdv';
 import { ChavesIdempotencia } from '@/lib/config/chaves';
-import { LIGACAO_SAIDA, ROTULO_DESTINO_FDV, fichaSaida } from '@/lib/config/ligacoes';
+import { LIGACAO_SAIDA, ROTULO_DESTINO_FDV, contadoresDaSaida, fichaSaida } from '@/lib/config/ligacoes';
 import { RETORNOS_FDV, ROTULOS_FDV, textoDaFalha } from '@/lib/config/operacao-fdv';
 import { resultadoErro, resultadoSucesso } from '@/lib/resultado-acao';
 import { salvarCredencialFdvAcao, testarConexaoFdvAcao } from '@/lib/acoes-cliente';
@@ -23,7 +24,7 @@ const ROTULO_FICHA_FDV = `Chave do ${ROTULO_DESTINO_FDV}`;
  * "Trocar chave" (diálogo com Nova chave e Ambiente; o código fica fixo) e "Testar conexão". A chave fica só no campo até o
  * envio: sem estado, URL, armazenamento nem log; depois de salvar, o campo é limpo.
  */
-export function LigacaoSaida({ empresaId, dados, monitor, fuso, corpo }: { empresaId: string; dados: IntegracaoFdvPlataforma; monitor: MonitorConectorFdv | null; fuso: string; /** Registros por lote e a tabela "Cadastros enviados"; recebe a barra do cartão, onde entram o Salvar e o Zerar pedidos (uma barra só, regra 12). */ corpo?: (barra: HTMLElement | null) => ReactNode }) {
+export function LigacaoSaida({ empresaId, dados, monitor, fuso, lida = null, corpo }: { empresaId: string; dados: IntegracaoFdvPlataforma; monitor: MonitorConectorFdv | null; fuso: string; /** Contadores e cabeçalho do Contato (T-0131); ausente = a ficha de antes, sem contadores. */ lida?: LigacaoSaidaLida | null; /** Registros por lote e a tabela "Cadastros enviados"; recebe a barra do cartão, onde entram o Salvar e o Zerar pedidos (uma barra só, regra 12). */ corpo?: (barra: HTMLElement | null) => ReactNode }) {
   const router = useRouter();
   const [pendente, iniciar] = useTransition();
   const [rChave, kChave, mostrarChave, limparChave] = useResultado();
@@ -33,7 +34,7 @@ export function LigacaoSaida({ empresaId, dados, monitor, fuso, corpo }: { empre
   const idForm = useId();
   const [barra, setBarra] = useState<HTMLElement | null>(null);
   const chaves = useRef(new ChavesIdempotencia());
-  const ficha = fichaSaida(dados, monitor, fuso);
+  const ficha = fichaSaida(dados, monitor, fuso, lida);
   const bloqueado = pendente || !dados.modulo_licenciado;
 
   /** Salvar a 1ª chave ou trocar a que existe: o erro de campo fica embaixo do campo; o geral, embaixo do botão (só falha do servidor). */
@@ -63,7 +64,14 @@ export function LigacaoSaida({ empresaId, dados, monitor, fuso, corpo }: { empre
     <CartaoLigacao ligacao={LIGACAO_SAIDA} ficha={ficha}>
       {!dados.modulo_licenciado && <p className="faixa-aviso" role="status">{MSG_SEM_LICENCA}</p>}
       {ficha ? (
-        <FichaDaLigacao ficha={ficha} rotulo={ROTULO_FICHA_FDV} />
+        <>
+          <FichaDaLigacao ficha={ficha} rotulo={ROTULO_FICHA_FDV} />
+          {lida && (
+            <dl className="contadores" aria-label="Contadores da ligação">
+              {contadoresDaSaida(lida).map((c) => <div key={c.id} className="contador"><dt>{c.rotulo}</dt><dd>{c.valor}</dd></div>)}
+            </dl>
+          )}
+        </>
       ) : (
         <form id={idForm} noValidate aria-label={ROTULO_FICHA_FDV} onSubmit={(ev) => { ev.preventDefault(); salvar(ev.currentTarget); }}>
           <CamposChave campos={campos} codigo={dados.conector_id ?? ''} ambiente={dados.ambiente ?? 'teste'} />
