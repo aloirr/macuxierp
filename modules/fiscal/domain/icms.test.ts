@@ -271,4 +271,9 @@ describe('ST: recusas até existir pauta e ajuste explícito da MVA (RN-FIS-05)'
     expect(rodar({ ajustar_mva: false }, true)).toMatchObject({ ok: true, icms: { p_mva_st: 400000 } });
     expect(rodar({ mva_ajustada: 500000 }, true, { ajustar_mva: null })).toMatchObject({ ok: true, icms: { p_mva_st: 500000 } });
   });
+  it('RN-FIS-05: ST sem MVA (original e ajustada nulas) é REGRA_INCOMPLETA, com modBCST nulo ou 4 explícito', () => {
+    expect(rodar({ mva_original: null })).toMatchObject({ ok: false, codigo: 'REGRA_INCOMPLETA' });
+    expect(rodar({ mva_original: null, mod_bc_st: 4 })).toMatchObject({ ok: false, codigo: 'REGRA_INCOMPLETA' });
+    expect(rodar({ mva_original: null, mva_ajustada: 500000 }, true)).toMatchObject({ ok: true, icms: { p_mva_st: 500000 } });
+  });
 });

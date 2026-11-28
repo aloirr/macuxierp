@@ -177,6 +177,7 @@ export function calcularIcmsItem(c: ContextoIcmsItem): ResultadoIcmsItem {
       if (aliqRegra === null) return { ok: false, codigo: 'REGRA_INCOMPLETA', mensagem: `A regra ${regra.id} precisa da alíquota interestadual para ajustar a MVA.` };
       mva = mvaAjustada(mva, aliqRegra, regra.aliquota_interna_destino);
     }
+    if (mva === null) return { ok: false, codigo: 'REGRA_INCOMPLETA', mensagem: `A regra ${regra.id} (código ${cod}) calcula ST por MVA mas não traz a MVA (original nem ajustada).` };
     const baseSt = baseIcms(item, false) + item.ipi_centavos;
     // Simples: abate o ICMS nominal da operação (alíquota da regra), pois o grupo CSOSN não destaca vICMS.
     const abate = simples && regra.aliquota_icms !== null ? calcularIcms({ base_centavos: baseIcms(item, c.ipi_na_bc), reducao_bc: regra.reducao_bc, aliquota: aliqRegra ?? regra.aliquota_icms }).v_icms : vIcmsProprio;
