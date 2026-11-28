@@ -3,8 +3,10 @@
  * v0.3.15 (T-0101 R-3, T-0093 e a frase em fonte mono do #685/#681): prints 1280 e 390 px (deviceScaleFactor 2) do /config
  * com as TELAS REAIS e a API REAL (`tests/e2e/api-prints-v0315.ts`), só com dados fictícios:
  * - aba Empresa: com ficha, sem ficha e consultada sem dados;
- * - aba Integração: Zerar por cadastro (Vendedores) e Zerar pedidos não faturados (N > 0 e N = 0);
- * - aba Dados: Substituir tudo (Filiais), até a janela da frase, sem gravar.
+ * - aba Integrações, cartão ERP → Macuxi FDV: Zerar por cadastro (Vendedores) e Zerar pedidos não faturados (N > 0 e N = 0);
+ * - aba Integrações, cartão Sistema do cliente → ERP: Substituir tudo (Filiais), até a janela da frase, sem gravar.
+ * Atualizado na v0.3.32 para as telas de hoje (Config v4, #922: abas Empresa e Integrações; a aba Dados virou o cartão da entrada;
+ * ações da linha no menu "Ações", T-0099; Ficha da Receita editável, #853).
  * Nenhuma ação destrutiva é confirmada: cada diálogo é fotografado e cancelado. Cada tela é conferida contra defeito
  * visível (404, texto técnico, falha de leitura, rolagem horizontal) e a frase de confirmação tem de estar em fonte mono.
  *
@@ -68,10 +70,12 @@ for (const larg of LARGURAS_PRINT) {
     await p.waitForURL((u) => new URL(u).pathname === '/config');
   });
 
+  // Desde a ficha editável (#853, v0.3.24) a ficha consultada mostra "Consultada em <data>" no cabeçalho, com ou sem dados; a
+  // consultada sem dados se distingue pelo endereço vazio (conferido abaixo).
   for (const [caso, id, espera] of [
     ['empresa-com-ficha', dados.empresas.comFicha, /Mostrar/],
     ['empresa-sem-ficha', dados.empresas.semFicha, /Ainda não consultada/],
-    ['empresa-consultada-sem-dados', dados.empresas.consultada, /Sem dados na Receita\./],
+    ['empresa-consultada-sem-dados', dados.empresas.consultada, /Consultada em \d{2}\/\d{2}\/\d{4}/],
   ]) {
     await r.passo(`[${larg.nome}] aba Empresa: ${caso}`, async () => {
       await p.goto(empresa(id));
@@ -83,6 +87,11 @@ for (const larg of LARGURAS_PRINT) {
         exigir(!t.includes('contato@exemplo.invalid'), 'e-mail aparece inteiro sem o Mostrar');
         exigir(!/Revelar/.test(t), 'o botão do dado mascarado ainda diz "Revelar" (decisão 9 A, #697: "Mostrar")');
         exigir(/Manaus/.test(t) && /\bAM\b/.test(t), 'cidade e UF da ficha não aparecem');
+      }
+      if (caso === 'empresa-consultada-sem-dados') {
+        exigir(!/Ainda não consultada/.test(t), `${caso}: diz "Ainda não consultada" depois da consulta`);
+        const ficha = p.locator('section[aria-labelledby="h-ficha"]');
+        for (const campo of ['Logradouro', 'Bairro', 'CEP']) exigir((await ficha.getByLabel(campo, { exact: true }).inputValue()) === '', `${caso}: ${campo} preenchido sem dados na Receita`);
       }
       await semDefeitoVisivel(p, caso);
       if (larg.nome === '390') await rolarAte(h);
@@ -107,7 +116,8 @@ for (const larg of LARGURAS_PRINT) {
 
   await r.passo(`[${larg.nome}] Zerar por cadastro (Vendedores): diálogo com a frase em mono, cancelado`, async () => {
     await p.goto(`${empresa(dados.empresas.comFicha)}?aba=integracao`);
-    const g = p.getByRole('button', { name: 'Ações de Vendedores', exact: true });
+    // Os dois cartões têm "Ações de Vendedores": o Zerar é o dos enviados (ERP → Macuxi FDV).
+    const g = p.locator('section[aria-labelledby="h-ligacao-saida"]').getByRole('button', { name: 'Ações de Vendedores', exact: true });
     await clicarAte(g, async () => (await g.getAttribute('aria-expanded')) === 'true');
     await p.getByRole('menuitem', { name: 'Zerar', exact: true }).click();
     const d = dialogo();
@@ -126,9 +136,11 @@ for (const larg of LARGURAS_PRINT) {
   ]) {
     await r.passo(`[${larg.nome}] Zerar pedidos não faturados: ${caso}`, async () => {
       await p.goto(`${empresa(id)}?aba=integracao`);
-      await clicarAte(p.getByRole('button', { name: 'Zerar pedidos não faturados' }), () => p.getByRole('dialog').isVisible());
+      // O botão fica na barra do rodapé do cartão ERP → Macuxi FDV (regra 12) como "Zerar pedidos…"; o diálogo diz o nome inteiro.
+      await clicarAte(p.locator('section[aria-labelledby="h-ligacao-saida"]').getByRole('button', { name: 'Zerar pedidos…', exact: true }), () => p.getByRole('dialog').isVisible());
       const d = dialogo();
       await d.waitFor();
+      await d.getByRole('heading', { name: 'Zerar pedidos não faturados?' }).waitFor();
       if (n > 0) {
         await d.getByRole('textbox').first().waitFor();
         await d.getByTestId('apagar-pedidos').waitFor();
@@ -146,9 +158,12 @@ for (const larg of LARGURAS_PRINT) {
   }
 
   await r.passo(`[${larg.nome}] Substituir tudo (Filiais): janela da frase em mono, cancelada sem gravar`, async () => {
-    await p.goto(`${empresa(dados.empresas.comFicha)}?aba=dados`);
-    const linha = p.getByRole('row').filter({ hasText: 'Filiais' });
-    await clicarAte(linha.getByRole('button', { name: /Importar/ }).first(), () => p.getByRole('dialog').isVisible());
+    // A aba Dados saiu na Config v4 (#922): o Importar é o item do "Ações de Filiais" no cartão Sistema do cliente → ERP.
+    await p.goto(`${empresa(dados.empresas.comFicha)}?aba=integracao`);
+    const g = p.locator('section[aria-labelledby="h-ligacao-entrada"]').getByRole('button', { name: 'Ações de Filiais', exact: true });
+    await clicarAte(g, async () => (await g.getAttribute('aria-expanded')) === 'true');
+    await p.getByRole('menu', { name: 'Ações de Filiais' }).getByRole('menuitem', { name: 'Importar', exact: true }).click();
+    await p.getByRole('dialog').first().waitFor();
     const imp = dialogo();
     await imp.locator('input[type="file"]').setInputFiles(dados.csvFilial);
     const botao = imp.getByRole('button', { name: 'Substituir tudo' });

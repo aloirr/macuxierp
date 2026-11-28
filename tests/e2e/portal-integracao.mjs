@@ -91,6 +91,8 @@ const enviados = portal.locator(SEL_ENVIADOS);
 const recebidos = portal.locator('section[aria-labelledby="h-ligacao-entrada"]');
 // T-0137 (RD-2422): o reenvio de tudo saiu da tabela dos recebidos ("Carga completa") para o "Ações" dos enviados.
 const REENVIAR = 'Reenviar tudo ao FDV';
+/** #973 (RD-2423): o texto que fica no lugar da tabela "Cadastros enviados" enquanto não há chave salva (envio-fdv.tsx). */
+const TEXTO_SEM_CHAVE = 'Salve a chave para enviar os cadastros ao Macuxi FDV.';
 const ABAS = portal.getByRole('navigation', { name: 'Abas da empresa' });
 /**
  * Abre a aba da empresa pelo link e espera o `?aba=` dela. Se a aba já é a atual (`aria-current="page"`), não clica de novo
@@ -172,19 +174,78 @@ async function bkoConfere(esperado) {
   exigir(naApi === noBko.map(([, s]) => s).join(','), `API do tenant × BKO: ${naApi} || ${textoSelos(noBko)}`);
 }
 
+// ---- T-0131 (C-6): contadores Enviados/Aceitos, histórico "Envios ao Macuxi FDV" e Contato só leitura ----
+// Desligado até a rota da plataforma existir no SDK do main (`CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.ligacoes`, que o
+// api-portal-integracao.ts põe em `dados.ligacoes`): desligado, o passo roda e só avisa "pendente"; ligado, reprova. Para ensaiar o
+// branch do dono antes do merge: `MX_LIGAR=ligacoesT0131` (usa o caminho do modelo, `/empresas/:id/integracao-fdv/ligacoes`).
+const LIGAR_T0131 = Boolean(dados.ligacoes) || (process.env.MX_LIGAR ?? '').split(',').map((s) => s.trim()).includes('ligacoesT0131');
+const ROTA_LIGACOES = dados.ligacoes ?? `${dados.portal.prefixo}/empresas/${dados.empresa.id ?? ''}/integracao-fdv/ligacoes`;
+async function apiLigacoes() {
+  const r = await fetch(`${API}${dados.portal.prefixo}/auth/entrar`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', [dados.portal.csrf]: '1' },
+    body: JSON.stringify({ email: dados.superadmin.email, senha: SENHA_NOVA }),
+  });
+  const cookie = r.headers.getSetCookie().map((c) => c.split(';')[0]).find((c) => c.startsWith(`${dados.portal.cookie}=`));
+  exigir(cookie, 'login do portal sem cookie (ligações)');
+  const l = await fetch(`${API}${ROTA_LIGACOES}`, { headers: { cookie } });
+  exigir(l.status === 200, `GET ligações do portal: ${l.status}`);
+  return JSON.parse(await l.text());
+}
+/**
+ * Na aba Integrações aberta: os contadores "Enviados" e "Aceitos" do cartão ERP → Macuxi FDV batem com a API; o histórico
+ * "Envios ao Macuxi FDV" tem uma linha por envio da API (ou "Nenhum envio ainda."); o Contato é só leitura (ficha, sem campo);
+ * a tela passou pela rota do contrato (registro de rotas da API, GET 200).
+ */
+async function conferirLigacoes() {
+  const api = await apiLigacoes();
+  const contadores = enviados.locator('dl[aria-label="Contadores da ligação"]');
+  await contadores.waitFor({ timeout: 10_000 });
+  const naTela = await contadores.locator('.contador').evaluateAll((ds) => ds.map((d) => `${d.querySelector('dt')?.textContent?.trim()}=${d.querySelector('dd')?.textContent?.trim()}`));
+  const esperado = [`Enviados=${api.saida.contadores.enviados.toLocaleString('pt-BR')}`, `Aceitos=${api.saida.contadores.aceitos.toLocaleString('pt-BR')}`];
+  exigir(naTela.join('|') === esperado.join('|'), `contadores tela × API: ${naTela.join('|')} || ${esperado.join('|')}`);
+  exigir(api.saida.contadores.aceitos <= api.saida.contadores.enviados, 'API: mais Aceitos que Enviados');
+  const historico = portal.locator('section[aria-labelledby="h-envios-saida"]');
+  await historico.getByRole('heading', { name: 'Envios ao Macuxi FDV', exact: true }).waitFor({ timeout: 10_000 });
+  const linhas = await historico.locator('tbody tr').count();
+  if (api.saida.envios.length === 0) exigir((await historico.innerText()).includes('Nenhum envio ainda.'), 'histórico vazio sem "Nenhum envio ainda."');
+  else exigir(linhas === api.saida.envios.length, `histórico: ${linhas} linhas na tela, ${api.saida.envios.length} na API`);
+  exigir(api.saida.contato.conector_id === CONECTOR && api.saida.contato.ambiente === 'teste', `Contato na API: ${JSON.stringify({ c: api.saida.contato.conector_id, a: api.saida.contato.ambiente })}`);
+  exigir((await fichaChave.locator('input, select, textarea').count()) === 0, 'o Contato tem campo editável');
+  exigir(((await fichaChave.textContent()) ?? '').includes(`${api.saida.contato.chave_prefixo}…`), 'a ficha não mostra o prefixo do Contato');
+  exigir(rotasDaApi().some((l) => /^GET \S*\/integracao-fdv\/ligacoes 200$/.test(l)), 'a tela não chamou o GET das ligações na API');
+}
+async function passoT0131(nome, fn) {
+  await passo(`${nome}${LIGAR_T0131 ? '' : ' [desligado até a rota da T-0131]'}`, async () => {
+    try {
+      await fn();
+    } catch (e) {
+      if (LIGAR_T0131) throw e;
+      console.error(`[e2e] pendente (ligacoesT0131, T-0131; desligado até a rota entrar no main): ${String(e?.message ?? e).split('\n')[0]}`);
+    }
+  });
+}
+
 try {
   await passo('(a) superadmin entra no login único com a senha provisória e a tela manda trocar; troca e chega à lista', async () => {
     await entrar(portal, BASE, dados.superadmin);
     await portal.getByRole('heading', { level: 1, name: 'Defina uma senha nova' }).waitFor();
-    await portal.getByLabel('Senha provisória atual').fill(dados.superadmin.senha);
-    await portal.getByLabel('Senha nova', { exact: true }).fill(SENHA_NOVA);
-    await portal.getByLabel('Confirme a senha nova').fill(SENHA_NOVA);
-    await portal.getByRole('button', { name: 'Definir senha' }).click();
+    // Formulário controlado pelo React: no next dev frio, o que se preenche antes da hidratação se perde e o "Definir senha" fica
+    // desabilitado (o clique esperava 90 s). Preenche de novo até o botão habilitar.
+    const definir = portal.getByRole('button', { name: 'Definir senha' });
+    for (let i = 0; i < 20; i++) {
+      await portal.getByLabel('Senha provisória atual').fill(dados.superadmin.senha);
+      await portal.getByLabel('Senha nova', { exact: true }).fill(SENHA_NOVA);
+      await portal.getByLabel('Confirme a senha nova').fill(SENHA_NOVA);
+      if (await definir.isEnabled()) break;
+      await portal.waitForTimeout(500);
+    }
+    await definir.click();
     await portal.waitForURL((u) => new URL(u).pathname === '/config');
     await portal.getByRole('row').filter({ hasText: dados.empresa.nome }).first().waitFor();
   });
 
-  await passo('(b) abre a empresa pela lista e a aba Integrações: sem chave, o formulário da chave e sem Testar; nos Cadastros enviados, Ligar desabilitado', async () => {
+  await passo('(b) abre a empresa pela lista e a aba Integrações: sem chave, o formulário da chave e sem Testar; no lugar dos Cadastros enviados, o aviso de salvar a chave; na API, nenhum cadastro ligado', async () => {
     await portal.getByRole('row').filter({ hasText: dados.empresa.nome }).getByRole('link').click();
     await portal.getByRole('heading', { level: 1, name: dados.empresa.nome }).waitFor();
     await abrirAba('Integrações', 'integracao');
@@ -192,11 +253,17 @@ try {
     await formChave.waitFor();
     exigir((await enviados.locator('form[aria-label="Chave do Macuxi FDV"]').count()) === 1, 'o formulário da chave não está no cartão "ERP → Macuxi FDV"');
     exigir((await portal.getByRole('button', { name: 'Testar conexão' }).count()) === 0, 'Testar conexão aparece sem chave');
+    // #973 (RD-2423): sem chave salva nada é enviado; no lugar da tabela "Cadastros enviados" (10 linhas "Desligado"), uma frase só.
+    await enviados.getByRole('status').filter({ hasText: new RegExp(`^${TEXTO_SEM_CHAVE.replaceAll('.', '\\.')}$`) }).waitFor();
+    exigir((await enviados.locator('table').count()) === 0, 'a tabela "Cadastros enviados" aparece sem chave');
+    exigir((await enviados.getByRole('button', { name: `Ações de ${ROTULO}`, exact: true }).count()) === 0, `"Ações de ${ROTULO}" aparece nos enviados sem chave (Ligar sem chave)`);
+    exigir((await selos(enviados)).length === 0, 'há linha com selo nos enviados sem chave');
     await print(portal, '01-portal-integracao-sem-chave.png');
-    // Os Cadastros enviados estão no mesmo cartão da aba Integrações (antes, na aba Dados): sem trocar de aba.
-    exigir(await itemDesabilitado(await itemDoMenu(ROTULO, 'Ligar')), 'Ligar habilitado sem chave');
-    await fecharMenu(portal);
-    exigir((await seloDe(enviados, ROTULO)) === 'Desligado', 'Produtos não começou desligado');
+    // O "Desligado" que a tabela mostrava antes segue conferido na fonte: sem chave, a API do portal não tem credencial nem cadastro ligado.
+    const api = await apiPortal();
+    exigir(api.credencial_id === null, 'API do portal: credencial antes de salvar a chave');
+    exigir(api.cadastros.length === 10 && api.cadastros.every((c) => !c.ligada), `API do portal sem chave: ${api.cadastros.filter((c) => c.ligada).length} de ${api.cadastros.length} ligados`);
+    exigir(api.entidades_habilitadas.length === 0, `habilitadas sem chave: ${api.entidades_habilitadas.join(',')}`);
   });
 
   await passo('(c) grava a chave fictícia: "Chave salva." e a ficha no lugar do formulário; "Trocar chave" pede confirmação; só o prefixo na tela e na API; nenhum cadastro ligado', async () => {
@@ -240,6 +307,11 @@ try {
     exigir((await menuAberto(ROTULO).getByRole('menuitem', { name: REENVIAR }).count()) === 0, `"${REENVIAR}" aparece com Produtos desligado`);
     await fecharMenu(portal);
     await print(portal, '02-portal-chave-salva.png');
+  });
+
+  await passoT0131('(c2) T-0131: com a chave, o cartão ERP → Macuxi FDV mostra Enviados e Aceitos iguais à API, o histórico de envios e o Contato só leitura', async () => {
+    await conferirLigacoes();
+    await print(portal, '02b-portal-ligacoes-contadores.png');
   });
 
   await passo('(d1) liga Produtos com confirmação: tela "Ligado" e API só com o produto habilitado e ligado', async () => {
@@ -287,6 +359,11 @@ try {
     exigir((await seloDe(enviados, ROTULO)) === 'Ligado', 'Produtos deixou de estar Ligado depois do reenvio');
     await htmlSemChave(portal, '/config depois do reenvio');
     await print(portal, '03c-portal-reenvio-pedido.png');
+  });
+
+  await passoT0131('(d1c) T-0131: depois do reenvio, contadores e histórico seguem iguais à API (recarregada)', async () => {
+    await portal.reload();
+    await conferirLigacoes();
   });
 
   await passo('(e1) administrador entra no BKO; Integração FDV mostra Produtos Ligado, igual ao portal e à API, sem chave nem escrita', async () => {
