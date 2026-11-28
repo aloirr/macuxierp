@@ -6,9 +6,10 @@ import { montarMenu } from '@/lib/menu';
 import { contexto } from '@/lib/sessao';
 import { BotaoMenu } from './botao-menu';
 import { NavLateral } from './nav-lateral';
-import { BotaoSair } from './botao-sair';
-import { LinkTrocarSenha } from './link-trocar-senha';
+import { MenuUsuario } from '@/components/menu-usuario';
+import { sairAction } from './sair';
 import { AvisoSenhaTrocada } from './aviso-senha-trocada';
+import { ROTULOS_PERFIL } from '@macuxierp/platform-sdk';
 import { nomeDoTopo } from '@/lib/nome-topo';
 import { ROTA_SENHA } from '@/lib/troca-pendente';
 
@@ -28,11 +29,9 @@ export async function Casca({ children }: { children: ReactNode }) {
         <span className="nome-topo" title={nome}>{nome}</span>
         {eu.filiais.length > 1 && <a className="so-largo" href="/filial">Trocar filial</a>}
         <span className="espaco" />
-        <span className="so-largo nome-usuario">{eu.usuario.nome} ({eu.usuario.perfil})</span>
-        <LinkTrocarSenha className="so-largo" />
-        <BotaoSair />
+        <MenuUsuario nome={eu.usuario.nome} detalhe={ROTULOS_PERFIL[eu.usuario.perfil]} hrefPerfil="/perfil" hrefSenha="/senha" comDestino sair={sairAction} />
       </header>
-      <NavLateral menu={menu} acessoConfig={eu.acesso_config === true} conta={{ empresa: nome, usuario: `${eu.usuario.nome} (${eu.usuario.perfil})`, trocarFilial: eu.filiais.length > 1 }} />
+      <NavLateral menu={menu} acessoConfig={eu.acesso_config === true} conta={{ empresa: nome, trocarFilial: eu.filiais.length > 1 }} />
       <main id="conteudo" className="conteudo"><div id="avisos-conteudo" /><Suspense fallback={null}><AvisoSenhaTrocada /></Suspense>{children}</main>
     </div>
   );
