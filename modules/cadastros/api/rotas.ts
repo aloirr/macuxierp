@@ -3,13 +3,14 @@
  * (RN-CORE-02); aqui entram as regras do domain (a API sempre revalida), a auditoria das ações (A) e os eventos da outbox.
  */
 import {
-  ErroApi, cpfValido, definirRota, erros, pode,
+  ErroApi, cpfValido, csvDaLista, definirRota, erros, pode,
   type Acao, type ContextoRota, type RotaModulo, type Sessao,
 } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
+import { paginaCest, paginaCfop, paginaEstoque, paginaIbge, paginaNcm } from '../web/auxiliares';
 import {
   ClienteAtualizacao, ClienteDados, type Cliente, CondicaoPagamentoAtualizacao, CondicaoPagamentoDados, Contato, ConsultaIeEntrada,
-  EVENTOS, EnderecoCliente, EstoqueConsulta, FilialAtualizacao, FilialDados, ListaConsulta, MovimentoEstoque, PrecoItemConsulta, TrocaExternalId,
+  EVENTOS, EnderecoCliente, EstoqueConsulta, FilialAtualizacao, type OficialLinha, FilialDados, ListaConsulta, MovimentoEstoque, PrecoItemConsulta, TrocaExternalId,
   OficialConsulta, PrecoLote, PrecoVigenteConsulta, type RegimePisCofins, ProdutoAtualizacao, ProdutoDados, TABELAS_OFICIAIS, TRABALHO_CONSULTAR_IE,
   TabelaPrecoAtualizacao, TabelaPrecoDados, TransferenciaCarteira, UnidadeDados, VendedorAtualizacao, VendedorDados,
   type NomeEventoCadastros,
@@ -95,6 +96,7 @@ export const SEM_PERMISSAO: Readonly<Record<string, string>> = {
 };
 const semPermissaoDe = (acao: Acao) => ({ semPermissao: SEM_PERMISSAO[acao] ?? 'Seu perfil não pode fazer esta alteração no cadastro.' });
 
+const MAXIMO_LINHAS_CSV = 10_000;
 
 function rotasCrud<E extends Entidade, D extends Dict>(deps: Dependencias, cfg: ConfigCrud<E, D>): RotaModulo[] {
   const R = (c: ContextoRota) => deps.repositorios(c.tx);
@@ -445,6 +447,13 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
   // ---- Estoque (RF-CAD-06, RN-CAD-07) ----
   rotas.push(
     definirRota({
+      metodo: 'GET', caminho: '/estoque/exportar', acao: 'cadastros.ver', consulta: EstoqueConsulta,
+      async executar(c, e) {
+        const p = await R(c).estoque.listar({ ...e.consulta, cursor: undefined, limite: MAXIMO_LINHAS_CSV });
+        return csvDaLista(paginaEstoque, c.sessao.perfil, p.itens, c.fuso);
+      },
+    }),
+    definirRota({
       metodo: 'GET', caminho: '/estoque', acao: 'cadastros.ver', consulta: EstoqueConsulta,
       async executar(c, e) {
         const p = await R(c).estoque.listar(e.consulta);
@@ -591,6 +600,20 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
       const tabela = TABELAS_OFICIAIS.find((t) => t === e.params.tabela);
       if (!tabela) throw erros.naoEncontrado('Tabela oficial');
       return { corpo: await R(c).oficiais.listar(tabela, e.consulta) };
+    },
+  }));
+
+  // CSV da lista (a rota `<api da lista>/exportar` do BKO): mesmos filtros da lista, sem cursor, até MAXIMO_LINHAS_CSV linhas e só as colunas do perfil.
+  // O caminho fixo `/exportar` não conflita com `/oficiais/:tabela`. Nenhum log do conteúdo (LGPD).
+  const paginaDaTabela: Record<string, typeof paginaNcm> = { ncm: paginaNcm, cest: paginaCest, cfop: paginaCfop, municipios: paginaIbge };
+  rotas.push(definirRota({
+    metodo: 'GET', caminho: '/oficiais/:tabela/exportar', acao: 'cadastros.ver', consulta: OficialConsulta,
+    async executar(c, e) {
+      const tabela = TABELAS_OFICIAIS.find((t) => t === e.params.tabela);
+      const pagina = tabela ? paginaDaTabela[tabela] : undefined;
+      if (!tabela || !pagina) throw erros.naoEncontrado('Tabela oficial');
+      const p = await R(c).oficiais.listar(tabela, { ...e.consulta, cursor: undefined, limite: MAXIMO_LINHAS_CSV });
+      return csvDaLista(pagina, c.sessao.perfil, p.itens as OficialLinha[], c.fuso);
     },
   }));
 

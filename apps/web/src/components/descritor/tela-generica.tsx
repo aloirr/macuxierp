@@ -1,13 +1,13 @@
 import { notFound, redirect } from 'next/navigation';
 import type { Perfil } from '@macuxierp/platform-sdk';
-import { ApiIndisponivel, DadosInvalidos, NaoAutenticado, SemPermissao, ehFalhaDeSessao, buscarRegistro, getValidado } from '@/lib/api';
+import { ApiIndisponivel, DadosInvalidos, NaoAutenticado, SemPermissao, ehFalhaDeSessao, buscarRegistro, getValidado, textoSemPermissao } from '@/lib/api';
 import { ROTA_SENHA, TrocarSenhaPendente } from '@/lib/troca-pendente';
 import { RespostaFonte, caminhoDaFonte, opcoesDaResposta, type Opcao } from '@/lib/descritor/fontes';
 import { recomecarLista } from '@macuxierp/platform-sdk/listas';
 import type { TelaDescrita } from '@/lib/descritor/tipos';
 import { z } from 'zod';
 import { DetalheGenerico } from './detalhe-generico';
-import { FormularioGenerico } from './formulario-generico';
+import { FormularioGenerico, type Aberto } from './formulario-generico';
 import { ListaGenerica } from './lista-generica';
 import { TEXTO_SEM_PERMISSAO } from '@/lib/telas/comum';
 import { FalhaIndisponivel } from '@/components/falha-indisponivel';
@@ -28,7 +28,7 @@ async function opcoes(fonte: string, acesso: string, perfil: Perfil): Promise<re
 }
 
 /** Escolhe lista, detalhe ou formulário pelo descritor. Erros da API viram mensagem fixa, sem dado do registro. */
-export async function TelaGenerica({ tela, titulo, rotaDaPagina, rota, params, busca, perfil, acesso, fuso, outrasSecoes }: { outrasSecoes?: readonly { rota: string; titulo: string }[]; tela: TelaDescrita; titulo: string; rotaDaPagina: string; rota: string; params: Readonly<Record<string, string>>; busca: URLSearchParams; perfil: Perfil; acesso: string; fuso: string }) {
+export async function TelaGenerica({ tela, titulo, rotaDaPagina, rota, params, busca, perfil, acesso, fuso, outrasSecoes, somenteLeitura = false }: { /** `paginaEditavel` falso (T-0129): o formulário abre só leitura. */ somenteLeitura?: boolean; outrasSecoes?: readonly { rota: string; titulo: string }[]; tela: TelaDescrita; titulo: string; rotaDaPagina: string; rota: string; params: Readonly<Record<string, string>>; busca: URLSearchParams; perfil: Perfil; acesso: string; fuso: string }) {
   try {
     if (tela.tipo === 'quadro') return null; // quadros têm componente próprio, escolhido pela página (page.tsx)
     if (tela.tipo === 'lista') return <ListaGenerica outrasSecoes={outrasSecoes} tela={tela} rota={rota} rotaDaPagina={rotaDaPagina} busca={busca} perfil={perfil} acesso={acesso} fuso={fuso} />;
@@ -60,7 +60,7 @@ export async function TelaGenerica({ tela, titulo, rotaDaPagina, rota, params, b
     const todos = tela.camposDoPerfil?.(perfil) ?? tela.campos;
     const campos = todos.filter((c) => c.tipo === 'cadastro' && c.fonte);
     // Edição: abre com o registro (valores iniciais e original para o diff do PATCH); sem registro, 404.
-    let aberto: { valores: Readonly<Record<string, string>>; original: unknown; id: string } | undefined;
+    let aberto: Aberto | undefined;
     if (tela.edicao) {
       const id = params.id ?? '';
       if (!UUID.safeParse(id).success) notFound();
@@ -76,11 +76,11 @@ export async function TelaGenerica({ tela, titulo, rotaDaPagina, rota, params, b
       Promise.all(campos.map((c) => opcoes(c.fonte ?? '', acesso, perfil))),
       tela.itens ? opcoes(tela.itens.fonte, acesso, perfil) : Promise.resolve([]),
     ]);
-    return <FormularioGenerico rota={rotaDaPagina} opcoes={Object.fromEntries(campos.map((c, i) => [c.nome, listas[i] ?? []]))} produtos={produtos} perfil={perfil} campos={todos.map(({ mostrarSe: _m, ...c }) => c)} aberto={aberto} />;
+    return <FormularioGenerico rota={rotaDaPagina} opcoes={Object.fromEntries(campos.map((c, i) => [c.nome, listas[i] ?? []]))} produtos={produtos} perfil={perfil} campos={todos.map(({ mostrarSe: _m, colunasSe: _c, ...c }) => c)} aberto={aberto} somenteLeitura={somenteLeitura} />;
   } catch (e) {
     if (e instanceof NaoAutenticado) redirect('/sessao/renovar');
     if (e instanceof TrocarSenhaPendente) redirect(ROTA_SENHA);
-    if (e instanceof SemPermissao) return <Falha texto={TEXTO_SEM_PERMISSAO} {...(tela.tipo === 'detalhe' ? { titulo } : {})} />;
+    if (e instanceof SemPermissao) return <Falha texto={textoSemPermissao(e, TEXTO_SEM_PERMISSAO)} {...(tela.tipo === 'detalhe' ? { titulo } : {})} />;
     if (e instanceof DadosInvalidos && tela.tipo === 'lista') {
       // 400 da lista: recomeça na primeira página, sem cursor nem limite (contrato de listas).
       const q = new URLSearchParams(recomecarLista(Object.fromEntries(busca))).toString();

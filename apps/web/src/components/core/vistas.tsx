@@ -1,5 +1,5 @@
 import type { MatrizDePerfis } from '@/lib/telas/core';
-import { rotuloDaAcao, type quadroEmpresaFiscal } from '@macuxierp/core/web';
+import { rotuloDaAcao, type fichaEmpresa, type quadroEmpresaFiscal } from '@macuxierp/core/web';
 import { Selo } from '@/components/descritor/ui-cliente';
 
 /**
@@ -37,7 +37,7 @@ export function VistaPerfis({ matriz }: { matriz: MatrizDePerfis }) {
   );
 }
 
-export function VistaAmbienteFiscal({ quadro }: { quadro: ReturnType<typeof quadroEmpresaFiscal> }) {
+export function VistaAmbienteFiscal({ quadro }: { quadro: Pick<ReturnType<typeof quadroEmpresaFiscal>, 'filiais' | 'texto_homologacao'> }) {
   return (
     <section aria-label="Empresa e ambiente fiscal">
       {quadro.filiais.length === 0 ? (
@@ -59,5 +59,33 @@ export function VistaAmbienteFiscal({ quadro }: { quadro: ReturnType<typeof quad
       )}
       {quadro.texto_homologacao && <p className="apoio" data-texto-homologacao>{quadro.texto_homologacao}</p>}
     </section>
+  );
+}
+
+/**
+ * Empresa (T-0125, RF-CORE-01): a ficha do core em 12 colunas, com o Ambiente fiscal como bloco da mesma página (regra 11). Dado só de leitura
+ * vira texto, não caixa de campo. Sem botão de produção (RN-CORE-08).
+ */
+export function VistaEmpresa({ ficha }: { ficha: ReturnType<typeof fichaEmpresa> }) {
+  return (
+    <div className="formulario">
+      {ficha.blocos.map((b) => (
+        <section key={b.id} className="cartao-ficha bloco-leitura" aria-labelledby={`h-empresa-${b.id}`}>
+          <h2 id={`h-empresa-${b.id}`} className="titulo-cartao">{b.titulo}</h2>
+          {b.id === 'dados' ? (
+            <dl className="formulario">
+              {b.campos.map((c) => (
+                <div key={c.nome} className={`campo campo-col-${c.colunas}`}>
+                  <dt>{c.rotulo}</dt>
+                  <dd>{c.valor || '—'}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : (
+            <VistaAmbienteFiscal quadro={ficha.ambiente} />
+          )}
+        </section>
+      ))}
+    </div>
   );
 }

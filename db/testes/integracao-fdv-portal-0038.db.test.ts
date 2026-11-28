@@ -84,6 +84,8 @@ const DA_0055 = ['integracao_fdv.portal_monitor(uuid)', 'integracao_fdv.portal_l
 const DA_0053 = ['integracao_fdv.portal_inativar_espelho(uuid, text[], jsonb)', 'integracao_fdv.portal_inativar_linhas(uuid, uuid[])'] as const;
 /** Da 0065 (T-0093, critério 3 do zerar de pedidos; testada em zerar-pedidos-criterio3-0065). */
 const DA_0065 = ['integracao_fdv.portal_liberar_reenvio_pedidos(uuid, uuid[])'] as const;
+/** Teste próprio em integracao-fdv-portal-ligacoes-0088.db.test.ts (T-0131). */
+const DA_0088 = ['integracao_fdv.portal_ligacoes(uuid)'] as const;
 const CHAVES_TOPO = ['cadastros', 'credencial', 'empresa_id', 'entidades_habilitadas', 'limite_registros_lote', 'modulo_licenciado', 'sinal'];
 const CHAVES_CREDENCIAL = ['ambiente', 'chave_prefixo', 'conector_id', 'criada_em', 'id', 'ultimo_uso_em'];
 const CHAVES_CADASTRO = ['entidade', 'erros_abertos', 'habilitada', 'ligada', 'lote_em_voo', 'pausada_em', 'pausada_motivo', 'ultimo_envio_em', 'ultimo_lote']; // pausada_em: 0073
@@ -603,7 +605,7 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
     expect(
       um(`SELECT count(*)::int AS n FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
            WHERE n.nspname = 'integracao_fdv' AND p.proname LIKE 'portal\\_%'`),
-    ).toEqual({ n: PORTAL.length + INTERNAS.length + DA_0043.length + DA_0053.length + DA_0055.length + DA_0065.length });
+    ).toEqual({ n: PORTAL.length + INTERNAS.length + DA_0043.length + DA_0053.length + DA_0055.length + DA_0065.length + DA_0088.length });
     for (const f of PORTAL) {
       expect({ f, ok: um<{ ok: boolean }>(`SELECT has_function_privilege('${CONFIG}', '${f}'::regprocedure, 'EXECUTE') AS ok`).ok }).toEqual({ f, ok: true });
     }

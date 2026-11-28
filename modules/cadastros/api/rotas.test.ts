@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { MOTIVO_PRAZO_MEDIO_FAIXA } from '../domain';
 import { criarPluginCadastros } from './index';
@@ -602,6 +603,28 @@ describe('estoque (RF-CAD-06, RN-CAD-07)', () => {
     expect(dois.corpo.proximo_cursor).toBeNull();
     const achado = await t.chamar('GET', '/estoque', { sessao: sessaoDe('leitura'), consulta: { busca: 'guaraná' } });
     expect(achado.corpo.itens.map((i: { produto_id: string }) => i.produto_id)).toEqual([p2]);
+  });
+  it('T-0123: GET /estoque/exportar devolve o CSV da lista, com os mesmos filtros e sem cursor', async () => {
+    const { t, f, p } = await cenario();
+    const p2 = (await t.chamar('POST', '/produtos', { sessao: adm, corpo: produtoValido({ codigo: 'P2', descricao: 'Guaraná lata' }) })).corpo.id as string;
+    for (const prod of [p, p2]) await t.chamar('POST', '/estoque/movimentos', { sessao: adm, corpo: { filial_id: f, produto_id: prod, tipo: 'entrada', quantidade: 5_0000, motivo: 'Compra' } });
+    const todos = await t.chamar('GET', '/estoque/exportar', { sessao: sessaoDe('leitura'), consulta: { limite: 1 } });
+    expect(todos.status).toBe(200);
+    expect(todos.cabecalhos?.['content-type']).toContain('text/csv');
+    expect(todos.cabecalhos?.['content-disposition']).toContain('estoque.csv');
+    expect(String(todos.corpo).trim().split(/\r?\n/)).toHaveLength(3); // cabeçalho + 2 saldos: o limite da página não vale no CSV
+    const achado = await t.chamar('GET', '/estoque/exportar', { sessao: sessaoDe('leitura'), consulta: { busca: 'guaraná' } });
+    expect(String(achado.corpo).trim().split(/\r?\n/)).toHaveLength(2);
+  });
+  it('T-0123: GET /oficiais/:tabela/exportar devolve o CSV da tabela; tabela fora das quatro é 404', async () => {
+    const t = montar();
+    (t.repos.oficiais as { listar: unknown }).listar = async () => ({ itens: [{ id: randomUUID(), codigo: '22021000', descricao: 'Águas', vigencia_inicio: '2020-01-01', vigencia_fim: null }], proximo_cursor: null });
+    const r = await t.chamar('GET', '/oficiais/ncm/exportar', { sessao: sessaoDe('leitura') });
+    expect(r.status).toBe(200);
+    expect(r.cabecalhos?.['content-disposition']).toContain('ncm.csv');
+    expect(String(r.corpo)).toContain('22021000');
+    expect((await t.chamar('GET', '/oficiais/municipios/exportar', { sessao: sessaoDe('leitura') })).cabecalhos?.['content-disposition']).toContain('municipios-ibge.csv');
+    expect((await t.chamar('GET', '/oficiais/cst/exportar', { sessao: sessaoDe('leitura') })).status).toBe(404);
   });
   it('entrada e saída atualizam o saldo (× 10^4) e publicam cadastros.estoque.alterado@1', async () => {
     const { t, f, p } = await cenario();

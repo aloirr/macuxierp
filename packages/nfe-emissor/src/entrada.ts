@@ -199,6 +199,44 @@ const PisCofinsOutrPercentual = z.object({ CST: z.enum(CST_PIS_COFINS_OUTR), vBC
 const PisCofinsOutrQuantidade = z.object({ CST: z.enum(CST_PIS_COFINS_OUTR), qBCProd: Quantidade, vAliqProd: ValorPorUnidade, valor: Centavos });
 const PisCofins = z.union([PisCofinsAliq, PisCofinsNT, PisCofinsOutrPercentual, PisCofinsOutrQuantidade]);
 
+/*
+ * IPI do item (grupo O01 `IPI`, tipo `TIpi` do PL_010g, leiauteNFe_v4.00.xsd:7625): cEnq e um dos dois grupos, `IPITrib`
+ * (CST 00, 49, 50 e 99; base em % com vBC e pIPI, ou por unidade com qUnid e vUnid) ou `IPINT` (CST 01 a 05 e 51 a 55).
+ * Os valores vêm prontos do modulo-fiscal (calc_ipi); o emissor confere a forma e o vIPI (meio para cima, adendo da
+ * ADR 0002) e monta. Nomes iguais às tags do XSD. Qual CST cabe na entrada ou na saída é do modulo-fiscal.
+ */
+const CST_IPI_TRIB = ['00', '49', '50', '99'] as const;
+const CST_IPI_NT = ['01', '02', '03', '04', '05', '51', '52', '53', '54', '55'] as const;
+const IpiTrib = z
+  .object({
+    CST: z.enum(CST_IPI_TRIB),
+    /** O07 e O13: base em centavos e alíquota em % (vão juntos). */
+    vBC: Centavos.optional(),
+    pIPI: Aliquota.optional(),
+    /** O11 e O12: quantidade (TDec_1204v) e valor por unidade (TDec_1104), vão juntos. */
+    qUnid: Quantidade.optional(),
+    vUnid: ValorPorUnidade.optional(),
+    vIPI: Centavos,
+  })
+  .superRefine((g, ctx) => {
+    const porPercentual = g.vBC !== undefined || g.pIPI !== undefined;
+    const porUnidade = g.qUnid !== undefined || g.vUnid !== undefined;
+    const falta = (campo: string, message: string) => ctx.addIssue({ code: 'custom', path: [campo], message });
+    if (porPercentual && porUnidade) falta('qUnid', 'IPITrib leva vBC e pIPI ou qUnid e vUnid, não os dois');
+    else if (!porPercentual && !porUnidade) falta('vBC', 'IPITrib exige vBC e pIPI ou qUnid e vUnid');
+    else if (porPercentual && (g.vBC === undefined || g.pIPI === undefined)) falta(g.vBC === undefined ? 'vBC' : 'pIPI', 'vBC e pIPI vão juntos');
+    else if (porUnidade && (g.qUnid === undefined || g.vUnid === undefined)) falta(g.qUnid === undefined ? 'qUnid' : 'vUnid', 'qUnid e vUnid vão juntos');
+  });
+const IpiNT = z.object({ CST: z.enum(CST_IPI_NT) });
+const Ipi = z
+  .object({
+    /** O06: código de enquadramento legal do IPI (3 dígitos; "999" quando não há enquadramento específico). */
+    cEnq: Digitos(3),
+    IPITrib: IpiTrib.optional(),
+    IPINT: IpiNT.optional(),
+  })
+  .refine((g) => (g.IPITrib ? 1 : 0) + (g.IPINT ? 1 : 0) === 1, { message: 'IPI leva IPITrib ou IPINT (um só)', path: ['IPITrib'] });
+
 /** Imposto Seletivo (grupo UB01, NT 2025.002-RTC). */
 const ImpostoSeletivo = z.object({
   CSTIS: Cst,
@@ -272,6 +310,8 @@ const Item = z.object({
   imposto: z.object({
     vTotTrib: Centavos.optional(),
     ICMS: Icms,
+    /** IPI (O01): vai depois do ICMS; o vIPI soma no ICMSTot, no vNF e no vItem. */
+    IPI: Ipi.optional(),
     PIS: PisCofins,
     COFINS: PisCofins,
     /** DIFAL (NA01): só com idDest 2 e indFinal 1 (conferido no `NotaParaEmissao`). */
@@ -327,3 +367,4 @@ export type ItemNota = z.output<typeof Item>;
 export type IcmsSimples = z.output<typeof IcmsSn>;
 export type IcmsStSimples = z.output<z.ZodObject<typeof IcmsSt>>;
 export type IcmsUfDest = z.output<typeof IcmsUfDest>;
+export type Ipi = z.output<typeof Ipi>;

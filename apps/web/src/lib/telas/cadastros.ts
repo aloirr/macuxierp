@@ -30,11 +30,12 @@ type Valores = Readonly<Record<string, string>>;
 // ---- Peças comuns ----
 
 /** Filtro "Situação" que toda lista do cadastros declara (`inativos`); os seletores de cadastro leem do próprio cadastros. */
-const FILTRO_INATIVOS: FiltroTela = { chave: 'inativos', rotulo: 'Situação', tipo: 'selecao', vazio: 'Só ativos', opcoes: [{ valor: 'true', rotulo: 'Ativos e inativos' }] };
+export const FILTRO_INATIVOS: FiltroTela = { chave: 'inativos', rotulo: 'Situação', tipo: 'selecao', vazio: 'Só ativos', opcoes: [{ valor: 'true', rotulo: 'Ativos e inativos' }] };
 
 const SIM_NAO = [{ valor: 'true', rotulo: 'Sim' }, { valor: 'false', rotulo: 'Não' }] as const;
 
 const inicioLinhaDe = (c: CampoEdicao): boolean => (c as { inicioLinha?: boolean }).inicioLinha === true;
+const colunasSeDe = (c: CampoEdicao): CampoFormulario['colunasSe'] => (c as { colunasSe?: CampoFormulario['colunasSe'] }).colunasSe;
 const colunasDe = (c: CampoEdicao): ColunasCampo | undefined => (c as { colunas?: ColunasCampo }).colunas;
 
 /** Campo do descritor do módulo no campo do formulário genérico (dinheiro digita como número, em reais; sim/não vira seleção). */
@@ -44,6 +45,8 @@ export const paraCampo = (c: CampoEdicao): CampoFormulario => ({
   ...(c.tipo === 'booleano' ? { opcoes: SIM_NAO } : c.opcoes ? { opcoes: c.opcoes } : {}), ...(c.mostrarSe ? { mostrarSe: c.mostrarSe } : {}),
   // T-0135: `colunas` chega do cadastros num PR do dono; a leitura tolerante compila com e sem o campo no tipo.
   ...(colunasDe(c) ? { colunas: colunasDe(c) as ColunasCampo } : {}),
+  // T-0125 (RD da Filial): `colunasSe` (opcional, do cadastros #976) muda a largura conforme o digitado; leitura tolerante, sem ele vale `colunas`.
+  ...(colunasSeDe(c) ? { colunasSe: colunasSeDe(c) as NonNullable<CampoFormulario['colunasSe']> } : {}),
   // v0.3.31: `inicioLinha` (opcional, do cadastros) força começar linha nova; leitura tolerante como `colunas`.
   ...(inicioLinhaDe(c) ? { inicioLinha: true } : {}),
 });
@@ -52,7 +55,7 @@ const camposDe = (campos: (perfil: Perfil, modo: Modo) => CampoEdicao[], modo: M
 interface PaginaDoModulo { colunas: readonly { id: string; valor: unknown }[] }
 
 /** Lista do cadastros a partir da página do módulo: colunas, busca e CSV vêm do descritor; o shell liga a rota, o selo de situação e o botão "Novo". */
-function listaDe(pagina: PaginaDoModulo, o: { rotuloBusca: string; filtros?: readonly FiltroTela[]; tipos: Readonly<Record<string, Tipo>>; novo: NonNullable<TelaLista['novo']>; rota: string; rotuloLinha: string; campoRotulo: string }): TelaLista {
+export function listaDe(pagina: PaginaDoModulo, o: { rotuloBusca: string; filtros?: readonly FiltroTela[]; tipos: Readonly<Record<string, Tipo>>; novo: NonNullable<TelaLista['novo']>; rota: string; rotuloLinha: string; campoRotulo: string }): TelaLista {
   return {
     tipo: 'lista',
     pagina: pagina as unknown as TelaLista['pagina'],
@@ -78,7 +81,7 @@ interface Cadastro<R> {
 }
 
 /** Novo (POST) e edição (PATCH só do que mudou, em `api/:id`; a rota é declarada em `escritaDeclarada`) do mesmo cadastro. */
-function formularios<R>(f: Cadastro<R>): { novo: TelaFormulario; editar: TelaFormulario } {
+export function formularios<R>(f: Cadastro<R>): { novo: TelaFormulario; editar: TelaFormulario } {
   const base = { api: f.api, depois: () => f.voltar, voltar: f.voltar, novaChave } as const;
   const novo: TelaFormulario = {
     tipo: 'formulario', ...base, enviar: f.salvar,
