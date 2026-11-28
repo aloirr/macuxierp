@@ -62,10 +62,31 @@ export const PayloadPedidoLido = z
     /** RN-FAT-04/M7: ver PedidoFaturadoV1.conta_como_real (pedido/contracts). Ausente = false. */
     conta_como_real: PedidoFaturadoV1.shape.conta_como_real,
     nota: z
-      .object({ id: Uuid.optional(), numero: z.number().int(), serie: z.number().int(), chave: z.string(), emitida_em: z.string(), total_centavos: z.number().int() })
+      .object({
+        id: Uuid.optional(),
+        numero: z.number().int(),
+        serie: z.number().int(),
+        chave: z.string(),
+        emitida_em: z.string(),
+        total_centavos: z.number().int(),
+        /** T-0132 (63 A): total da nota, já omitido pelo pedido quando algum item faturado não tem regra; em nota parcial soma só os itens dela. */
+        calc_st: z.object({ v_valor: z.number().int().min(0) }).passthrough().optional(),
+        calc_ipi: z.object({ v_valor: z.number().int().min(0) }).passthrough().optional(),
+      })
       .optional(),
     itens_faturados: z
-      .array(z.object({ sequencia: z.number().int().min(1), produto_id: Uuid, quantidade: z.number().int(), valor_centavos: z.number().int() }))
+      .array(
+        z.object({
+          sequencia: z.number().int().min(1),
+          produto_id: Uuid,
+          quantidade: z.number().int(),
+          valor_centavos: z.number().int(),
+          /** T-0132 (63 A, fiscal.calculo@1 via faturamento): opcionais; evento antigo não traz = sem regra. */
+          regra_aplicada: z.object({ st: z.boolean(), ipi: z.boolean() }).optional(),
+          calc_st: z.object({ v_valor: z.number().int().min(0) }).passthrough().optional(),
+          calc_ipi: z.object({ v_valor: z.number().int().min(0) }).passthrough().optional(),
+        }),
+      )
       .optional(),
   })
   .passthrough();
@@ -108,6 +129,31 @@ export const ORDEM_HUB = { integrado: 1, faturado_parcial: 2, faturado_total: 3,
 /** Terminais no Hub (degrau 3 de `ORDEM_HUB`): nada mais é enviado depois deles, salvo `cancelado@1` depois de `faturado_total` (o Hub aceita). */
 const TERMINAIS: ReadonlySet<StatusRetornoHub> = new Set(['rejeitado_erp', 'cancelado', 'faturado_total']);
 
+type ItemFaturadoLido = NonNullable<PayloadPedidoLido['itens_faturados']>[number];
+const CALC = { st: 'calc_st', ipi: 'calc_ipi' } as const;
+
+/**
+ * RN-FIS-05 / 63 A: o valor de ST ou de IPI do item só existe com `regra_aplicada.<imp> = true` E o grupo `calc_*` presente
+ * (0 só com regra aplicada). Sem regra, ou com a regra e sem o grupo (reenvio sem os dados antigos), o campo é omitido, nunca 0.
+ * Nunca se deduz de `v_st`/`v_ipi` (que são 0 sem regra).
+ */
+export function valorComRegra(i: Pick<ItemFaturadoLido, 'regra_aplicada' | 'calc_st' | 'calc_ipi'>, imposto: 'st' | 'ipi'): number | undefined {
+  if (i.regra_aplicada?.[imposto] !== true) return undefined;
+  return i[CALC[imposto]]?.v_valor;
+}
+
+/** Corpo sem os campos de ST e IPI (bandeira `enviaStIpi` desligada): idêntico ao de antes da T-0132, com o mesmo hash. */
+export function semStIpi(corpo: RetornoErp): RetornoErp {
+  const { nota, itens_faturados, ...resto } = corpo;
+  const limpa = <T extends object>(o: T) => {
+    const { v_icms_st_cents: _a, v_ipi_cents: _b, ...r } = o as T & { v_icms_st_cents?: number; v_ipi_cents?: number };
+    void _a;
+    void _b;
+    return r;
+  };
+  return { ...resto, ...(nota ? { nota: limpa(nota) } : {}), ...(itens_faturados ? { itens_faturados: itens_faturados.map(limpa) } : {}) } as RetornoErp;
+}
+
 function motivoDe(p: PayloadPedidoLido): string | undefined {
   const codigo = p.motivo_codigo ?? undefined;
   if (codigo === 'outro') return (p.motivo_texto ?? TEXTO_DO_MOTIVO.outro)?.slice(0, 300) || undefined;
@@ -144,18 +190,27 @@ export function retornoDoPedido(evento: EventoPedido, ultimoStatusHub: StatusRet
         if (!novoParcial) return { acao: 'ignorar', motivo: 'hub_ja_adiante' };
       }
       const faltam = [...new Set(p.itens_faturados.filter((i) => !chavesProduto.has(i.produto_id)).map((i) => i.produto_id))];
-      const notaHub = { numero: String(p.nota.numero), serie: String(p.nota.serie), chave: p.nota.chave, chave_acesso: CHAVE_ACESSO_HUB_REGEX.test(p.nota.chave) ? p.nota.chave : null, emitida_em: p.nota.emitida_em, total_cents: p.nota.total_centavos };
+      const notaHub: NonNullable<RetornoErp['nota']> = { numero: String(p.nota.numero), serie: String(p.nota.serie), chave: p.nota.chave, chave_acesso: CHAVE_ACESSO_HUB_REGEX.test(p.nota.chave) ? p.nota.chave : null, emitida_em: p.nota.emitida_em, total_cents: p.nota.total_centavos };
       if (faltam.length > 0) {
         const vencido = agora !== undefined && agora.getTime() - Date.parse(evento.ocorrido_em) >= PRAZO_AGUARDAR_CHAVE_MS;
         return vencido ? { acao: 'descartar_sem_chave', produtos: faltam, corpo: { ...comum, status: novo, nota: notaHub } } : { acao: 'aguardar_chave', produtos: faltam };
       }
       // T-0097 (RN-INF-07, ADR 0076 do FDV): o Hub aceita fração em até 4 casas; a quantidade vai como veio (Qtd4 / 10000), sem cálculo novo.
-      const itens = p.itens_faturados.map((i) => ({
-        sequencia: i.sequencia,
-        produto_external_id: chavesProduto.get(i.produto_id)!, // chave do Hub, nunca o UUID (ADR 0010, item 1)
-        quantidade: quantidade4(i.quantidade),
-        valor_cents: i.valor_centavos,
-      }));
+      const itens = p.itens_faturados.map((i) => {
+        const st = valorComRegra(i, 'st');
+        const ipi = valorComRegra(i, 'ipi');
+        return {
+          sequencia: i.sequencia,
+          produto_external_id: chavesProduto.get(i.produto_id)!, // chave do Hub, nunca o UUID (ADR 0010, item 1)
+          quantidade: quantidade4(i.quantidade),
+          valor_cents: i.valor_centavos,
+          ...(st !== undefined ? { v_icms_st_cents: st } : {}),
+          ...(ipi !== undefined ? { v_ipi_cents: ipi } : {}),
+        };
+      });
+      // Total da nota (63 A): vem pronto do pedido (nota.calc_*), omitido quando algum item faturado não tem regra; aqui só se repassa.
+      if (p.nota.calc_st) notaHub.v_icms_st_cents = p.nota.calc_st.v_valor;
+      if (p.nota.calc_ipi) notaHub.v_ipi_cents = p.nota.calc_ipi.v_valor;
       // O Hub exige `itens_faturados` com minItems 1 ou null/ausente: lista vazia nunca vai; o campo é omitido.
       return { acao: 'enviar', corpo: { ...comum, status: novo, nota: notaHub, ...(itens.length > 0 ? { itens_faturados: itens } : {}) } };
     }
