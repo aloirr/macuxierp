@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import {
   EVENTOS, PedidoAprovado, type MotivoCancelamento, type MotivoRecusa, type NomeEventoPedido, type PedidoEventoBase, type PedidoFaturadoV1, type StatusPedido,
 } from '../contracts';
+import { impostosDaNota } from '../domain';
 import type { CondicaoPagamento } from '@macuxierp/cadastros/contracts';
 import type { PedidoGravado, RepoPedidos } from './portas';
 import type { NotaAutorizadaLida } from './leitores';
@@ -86,15 +87,19 @@ export function faturadoDaNota(nota: NotaAutorizadaLida, p: PedidoGravado, statu
     if (!item) throw new Error(`Item ${sequencia} da nota não existe no pedido ${p.id}`);
     return item.produto_id;
   };
+  const fiscal = impostosDaNota(nota.itens);
   return {
     ...base({ ...p, status }, anterior),
     ambiente: nota.ambiente,
     ...(nota.conta_como_real === undefined ? {} : { conta_como_real: nota.conta_como_real }),
     nota: {
       id: nota.nota.id, numero: nota.nota.numero, serie: nota.nota.serie, chave: nota.nota.chave_acesso,
-      emitida_em: nota.nota.emitida_em, total_centavos: nota.nota.total_centavos,
+      emitida_em: nota.nota.emitida_em, total_centavos: nota.nota.total_centavos, ...fiscal.total,
     },
-    itens_faturados: nota.itens.map((i) => ({ sequencia: i.sequencia, produto_id: produtoDa(i.sequencia), quantidade: i.quantidade, valor_centavos: i.valor_centavos })),
+    itens_faturados: nota.itens.map((i, n) => {
+      const { sequencia: _sequencia, ...impostos } = fiscal.itens[n] ?? { sequencia: i.sequencia };
+      return { sequencia: i.sequencia, produto_id: produtoDa(i.sequencia), quantidade: i.quantidade, valor_centavos: i.valor_centavos, ...impostos };
+    }),
   };
 }
 
