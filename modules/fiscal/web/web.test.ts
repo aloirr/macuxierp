@@ -49,8 +49,8 @@ describe('formulário da regra (grade de 12 colunas, regra 11)', () => {
         expect(c.colunas).toBeLessThanOrEqual(8);
       }
     }
-    const curto = ['ncm_prefixo', 'cfop', 'uf_origem', 'uf_destino', 'crt', 'codigo', 'vigencia_inicio'];
-    for (const n of curto) expect(CAMPOS_REGRA.find((c) => c.nome === n)!.colunas).toBeLessThanOrEqual(2);
+    const curto = ['ncm_prefixo', 'cfop', 'uf_origem', 'uf_destino', 'vigencia_inicio'];
+    for (const n of curto) expect(CAMPOS_REGRA.find((c) => c.nome === n)!.colunas).toBeLessThanOrEqual(3);
   });
   it('RN-FIS-04: o corpo sai do texto digitado; sem fonte ou sem versão o formulário aponta o campo', () => {
     const v = { ...valoresDaRegra(), codigo: '00', aliquota_icms: '18', crt: '3', fonte_tipo: 'convenio', fonte_referencia: 'Convênio ICMS 142/2018', versao: '2026.1', vigencia_inicio: '2026-12-01', cst_pis: '01', aliquota_pis: '0,65', cst_cofins: '01', aliquota_cofins: '3' };
@@ -89,11 +89,23 @@ describe('formulário da regra (grade de 12 colunas, regra 11)', () => {
     expect(valoresDaRegra({ ...regra({ c_enq: '999' }), updated_at: 'x', situacao: 'vigente' }).c_enq).toBe('');
     expect(valoresDaRegra().c_enq).toBe('');
   });
-  it('RN-FIS-04: cada linha do formulário soma 12 colunas (a página preenche a largura)', () => {
+  it('RN-FIS-04: cada linha do formulário fecha em 12 colunas, sem campo órfão, e lista com nome longo tem largura para ele (a página preenche a largura)', () => {
     for (const g of GRUPOS_REGRA) {
-      const total = g.campos.reduce((n, c) => n + c.colunas, 0);
-      expect(total % 12, g.id).toBe(0);
+      let linha = 0;
+      for (const c of g.campos) {
+        linha += c.colunas;
+        expect(linha, `${g.id}/${c.nome}`).toBeLessThanOrEqual(12);
+        if (linha === 12) linha = 0;
+      }
+      expect(linha, g.id).toBe(0);
     }
+  });
+  it('RN-FIS-04: lista de código e nome tem 3 colunas ou mais e CRT, 2 ou mais (1366 sem corte)', () => {
+    const col = (n: string) => CAMPOS_REGRA.find((c) => c.nome === n)!.colunas;
+    expect(col('codigo')).toBeGreaterThanOrEqual(5);
+    expect(col('mod_bc')).toBeGreaterThanOrEqual(3);
+    expect(col('mod_bc_st')).toBeGreaterThanOrEqual(4);
+    expect(col('crt')).toBeGreaterThanOrEqual(2);
   });
   it('RN-FIS-04: a coluna Fonte mostra só a referência e o tipo tem coluna própria', () => {
     const ids = paginaRegras.colunas.map((c) => c.id);
