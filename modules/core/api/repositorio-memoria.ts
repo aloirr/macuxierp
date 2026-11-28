@@ -1,5 +1,6 @@
 /** Repositório em memória para os testes de rota (o `BancoMemoria` do SDK não executa SQL). Não entra em produção. */
 import { erros, type Transacao } from '@macuxierp/platform-sdk';
+import { MENSAGEM_EXTERNAL_ID_EM_USO } from './repositorio-sql';
 import { ORIGEM_CERTIFICADO_PADRAO } from '@macuxierp/platform-sdk/certificado-origem';
 import type {
   LinhaAmbiente,
@@ -59,6 +60,8 @@ export class RepositorioCoreMemoria implements RepositorioCore {
   async criarUsuario(_tx: Transacao, u: NovoUsuario, agora: Date): Promise<LinhaUsuario> {
     // Simula o índice global da 0079: o e-mail vivo de outra empresa recusa o INSERT.
     if (this.emailsEmOutrasContas.has(u.email)) throw erros.emailEmUso();
+    // Simula o índice do external_id (0001), que vale também para o usuário excluído.
+    if (u.external_id && this.usuarios.some((x) => x.external_id === u.external_id)) throw erros.conflito(MENSAGEM_EXTERNAL_ID_EM_USO);
     const linha = { ...u, ultimo_acesso_em: null, updated_at: agora, deve_trocar_senha: true };
     this.usuarios.push(linha);
     return linha;
