@@ -46,12 +46,15 @@ export default async function PaginaDoModulo({ params, searchParams }: { params:
   const secoes = declarada ? paginasDoMenu(declarada.modulo, declarada.menu, perfil) : [];
   const monitor = PAGINAS_INTEGRACAO_FDV.find((p) => p.tipo === 'monitor');
   const titulo = declarada?.titulo ?? resolvida.rotulo;
+  // RD-2389: se a 1ª seção tem o nome do próprio item de menu, a aba só repetiria o menu e o h1; as demais seções viram links no rodapé da página principal.
+  const principalRepete = secoes.length > 1 && secoes[0]?.titulo === declarada?.menu;
+  const outrasSecoes = principalRepete && declarada?.rota === secoes[0]?.rota ? secoes.slice(1) : [];
   const acesso = (await cookies()).get(COOKIE_ACESSO)?.value ?? '';
   return (
     <>
       {/* No detalhe, o h1 é o título do registro (ex.: "Nota 12/1"), desenhado pelo DetalheGenerico: um h1 só por página. */}
       {tela?.tipo !== 'detalhe' && <h1>{titulo}</h1>}
-      {secoes.length > 1 && (
+      {secoes.length > 1 && !principalRepete && (
         <nav className="abas-texto" aria-label="Seções">
           {secoes.map((p) => <Link key={p.rota} href={p.rota} aria-current={p.rota === declarada?.rota || (declarada?.ocultaNoMenu && p.rota === secoes[0]?.rota) ? 'page' : undefined}>{p.titulo}</Link>)}
         </nav>
@@ -65,6 +68,7 @@ export default async function PaginaDoModulo({ params, searchParams }: { params:
       {declarada?.rota === ROTA_PERFIS && <TelaPerfis acesso={acesso} />}
       {declarada?.rota === ROTA_AMBIENTE_FISCAL && <TelaAmbienteFiscal acesso={acesso} perfil={perfil} />}
       {declarada?.rota === ROTA_BANDEIRA && <TelaBandeira acesso={acesso} perfil={perfil} rota={rota} rotaDaPagina={declarada.rota} />}
+      {outrasSecoes.length > 0 && <div className="barra-acoes">{outrasSecoes.map((p) => <Link key={p.rota} className="mx-botao-secundario" href={p.rota}>{p.titulo}</Link>)}</div>}
       {!tela && !declarada?.aviso && declarada?.rota !== monitor?.rota && !QUADROS.has(declarada?.rota ?? '') && <p className="apoio">Disponível em breve.</p>}
     </>
   );

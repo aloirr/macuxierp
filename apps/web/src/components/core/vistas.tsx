@@ -40,19 +40,10 @@ export function VistaPerfis({ matriz }: { matriz: MatrizDePerfis }) {
 }
 
 export function VistaAmbienteFiscal({ quadro }: { quadro: ReturnType<typeof quadroEmpresaFiscal> }) {
-  const e = quadro.empresa;
   return (
     <section aria-label="Empresa e ambiente fiscal">
-      <dl className="ficha">
-        <div><dt>Razão social</dt><dd>{e.razao_social}</dd></div>
-        {e.nome_fantasia && <div><dt>Nome fantasia</dt><dd>{e.nome_fantasia}</dd></div>}
-        <div><dt>CNPJ</dt><dd className="num sem-quebra">{e.cnpj}</dd></div>
-        {e.ie && <div><dt>Inscrição estadual</dt><dd className="num sem-quebra">{e.ie}</dd></div>}
-        <div><dt>Fuso horário</dt><dd>{e.fuso}</dd></div>
-      </dl>
-      <h2>Ambiente por filial</h2>
       {quadro.filiais.length === 0 ? (
-        <p className="apoio">Nenhuma filial com ambiente fiscal configurado.</p>
+        <p className="apoio">Nenhuma filial configurada.</p>
       ) : (
         <div className="tabela-rolavel">
           <table>

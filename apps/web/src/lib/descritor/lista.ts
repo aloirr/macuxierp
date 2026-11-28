@@ -51,3 +51,18 @@ export function textoTodos(rotulo: string): 'Todas' | 'Todos' {
   const primeiro = rotulo.trim().split(/\s+/)[0]?.toLowerCase() ?? '';
   return FILTROS_FEMININOS.has(primeiro) ? 'Todas' : 'Todos';
 }
+
+/** Colunas de cada filtro na grade de 12 (RD-2383): uma linha só, com 2 colunas reservadas ao link "Limpar filtros". Corta primeiro selects e texto (até 1), depois a busca (até 2); data fica com 2. Se ainda passar de 10, o excedente desce para a linha seguinte. */
+const PESO_FILTRO: Record<'busca' | 'texto' | 'data' | 'selecao' | 'cadastro', number> = { busca: 3, texto: 2, data: 2, selecao: 2, cadastro: 2 };
+const MINIMO_FILTRO: Record<keyof typeof PESO_FILTRO, number> = { busca: 2, texto: 1, data: 2, selecao: 1, cadastro: 1 };
+export function colunasDosFiltros(tipos: readonly (keyof typeof PESO_FILTRO)[]): number[] {
+  const pesos = tipos.map((t) => PESO_FILTRO[t]);
+  const soma = () => pesos.reduce((a, b) => a + b, 0);
+  for (const grupo of [['selecao', 'cadastro', 'texto'], ['busca']] as const) {
+    for (let i = pesos.length - 1; i >= 0 && soma() > 10; i--) {
+      const t = tipos[i] as keyof typeof PESO_FILTRO;
+      if ((grupo as readonly string[]).includes(t) && (pesos[i] as number) > MINIMO_FILTRO[t]) pesos[i] = (pesos[i] as number) - 1;
+    }
+  }
+  return pesos;
+}

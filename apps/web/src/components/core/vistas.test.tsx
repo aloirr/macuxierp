@@ -20,7 +20,7 @@ const amb = (filial_id: string, ambiente: 'homologacao' | 'producao') => Ambient
 describe('ambiente fiscal no BKO (T-0088): só exibição', () => {
   it('mostra empresa, filiais pelo nome do cadastros e o texto de homologação; nenhum botão, formulário nem troca', () => {
     const h = renderToStaticMarkup(<VistaAmbienteFiscal quadro={quadroEmpresaFiscal(empresa, [amb(F1, 'homologacao'), amb(F2, 'producao')], { [F1]: 'Matriz Manaus', [F2]: 'Filial Parintins' })} />);
-    expect(h).toContain('Distribuidora Rio Negro Ltda');
+    expect(h).not.toContain('Distribuidora Rio Negro Ltda'); // RD-2397: a ficha da empresa mora na aba Empresa
     expect(h).toContain('Matriz Manaus');
     expect(h).toContain('Filial Parintins');
     expect(h).toContain(TEXTO_AMBIENTE_HOMOLOGACAO);
@@ -28,7 +28,7 @@ describe('ambiente fiscal no BKO (T-0088): só exibição', () => {
     for (const t of ['Voltar para homologação', 'Trocar', 'Mudar para produção', 'Ir para produção', 'Passar para produção']) expect(h, t).not.toContain(t);
   });
   it('empresa sem filial com ambiente avisa em vez de tabela vazia', () => {
-    expect(renderToStaticMarkup(<VistaAmbienteFiscal quadro={quadroEmpresaFiscal(empresa, [])} />)).toContain('Nenhuma filial com ambiente fiscal configurado.');
+    expect(renderToStaticMarkup(<VistaAmbienteFiscal quadro={quadroEmpresaFiscal(empresa, [])} />)).toContain('Nenhuma filial configurada.');
   });
 });
 

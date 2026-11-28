@@ -4,6 +4,9 @@
  */
 import type { SeloVista } from '../descritor/tipos';
 
+/** Vazio padrão das listas sem texto declarado pelo módulo. */
+export const TEXTO_VAZIO = 'Nenhum registro ainda.';
+export const TEXTO_VAZIO_COM_FILTRO = 'Nenhum registro com estes filtros.';
 export const TEXTO_SEM_PERMISSAO = 'Seu perfil não pode ver esta tela.';
 export const TEXTO_INDISPONIVEL = 'Não foi possível carregar agora. Tente de novo em instantes.';
 

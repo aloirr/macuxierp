@@ -82,13 +82,14 @@ tbody tr:nth-child(even) { background: var(--mx-cor-linha-alternada); }
 /* MC-0205 (regra 11): grade de 12 colunas; cada campo ocupa 2; no celular, 2 por linha (span 6). */
 .filtros { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 8px 16px; align-items: end; margin-bottom: 16px; }
 .filtros .campo { grid-column: span 2; margin: 0; min-width: 0; }
+.filtros .campo.filtro-col-1 { grid-column: span 1; } .filtros .campo.filtro-col-3 { grid-column: span 3; } .filtros .campo.filtro-col-4 { grid-column: span 4; }
 /* RD-2382: sem "Filtrar" com JS (aplica ao mudar); sem JS o botão aparece. "Limpar filtros" é link ao lado dos filtros. */
 .filtros-enviar { display: none; }
 /* O "x" nativo da busca sai: o link "Limpar filtros" já cobre isso. */
 .filtros input[type="search"]::-webkit-search-cancel-button { display: none; }
 @media (scripting: none) { .filtros-enviar { display: inline-flex; grid-column: span 1; justify-self: start; } }
 .filtros-limpar { grid-column: span 2; align-self: end; padding-bottom: 8px; white-space: nowrap; color: inherit; }
-@media (max-width: 640px) { .filtros .campo, .filtros-limpar { grid-column: span 6; } }
+@media (max-width: 640px) { .filtros .campo, .filtros .campo[class*='filtro-col-'], .filtros-limpar { grid-column: span 6; } }
 /* O U+00A0 do "R$ 1.234,56" não quebra, mas a célula estreita sim: dinheiro e número ficam numa linha só. */
 .sem-quebra { white-space: nowrap; }
 .total-pedido { margin: 12px 0 0; text-align: right; font-weight: var(--mx-peso-titulo); font-variant-numeric: var(--mx-fonte-numeros); white-space: nowrap; }
@@ -380,7 +381,7 @@ button.link { background: none; border: 0; padding: 0; color: inherit; font: inh
 .ligacao .campo > span { color: var(--mx-cor-rotulo-destaque); }
 
 /* Parecer da marca (v0.3.28): MC-0205 filtros em 3 colunas com o menu aberto; MC-0206 cartão da tabela. */
-@media (min-width: 801px) and (max-width: 1100px) { .filtros .campo { grid-column: span 3; } }
+@media (min-width: 801px) and (max-width: 1100px) { .filtros .campo, .filtros .campo[class*='filtro-col-'] { grid-column: span 3; } }
 .cartao-tabela { background: var(--mx-cor-branco); border: 1px solid var(--mx-cor-borda-tabela); border-radius: 8px; margin: 0 0 16px; }
 .cartao-tabela > .tabela-rolavel { border-radius: 8px; }
 /* RD-2381: a barra da lista é a do rodapé da página, com a paginação junta, à direita. */

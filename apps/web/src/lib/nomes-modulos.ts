@@ -5,7 +5,7 @@ import type { ModuloId } from '@macuxierp/platform-sdk';
  * só `id` e `menus`. Some quando o contrato ganhar o nome.
  */
 export const NOMES_MODULOS: Record<ModuloId, string> = {
-  core: 'Plataforma',
+  core: 'Empresa',
   cadastros: 'Cadastros',
   pedido: 'Pedidos',
   faturamento: 'Faturamento',

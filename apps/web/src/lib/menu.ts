@@ -72,7 +72,7 @@ export function resolverPagina(menu: readonly GrupoMenu[], rota: string, perfil:
 }
 
 /**
- * Href do item de menu que fica marcado na rota atual: o da própria lista ou, no detalhe (`/notas/<id>`, `/pedidos/<id>/editar`), o da lista de origem.
+ * Href do item de menu que fica marcado na rota atual: o da própria lista ou, no detalhe (`/faturamento/notas/<id>`, `/pedido/pedidos/<id>/editar`), o da lista de origem.
  * Vence o href mais longo que é prefixo da rota por segmento inteiro; o início (`/`) só marca a si mesmo.
  */
 export function hrefAtivo(atual: string, hrefs: readonly string[]): string | undefined {
