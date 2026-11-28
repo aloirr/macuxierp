@@ -13,18 +13,17 @@
  *   A marca da temporária (`marcaTemporaria`) vai no começo do próprio token; `superadmin_trocar_senha` zera a temporária.
  */
 import { randomBytes } from 'node:crypto';
-import { CODIGO_SUPERADMIN_LOGIN, erros, sha256Hex, VALIDADE_SESSAO_CONFIG_MS, type BancoPlataformaComLogin, type ErroApi, type Relogio, type SessaoPlataforma } from '@macuxierp/platform-sdk';
+import { erros, sha256Hex, VALIDADE_SESSAO_CONFIG_MS, type BancoPlataformaComLogin, type ErroApi, type Relogio, type SessaoPlataforma } from '@macuxierp/platform-sdk';
 import { custoTemporariaDescartada, emitirTemporaria, lerMarcaTemporaria, marcaTemporaria, mensagemSenhaTemporaria } from '../auth/senha-temporaria';
 import { registrarSemEnvio, type LogEsqueci } from '../auth/esqueci-log';
 import type { TrocaPendente } from '../auth/troca-senha';
 import type { MensagemEmail } from '../email/porta';
-import { chaveEmpresaEmail, EMPRESA_PLATAFORMA, TravaContaMemoria } from './limite-ip';
+import { chaveEmail, TravaContaMemoria } from './limite-ip';
 import { ConferenciaCustoIgual, travaAposFalha, type Recusa } from '../auth/apoio-login';
 import { gerarHashSenha } from '../auth/senha';
 import { erroEntrarPeloBko } from './erros';
 import { erroSenhaAtualIncorreta, erroSenhaNova, exigirSenhaAtual, type ConfigAuth } from '../auth/servico';
 
-export const FALHA_LOGIN_PLATAFORMA = 'E-mail ou senha inválidos';
 /** 32 bytes em base64url, sem preenchimento; com `<marcaTemporaria>.` na frente = sessão aberta pela temporária (T-0076). */
 const PADRAO_TOKEN = /^(?:(t\d{1,12})\.)?[A-Za-z0-9_-]{43}$/;
 
@@ -81,11 +80,12 @@ export class ServicoPlataforma {
 
   /**
    * Login do superadmin (RN-CORE-15, T-0111; decisão R-20261126-175321): a mesma `decidirEntrada` do tenant, com a trava em
-   * memória da chave `plataforma` + e-mail para a conta que não existe.
+   * memória da chave do e-mail (`chaveEmail`, ADR 0021 §4) para a conta que não existe.
    */
   async entrar(email: string, senha: string, limite?: () => ErroApi): Promise<LoginPlataforma> {
     const agora = this.relogio.agora();
-    const falha = () => erros.naoAutenticado(FALHA_LOGIN_PLATAFORMA);
+    // o 401 do `/config/entrar` e da tela de login: o mesmo texto do SDK (ADR 0021, seção Textos)
+    const falha = erros.loginInvalido;
     // A recusa é devolvida, não lançada, dentro da transação: o erro desfaria a contagem de falhas gravada.
     const r = await this.banco.antesDaSessao(async (tx): Promise<Recusa | LoginPlataforma | null> => {
       const [sa] = await tx.consultar<LinhaLogin>(SQL_PARA_LOGIN, [email]);
@@ -111,7 +111,7 @@ export class ServicoPlataforma {
       await tx.consultar('SELECT plataforma.superadmin_abrir_sessao($1::uuid, $2, $3)', [sa.id, hashToken(token), expira_em]);
       return { token, expira_em, superadmin_id: sa.id, ...(resultado === 'entra_desbloqueando' ? { desbloqueou: true as const } : {}) };
     });
-    if (r === null) return this.custoIgual.recusarSemConta(senha, this.travaConta, chaveEmpresaEmail(EMPRESA_PLATAFORMA, email), falha, limite);
+    if (r === null) return this.custoIgual.recusarSemConta(senha, this.travaConta, chaveEmail(email), falha, limite);
     if ('recusa' in r) return this.custoIgual.recusarConta(senha, r, falha, limite);
     return r;
   }
@@ -126,7 +126,7 @@ export class ServicoPlataforma {
       await tx.consultar('SELECT plataforma.superadmin_emitir_temporaria($1::uuid, $2, $3)', [sa.id, temporaria.hash, temporaria.expira_em]);
       return true;
     });
-    if (gravou) return mensagemSenhaTemporaria(para, temporaria.senha, CODIGO_SUPERADMIN_LOGIN);
+    if (gravou) return mensagemSenhaTemporaria(para, temporaria.senha);
     registrarSemEnvio(log, 'conta_inexistente_ou_inativa');
     return null;
   }
@@ -186,10 +186,10 @@ export class ServicoPlataforma {
 
   /**
    * O 401 neutro com o mesmo custo de argon2 de uma conferência (`ConferenciaCustoIgual`), sem tocar o banco: o login
-   * único com o código MACUXI sem o `CABECALHO_CSRF_CONFIG` (ADR 0018 §5 e §6).
+   * da tela única que leva ao superadmin sem o `CABECALHO_CSRF_CONFIG` (ADR 0018 §5 e §6; ADR 0021 §5).
    */
   recusarComCustoIgual(senha: string): Promise<never> {
-    return this.custoIgual.recusar(senha, 0, () => erros.naoAutenticado(FALHA_LOGIN_PLATAFORMA));
+    return this.custoIgual.recusar(senha, 0, erros.loginInvalido);
   }
 
   async sair(sessao: SessaoPlataforma): Promise<void> {

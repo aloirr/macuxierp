@@ -6,14 +6,13 @@
  * Sem Postgres pula; com MACUXI_PG_EXIGIR=1 falha.
  */
 import { randomBytes, randomUUID } from 'node:crypto';
-import { CABECALHO_CSRF_CONFIG, CABECALHO_IP_CLIENTE, CABECALHO_PROVA_BFF, ContaBloqueadaResposta, COOKIE_CONFIG } from '@macuxierp/platform-sdk';
+import { CABECALHO_CSRF_CONFIG, CABECALHO_IP_CLIENTE, CABECALHO_PROVA_BFF, ContaBloqueadaResposta, COOKIE_CONFIG, MENSAGEM_LOGIN_INVALIDO } from '@macuxierp/platform-sdk';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ARGON2_RAPIDO, appPgDeTeste, destinoDeLogs, inserirAdministradorDeTeste, SENHA_DE_TESTE } from './apoio-teste';
 import { gerarHashSenha } from './auth/senha';
 import { LIMITE_LOGIN_IP_PADRAO } from './plataforma/limite-ip';
-import { FALHA_LOGIN_PLATAFORMA } from './plataforma/servico';
 
 const SENHA_SA = 'senha-do-superadmin-de-teste';
 const SENHA_NOVA = 'senha-nova-do-superadmin-123';
@@ -99,7 +98,7 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config na API (T-0050, ADR 0012)', () =
     expect(errada.statusCode).toBe(401);
     expect(inexistente.statusCode).toBe(401);
     expect(errada.json()).toEqual(inexistente.json());
-    expect(errada.json<{ mensagem: string }>().mensagem).toBe(FALHA_LOGIN_PLATAFORMA);
+    expect(errada.json<{ mensagem: string }>().mensagem).toBe(MENSAGEM_LOGIN_INVALIDO);
     expect(errada.cookies.find((x) => x.name === COOKIE_CONFIG)).toBeUndefined();
   });
 

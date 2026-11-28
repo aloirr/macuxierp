@@ -43,6 +43,19 @@ export const PADRAO_RN = /^RN-[A-Z]+-\d{2}$/;
  */
 export const CODIGO_CONTA_BLOQUEADA = 'CONTA_BLOQUEADA';
 export const MENSAGEM_CONTA_BLOQUEADA = 'Conta bloqueada por segurança, depois de várias tentativas com a senha errada.';
+/**
+ * Textos do login por e-mail único (ADR 0021, seção "Textos"): travados pelo PO (28/11/2026), exatamente assim, com
+ * maiúscula e ponto. Fonte única do ERP (a API, os módulos e a apps/web importam daqui); nenhuma rota escreve variante.
+ * - 401 `NAO_AUTENTICADO` do login: e-mail inexistente ou senha errada, no tenant e no superadmin (§3);
+ * - 403 `EMPRESA_SUSPENSA`: só depois de a senha conferir, sem abrir sessão (§3, decisão do PO);
+ * - `email_em_uso`: criação ou troca de e-mail com um e-mail já usado em qualquer empresa (§1). Não diz qual empresa.
+ */
+export const MENSAGEM_LOGIN_INVALIDO = 'E-mail ou senha inválidos.';
+export const CODIGO_EMPRESA_SUSPENSA = 'EMPRESA_SUSPENSA';
+export const MENSAGEM_EMPRESA_SUSPENSA = 'Sua empresa está suspensa. Fale com o administrador da Macuxi.';
+export const CODIGO_EMAIL_EM_USO = 'email_em_uso';
+export const MENSAGEM_EMAIL_EM_USO = 'Este e-mail já está em uso em outra empresa. Use outro e-mail.';
+
 export const RECUPERAR_CONTA_BLOQUEADA =
   'Use "Esqueci a senha" para receber uma senha temporária, que também desbloqueia a conta, ou fale com o administrador da sua empresa.';
 
@@ -61,6 +74,12 @@ export const erros = {
   tempoEsgotado: (segundos: number) =>
     new ErroApi(503, 'TEMPO_ESGOTADO', `A operação passou de ${segundos} s e foi desfeita: divida o envio ou tente de novo`),
   /** 423 da conta bloqueada (RN-CORE-15, T-0111): corpo fixo, igual para qualquer e-mail (`ContaBloqueadaResposta`). */
+  /** 401 do login (ADR 0021 §3): o mesmo corpo para e-mail inexistente, senha errada e empresa encerrada. */
+  loginInvalido: () => new ErroApi(401, 'NAO_AUTENTICADO', MENSAGEM_LOGIN_INVALIDO),
+  /** 403 da empresa suspensa (ADR 0021 §3): só com a senha certa; sem sessão. */
+  empresaSuspensa: () => new ErroApi(403, CODIGO_EMPRESA_SUSPENSA, MENSAGEM_EMPRESA_SUSPENSA),
+  /** 409 do e-mail já usado em outra empresa (ADR 0021 §1): `campos.email` para o formulário e `detalhes.codigo` = `email_em_uso`. */
+  emailEmUso: () => new ErroApi(409, 'CONFLITO', MENSAGEM_EMAIL_EM_USO, { email: MENSAGEM_EMAIL_EM_USO }, { codigo: CODIGO_EMAIL_EM_USO }),
   contaBloqueada: () => new ErroApi(423, CODIGO_CONTA_BLOQUEADA, MENSAGEM_CONTA_BLOQUEADA, undefined, { recuperar: RECUPERAR_CONTA_BLOQUEADA }),
   /**
    * 429 do limite de tentativas. `retryAfterS` (RN-CORE-13, "esqueci a senha"): segundos até a janela abrir, em

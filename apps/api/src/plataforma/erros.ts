@@ -4,6 +4,7 @@
  * programação vira 500 no handler global).
  */
 import {
+  CODIGO_EMAIL_EM_USO,
   CODIGO_SEM_ACESSO_CONFIG,
   CODIGO_TROCAR_SENHA,
   CODIGOS_ESTADO_MUDOU_ZERAR,
@@ -38,6 +39,18 @@ export function erroEntrarPeloBko(e: unknown): ErroApi | null {
   if (code === SQLSTATE_BKO_TROCA_PENDENTE) return new ErroApi(403, CODIGO_TROCAR_SENHA, MENSAGEM_TROCAR_SENHA_BKO);
   if (code === SQLSTATE_SEM_ACESSO_CONFIG) return new ErroApi(403, CODIGO_SEM_ACESSO_CONFIG, MENSAGEM_SEM_ACESSO_CONFIG);
   return null;
+}
+
+/** Índice único do e-mail no sistema todo (0079, ADR 0021 §8.2): `lower(btrim(email)) WHERE deleted_at IS NULL`. */
+export const INDICE_EMAIL_GLOBAL = 'usuario_email_global_uq';
+
+/**
+ * O 23505 do e-mail já usado em outra empresa (0079): o `exigir_email_livre` (mensagem fixa `email_em_uso`, sem o e-mail)
+ * ou o índice `usuario_email_global_uq` numa corrida. A mensagem do banco só é comparada, nunca repassada.
+ */
+function emailEmUso(e: unknown): boolean {
+  const x = e as { constraint?: unknown; message?: unknown };
+  return x.constraint === INDICE_EMAIL_GLOBAL || x.message === CODIGO_EMAIL_EM_USO;
 }
 
 const MENSAGEM_TROCAR_SENHA_BKO = 'Troque a sua senha antes de abrir a Configuração.';
@@ -96,6 +109,8 @@ export function erroDaPlataforma(e: unknown): unknown {
     case 'P0002': // no_data_found: empresa ou administrador inexistente
       return erros.naoEncontrado('Registro');
     case '23505': // unique_violation: empresa que já tem administrador, slug ou e-mail em uso
+      // ADR 0021 §1 e §8.4: o e-mail repetido em qualquer empresa (o índice da 0079, numa corrida) tem o texto do SDK
+      if (emailEmUso(e)) return erros.emailEmUso();
       return erros.conflito('Conflito com um registro existente');
     // check_violation: slug reservado, fuso, situação, motivo, módulos, core desligado, senha que mudou (0033); na 0038,
     // cadastro fora da F2 ou repetido, limite fora de 1 a 5.000, chave cifrada ausente e evento de carga inicial fora do

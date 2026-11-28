@@ -2,9 +2,9 @@
  * Porta de identidade (desenho T-0002, D1 e D2): `plataforma.tenant`, `plataforma.usuario` e `plataforma.sessao`.
  * Adaptador PostgreSQL: `RepositorioAuthPg`; testes de unidade: `RepositorioAuthMemoria`.
  *
- * `tenantIdPorSlug` roda em `banco.semTenant` (o login ainda não conhece o tenant): no banco, a função
- * `plataforma.tenant_por_slug()` (`SECURITY DEFINER`), que devolve só o id do tenant ativo. O resto roda em
- * `banco.comTenant` (RLS).
+ * `contaPorEmail` roda em `banco.semTenant` (o login ainda não conhece o tenant): no banco, a função
+ * `plataforma.conta_por_email()` (`SECURITY DEFINER`, 0079, ADR 0021 §2), que devolve no máximo uma linha, sem hash,
+ * nome nem e-mail. O resto roda em `banco.comTenant` (RLS).
  * `filiaisPorIds` alimenta o `GET /v1/auth/eu` (nome e CNPJ das filiais do usuário): no banco, a visão
  * `cadastros.filial_resumo` (`security_invoker`, a RLS da filial vale).
  */
@@ -38,6 +38,13 @@ export interface UsuarioAuth {
   senha_temporaria_expira_em?: Date | null;
 }
 
+/**
+ * A conta achada pelo e-mail (ADR 0021 §2 e §7, opção A): o usuário de empresa vem primeiro; só sem usuário vivo com o
+ * e-mail vem o superadmin (`tenant_id` nulo). Empresa encerrada ou inexistente = nenhuma conta; empresa suspensa =
+ * `suspensa: true` (a API confere a senha antes de dizer, §3).
+ */
+export type ContaPorEmail = { tipo: 'usuario'; tenant_id: string; suspensa: boolean } | { tipo: 'superadmin'; tenant_id: null; suspensa: false };
+
 export interface FilialAuth {
   id: string;
   tenant_id: string;
@@ -59,8 +66,8 @@ export interface SessaoRefresh {
 }
 
 export interface RepositorioAuth {
-  /** Id do tenant ativo com esse slug; suspenso, encerrado ou inexistente = `null`. */
-  tenantIdPorSlug(tx: Transacao, slug: string): Promise<string | null>;
+  /** A conta do e-mail (normalizado) no sistema todo; `null` = nenhuma (ou empresa encerrada). Roda em `semTenant`. */
+  contaPorEmail(tx: Transacao, email: string): Promise<ContaPorEmail | null>;
   tenantPorId(tx: Transacao, id: string): Promise<TenantAuth | null>;
   usuarioPorEmail(tx: Transacao, email: string): Promise<UsuarioAuth | null>;
   usuarioPorId(tx: Transacao, id: string): Promise<UsuarioAuth | null>;

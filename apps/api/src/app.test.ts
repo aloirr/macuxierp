@@ -1,5 +1,5 @@
 import { Writable } from 'node:stream';
-import { CODIGO_CONTA_BLOQUEADA, definirPlugin, definirRota, erros, EuResposta, MENSAGEM_CONTA_BLOQUEADA, RECUPERAR_CONTA_BLOQUEADA, type FonteLicencas, type Licenca } from '@macuxierp/platform-sdk';
+import { CODIGO_CONTA_BLOQUEADA, definirPlugin, definirRota, erros, EuResposta, MENSAGEM_CONTA_BLOQUEADA, MENSAGEM_LOGIN_INVALIDO, RECUPERAR_CONTA_BLOQUEADA, type FonteLicencas, type Licenca } from '@macuxierp/platform-sdk';
 import { AuditoriaMemoria, BancoMemoria, FilaDeTrabalhosMemoria, IdempotenciaMemoria, OutboxMemoria, RelogioFixo, tenantDaTx } from '@macuxierp/platform-sdk/testes';
 import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
@@ -98,8 +98,9 @@ async function montar(opcoes: { licencas?: Licenca[]; fonteLicencas?: FonteLicen
 
 type App = Awaited<ReturnType<typeof montar>>['app'];
 
-const entrar = (app: App, email = 'adm@exemplo.com', senha = SENHA_DE_TESTE, empresa = 'am2808') =>
-  app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa, email, senha } });
+/** Desde a ADR 0021 a tela manda só e-mail e senha. */
+const entrar = (app: App, email = 'adm@exemplo.com', senha = SENHA_DE_TESTE) =>
+  app.inject({ method: 'POST', url: '/v1/auth/login', payload: { email, senha } });
 
 function refreshDe(r: { cookies: { name: string; value: string }[] }): string {
   const c = r.cookies.find((x) => x.name === COOKIE_REFRESH);
@@ -130,18 +131,33 @@ describe('POST /v1/auth/login', () => {
     expect(r.headers['cache-control']).toBe('no-store');
   });
 
-  it('mesma resposta para empresa, e-mail ou senha errados (sem dizer qual)', async () => {
+  it('ADR 0021 §3: mesma resposta para e-mail inexistente e senha errada (sem dizer qual), com o texto do SDK', async () => {
     const { app } = await montar();
-    const respostas = await Promise.all([entrar(app, 'adm@exemplo.com', 'errada'), entrar(app, 'ninguem@exemplo.com'), entrar(app, 'adm@exemplo.com', SENHA_DE_TESTE, 'am9999')]);
+    const respostas = await Promise.all([entrar(app, 'adm@exemplo.com', 'errada'), entrar(app, 'ninguem@exemplo.com')]);
     for (const r of respostas) {
       expect(r.statusCode).toBe(401);
-      expect(r.json()).toEqual({ codigo: 'NAO_AUTENTICADO', mensagem: 'Empresa, e-mail ou senha inválidos' });
+      expect(r.json()).toEqual({ codigo: 'NAO_AUTENTICADO', mensagem: MENSAGEM_LOGIN_INVALIDO });
     }
+    expect(MENSAGEM_LOGIN_INVALIDO).toBe('E-mail ou senha inválidos.');
   });
 
-  it('o e-mail de um tenant não entra em outro (D2)', async () => {
-    const { app } = await montar();
-    expect((await entrar(app, 'adm@exemplo.com', SENHA_DE_TESTE, 'am0002')).statusCode).toBe(401);
+  it('ADR 0021 §6: o campo empresa é ignorado (o de outra empresa, inexistente ou nem texto) e só conta no log, sem e-mail nem código', async () => {
+    const logs: string[] = [];
+    const { app } = await montar({ logs });
+    for (const empresa of ['am0002', 'am9999', 'MACUXI', 7]) {
+      const r = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa, email: 'adm@exemplo.com', senha: SENHA_DE_TESTE } });
+      expect(r.statusCode).toBe(200);
+      expect(r.cookies.find((c) => c.name === COOKIE_REFRESH)!.value.startsWith(`${TENANT}.`)).toBe(true);
+    }
+    expect((await entrar(app)).statusCode).toBe(200);
+    const contagem = logs
+      .flatMap((l) => l.split('\n'))
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+      .filter((o) => o.evento === 'auth.campo_empresa_ignorado');
+    expect(contagem).toHaveLength(4);
+    for (const o of contagem) expect(o).toMatchObject({ modulo: 'core', tenant_id: TENANT, request_id: expect.any(String) });
+    expect(logs.join('\n')).not.toMatch(/exemplo\.com|am0002|am9999|macuxi/i);
   });
 
   it('RN-CORE-15 (hotfix v0.3.16.1): bloqueia após 5 falhas (423), SEM prazo: não solta com o tempo; o --destravar libera', async () => {
@@ -159,18 +175,18 @@ describe('POST /v1/auth/login', () => {
     expect(repo.usuarios.find((x) => x.id === ADM)).toMatchObject({ falhas_login: 0, bloqueado_ate: null });
   });
 
-  it('RN-CORE-15 (T-0111): e-mail inexistente e empresa inexistente travam igual na memória; o 423 é o mesmo da conta que existe', async () => {
+  it('RN-CORE-15 (T-0111; ADR 0021 §4): o e-mail inexistente trava igual na memória, pela chave do e-mail; o 423 é o mesmo da conta que existe', async () => {
     const { app } = await montar();
     // um IP por grupo: o limite por IP (10 falhas) não entra neste teste
-    const de = (remoteAddress: string, email: string, senha: string, empresa = 'am2808') =>
-      app.inject({ method: 'POST', url: '/v1/auth/login', remoteAddress, payload: { empresa, email, senha } });
+    const de = (remoteAddress: string, email: string, senha: string, extra: Record<string, unknown> = {}) =>
+      app.inject({ method: 'POST', url: '/v1/auth/login', remoteAddress, payload: { ...extra, email, senha } });
     for (let i = 0; i < 5; i++) await de('198.51.100.1', 'adm@exemplo.com', 'errada');
     const existente = await de('198.51.100.1', 'adm@exemplo.com', SENHA_DE_TESTE);
     for (let i = 0; i < 5; i++) expect((await de('198.51.100.2', 'ninguem@exemplo.com', 'errada')).statusCode).toBe(401);
     const inexistente = await de('198.51.100.2', 'ninguem@exemplo.com', 'qualquer');
-    for (let i = 0; i < 5; i++) expect((await de('198.51.100.3', 'adm@exemplo.com', 'errada', 'zz9999')).statusCode).toBe(401);
-    const semEmpresa = await de('198.51.100.3', 'adm@exemplo.com', 'qualquer', 'zz9999');
-    for (const r of [existente, inexistente, semEmpresa]) {
+    // a chave é só o e-mail: o mesmo e-mail com outra caixa, espaços ou uma empresa qualquer no corpo segue travado
+    const outraForma = await de('198.51.100.3', ' NINGUEM@Exemplo.com ', 'qualquer', { empresa: 'zz9999' });
+    for (const r of [existente, inexistente, outraForma]) {
       expect(r.statusCode).toBe(423);
       expect(r.body).toBe(existente.body);
       expect(r.headers['content-type']).toBe(existente.headers['content-type']);
@@ -179,11 +195,11 @@ describe('POST /v1/auth/login', () => {
 
   it('corpo inválido é 400 VALIDACAO com os campos (também sem corpo ou JSON malformado)', async () => {
     const { app } = await montar();
-    const r = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa: 'am2808', email: 'x' } });
+    const r = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { email: 'x' } });
     expect(r.statusCode).toBe(400);
     expect(r.json()).toMatchObject({ codigo: 'VALIDACAO', campos: { email: expect.any(String), senha: expect.any(String) } });
     expect((await app.inject({ method: 'POST', url: '/v1/auth/login' })).json()).toMatchObject({ codigo: 'VALIDACAO' });
-    const malformado = await app.inject({ method: 'POST', url: '/v1/auth/login', headers: { 'content-type': 'application/json' }, payload: '{"empresa":' });
+    const malformado = await app.inject({ method: 'POST', url: '/v1/auth/login', headers: { 'content-type': 'application/json' }, payload: '{"email":' });
     expect(malformado.statusCode).toBe(400);
     expect(malformado.json().codigo).toBe('VALIDACAO');
   });
