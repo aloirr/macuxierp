@@ -79,6 +79,23 @@ interface ConfigCrud<E extends Entidade, D extends Dict> {
   inativavel?: Parameters<typeof bloqueiosDeInativacao>[0];
 }
 
+/** Mensagem do 403 por ação de escrita (T-0129, `RotaModulo.semPermissao`): diz o que o perfil não pode fazer, sem rótulo. */
+export const SEM_PERMISSAO: Readonly<Record<string, string>> = {
+  'cadastros.filial.editar': 'Seu perfil não pode criar nem alterar filiais.',
+  'cadastros.cliente.editar': 'Seu perfil não pode criar nem alterar clientes.',
+  'cadastros.produto.editar': 'Seu perfil não pode criar nem alterar produtos.',
+  'cadastros.preco.editar': 'Seu perfil não pode criar nem alterar tabelas de preço.',
+  'cadastros.condicao_pagamento.editar': 'Seu perfil não pode criar nem alterar condições de pagamento.',
+  'cadastros.vendedor.editar': 'Seu perfil não pode criar nem alterar vendedores.',
+  'cadastros.external_id.trocar': 'Seu perfil não pode trocar a chave externa do cadastro.',
+  'cadastros.estoque.movimentar': 'Seu perfil não pode lançar movimento de estoque.',
+  'cadastros.condicao_pagamento.desativar_recusadas': 'Só o administrador desativa as condições com forma de pagamento recusada.',
+  'cadastros.carteira.transferir': 'Seu perfil não pode transferir a carteira de clientes.',
+  'cadastros.consulta.externa': 'Seu perfil não pode consultar a situação da IE na SEFAZ.',
+};
+const semPermissaoDe = (acao: Acao) => ({ semPermissao: SEM_PERMISSAO[acao] ?? 'Seu perfil não pode fazer esta alteração no cadastro.' });
+
+
 function rotasCrud<E extends Entidade, D extends Dict>(deps: Dependencias, cfg: ConfigCrud<E, D>): RotaModulo[] {
   const R = (c: ContextoRota) => deps.repositorios(c.tx);
   const ocultar = (c: ContextoRota, e: E) => (cfg.ocultar ? cfg.ocultar(c.sessao, e) : e);
@@ -114,7 +131,7 @@ function rotasCrud<E extends Entidade, D extends Dict>(deps: Dependencias, cfg: 
       },
     }),
     definirRota({
-      metodo: 'POST', caminho: cfg.caminho, acao: cfg.editar, corpo: cfg.dados,
+      metodo: 'POST', caminho: cfg.caminho, acao: cfg.editar, ...semPermissaoDe(cfg.editar), corpo: cfg.dados,
       async executar(c, e) {
         const r = R(c);
         const corpo = cfg.completar ? cfg.completar(e.corpo as Dict) : (e.corpo as Dict);
@@ -133,7 +150,7 @@ function rotasCrud<E extends Entidade, D extends Dict>(deps: Dependencias, cfg: 
       },
     }),
     definirRota({
-      metodo: 'PATCH', caminho: `${cfg.caminho}/:id`, acao: cfg.editar, corpo: cfg.atualizacao,
+      metodo: 'PATCH', caminho: `${cfg.caminho}/:id`, acao: cfg.editar, ...semPermissaoDe(cfg.editar), corpo: cfg.atualizacao,
       async executar(c, e) {
         const r = R(c);
         const antes = await carregar(c, r, idDe(e));
@@ -161,7 +178,7 @@ function rotasCrud<E extends Entidade, D extends Dict>(deps: Dependencias, cfg: 
       },
     }),
     definirRota({
-      metodo: 'POST', caminho: `${cfg.caminho}/:id/external-id`, acao: 'cadastros.external_id.trocar', corpo: TrocaExternalId,
+      metodo: 'POST', caminho: `${cfg.caminho}/:id/external-id`, acao: 'cadastros.external_id.trocar', ...semPermissaoDe('cadastros.external_id.trocar'), corpo: TrocaExternalId,
       async executar(c, e) {
         const r = R(c);
         const antes = await carregar(c, r, idDe(e));
@@ -179,7 +196,7 @@ function rotasCrud<E extends Entidade, D extends Dict>(deps: Dependencias, cfg: 
       },
     }),
     definirRota({
-      metodo: 'DELETE', caminho: `${cfg.caminho}/:id`, acao: cfg.editar,
+      metodo: 'DELETE', caminho: `${cfg.caminho}/:id`, acao: cfg.editar, ...semPermissaoDe(cfg.editar),
       async executar(c, e) {
         const r = R(c);
         const antes = await carregar(c, r, idDe(e));
@@ -232,7 +249,7 @@ function rotasFilho<P extends Entidade, F extends { id: string }, D extends Dict
       },
     }),
     definirRota({
-      metodo: 'POST', caminho: cfg.caminho, acao: cfg.editar, corpo: cfg.dados,
+      metodo: 'POST', caminho: cfg.caminho, acao: cfg.editar, ...semPermissaoDe(cfg.editar), corpo: cfg.dados,
       async executar(c, e) {
         const r = R(c);
         const p = await pai(c, r, idDe(e));
@@ -244,7 +261,7 @@ function rotasFilho<P extends Entidade, F extends { id: string }, D extends Dict
       },
     }),
     definirRota({
-      metodo: 'PATCH', caminho: `${cfg.caminho}/:filho_id`, acao: cfg.editar, corpo: cfg.atualizacao,
+      metodo: 'PATCH', caminho: `${cfg.caminho}/:filho_id`, acao: cfg.editar, ...semPermissaoDe(cfg.editar), corpo: cfg.atualizacao,
       async executar(c, e) {
         const r = R(c);
         const p = await pai(c, r, idDe(e));
@@ -259,7 +276,7 @@ function rotasFilho<P extends Entidade, F extends { id: string }, D extends Dict
       },
     }),
     definirRota({
-      metodo: 'DELETE', caminho: `${cfg.caminho}/:filho_id`, acao: cfg.editar,
+      metodo: 'DELETE', caminho: `${cfg.caminho}/:filho_id`, acao: cfg.editar, ...semPermissaoDe(cfg.editar),
       async executar(c, e) {
         const r = R(c);
         const p = await pai(c, r, idDe(e));
@@ -392,7 +409,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
       },
     }),
     definirRota({
-      metodo: 'PUT', caminho: '/tabelas-preco/:id/itens', acao: 'cadastros.preco.editar', corpo: PrecoLote,
+      metodo: 'PUT', caminho: '/tabelas-preco/:id/itens', acao: 'cadastros.preco.editar', ...semPermissaoDe('cadastros.preco.editar'), corpo: PrecoLote,
       async executar(c, e) {
         const r = R(c);
         const t = await r.tabelasPreco.obter(idDe(e));
@@ -435,7 +452,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
       },
     }),
     definirRota({
-      metodo: 'POST', caminho: '/estoque/movimentos', acao: 'cadastros.estoque.movimentar', corpo: MovimentoEstoque,
+      metodo: 'POST', caminho: '/estoque/movimentos', acao: 'cadastros.estoque.movimentar', ...semPermissaoDe('cadastros.estoque.movimentar'), corpo: MovimentoEstoque,
       async executar(c, e) {
         const r = R(c);
         const m = e.corpo;
@@ -477,7 +494,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
   }));
   // RN-CAD-09: comando do administrador (por tenant): desativa as condições ligadas a forma recusada e trata o cartão sem parcelas (preenche ou desativa). Idempotente.
   rotas.push(definirRota({
-    metodo: 'POST', caminho: '/condicoes-pagamento/desativar-formas-recusadas', acao: 'cadastros.condicao_pagamento.desativar_recusadas', // só o administrador
+    metodo: 'POST', caminho: '/condicoes-pagamento/desativar-formas-recusadas', acao: 'cadastros.condicao_pagamento.desativar_recusadas', ...semPermissaoDe('cadastros.condicao_pagamento.desativar_recusadas'), // só o administrador
     async executar(c) {
       const r = R(c);
       const recusadas = await desativarCondicoesRecusadas(c, r, (await r.carga.condicoesAtivasDeFormaRecusada()).filter((x) => !x.inativo));
@@ -493,7 +510,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
     validar: async (r, v) => requisitoFilial(r, v.filial_id as string, 'filial_id'),
   }));
   rotas.push(definirRota({
-    metodo: 'POST', caminho: '/carteira/transferir', acao: 'cadastros.carteira.transferir', corpo: TransferenciaCarteira,
+    metodo: 'POST', caminho: '/carteira/transferir', acao: 'cadastros.carteira.transferir', ...semPermissaoDe('cadastros.carteira.transferir'), corpo: TransferenciaCarteira,
     async executar(c, e) {
       const r = R(c);
       const { de, para } = e.corpo;
@@ -517,7 +534,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
   // ---- Consultas externas (RF-CAD-02/03, RN-CAD-05): só sugestão, nunca gravam cadastro ----
   rotas.push(
     definirRota({
-      metodo: 'GET', caminho: '/consultas/cnpj/:cnpj', acao: 'cadastros.consulta.externa',
+      metodo: 'GET', caminho: '/consultas/cnpj/:cnpj', acao: 'cadastros.consulta.externa', ...semPermissaoDe('cadastros.consulta.externa'),
       async executar(c, e) {
         const r = await consultarCnpj({ cnpj: e.params.cnpj ?? '', agora: c.agora, repos: R(c), fontes: deps.fontes.cnpj });
         if (!r.ok) throw erroDeViolacoes([r.violacao]);
@@ -525,7 +542,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
       },
     }),
     definirRota({
-      metodo: 'GET', caminho: '/consultas/cep/:cep', acao: 'cadastros.consulta.externa',
+      metodo: 'GET', caminho: '/consultas/cep/:cep', acao: 'cadastros.consulta.externa', ...semPermissaoDe('cadastros.consulta.externa'),
       async executar(c, e) {
         const cep = (e.params.cep ?? '').replace(/\D/g, '');
         if (!/^\d{8}$/.test(cep)) throw erros.validacao({ cep: 'CEP deve ter 8 dígitos' });
@@ -538,7 +555,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
       },
     }),
     definirRota({
-      metodo: 'POST', caminho: '/consultas/ie', acao: 'cadastros.consulta.externa', corpo: ConsultaIeEntrada,
+      metodo: 'POST', caminho: '/consultas/ie', acao: 'cadastros.consulta.externa', ...semPermissaoDe('cadastros.consulta.externa'), corpo: ConsultaIeEntrada,
       async executar(c, e) {
         const r = R(c);
         const { filial_id, uf, documento } = e.corpo;
@@ -556,7 +573,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
       },
     }),
     definirRota({
-      metodo: 'GET', caminho: '/consultas/ie/:id', acao: 'cadastros.consulta.externa',
+      metodo: 'GET', caminho: '/consultas/ie/:id', acao: 'cadastros.consulta.externa', ...semPermissaoDe('cadastros.consulta.externa'),
       async executar(c, e) {
         const id = idDe(e);
         const g = await R(c).consultaExterna.porExternalId('ie', id);

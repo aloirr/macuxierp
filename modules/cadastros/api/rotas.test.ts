@@ -33,6 +33,16 @@ describe('plugin', () => {
     expect(rotas.length).toBeGreaterThan(0);
     expect(rotas.every((r) => r.metodo === 'GET')).toBe(true);
   });
+  it('T-0129: toda rota de escrita traz a mensagem do 403, sem rótulo', async () => {
+    const { deps } = dependenciasEmMemoria();
+    const escrita = criarPluginCadastros(deps).rotas.filter((r) => r.metodo !== 'GET');
+    expect(escrita.length).toBeGreaterThan(0);
+    for (const r of escrita) {
+      expect(r.semPermissao, `${r.metodo} ${r.caminho}`).toBeTruthy();
+      expect(r.semPermissao).not.toMatch(/^[^\s.,]{1,20}:/);
+    }
+    expect(escrita.find((x) => x.caminho === '/filiais' && x.metodo === 'POST')?.semPermissao).toBe('Seu perfil não pode criar nem alterar filiais.');
+  });
 });
 
 describe('filiais (RF-CAD-08)', () => {
