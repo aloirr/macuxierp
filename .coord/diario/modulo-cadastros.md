@@ -32,3 +32,4 @@
 2026-11-26 — T-0112 — RN-CAD-15: prazo médio digitado dentro da faixa das parcelas (domain, POST/PATCH 422, carga, web)
 2026-11-26 — T-0057 — lote 1: gravarLinhas extraído de carga.ts (api/carga-gravar.ts) e adaptadores puros do hub-v1 em domain/entrada/adaptar.ts (10 payloads, carga completa recusada com 422)
 2026-11-27 — v0.3.24 — PR #849: consumidor core.empresa.cnpj_alterado@1 com o Zod do core; gravarProntoNaOutbox em mais 3 pontos (corretor).
+2026-11-28 — T-0123 — descritores tipados do web (estoque, condições, equipe e carteira, oficiais, itens de preço) para o shell

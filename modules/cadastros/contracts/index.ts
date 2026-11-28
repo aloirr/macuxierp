@@ -392,6 +392,18 @@ export const OficialConsulta = ConsultaPaginada.extend({
   data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 export type OficialConsulta = z.infer<typeof OficialConsulta>;
+/** Linha da lista das tabelas oficiais (NCM, CEST, CFOP, municípios): só o que a tela lê; o `id` é o cursor. */
+export const OficialLinha = z.object({
+  id: Uuid,
+  codigo: z.string(),
+  descricao: z.string().nullish(),
+  nome: z.string().nullish(),
+  uf: z.string().nullish(),
+  segmento: z.string().nullish(),
+  vigencia_inicio: z.string().nullable(),
+  vigencia_fim: z.string().nullable(),
+});
+export type OficialLinha = z.infer<typeof OficialLinha>;
 
 // ---- Carga inicial por CSV (T-0026; docs/desenho/T-0026.md, seções 3 e 6) ----
 /** Ordem de dependência da carga (D13). */
