@@ -7,6 +7,8 @@ import { BotaoLog } from './log';
 export function VistaIntegracaoFdv({ vista, podeVerLog = false, fuso = 'America/Manaus' }: { vista: VistaStatusFdv; podeVerLog?: boolean; fuso?: string }) {
   const colunas: ColunaTabela<LinhaStatusFdv>[] = colunasStatusFdv<LinhaStatusFdv>({ falhaSobreNome: true });
   if (podeVerLog) colunas.push({ id: 'log', titulo: '', celula: (l) => <BotaoLog entidade={l.entidade} fuso={fuso} /> });
+  // RD-2394: sem conector, o mesmo fato não se repete em 10 linhas "Desligado — —"; fica uma frase só, como selo.
+  if (vista.semConector) return <p role="status" data-testid="sinal"><span className="selo selo-aviso">Sem conector · fale com a Macuxi</span></p>;
   return (
     <div>
       <p className={`faixa-sinal faixa-sinal-${vista.sinal.tom}`} role="status" data-testid="sinal">

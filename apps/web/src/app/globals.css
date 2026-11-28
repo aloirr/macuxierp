@@ -79,11 +79,14 @@ tbody tr:nth-child(even) { background: var(--mx-cor-linha-alternada); }
 .itens-parcial td, .itens-parcial th { padding: 6px 8px; }
 /* Coluna "Item" de largura fixa no diálogo da parcial. */
 .itens-parcial thead th:first-child, .itens-parcial tbody th { width: 28ch; }
-/* MC-0205 (regra 11): grade de 12 colunas; cada campo ocupa 2 e "Filtrar"/"Limpar" ficam juntos em 2; no celular, 2 por linha (span 6). */
+/* MC-0205 (regra 11): grade de 12 colunas; cada campo ocupa 2; no celular, 2 por linha (span 6). */
 .filtros { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 8px 16px; align-items: end; margin-bottom: 16px; }
 .filtros .campo { grid-column: span 2; margin: 0; min-width: 0; }
-.filtros-acoes { grid-column: span 2; display: flex; gap: 8px; align-items: end; white-space: nowrap; }
-@media (max-width: 640px) { .filtros .campo, .filtros-acoes { grid-column: span 6; } }
+/* RD-2382: sem "Filtrar" com JS (aplica ao mudar); sem JS o botão aparece. "Limpar filtros" é link ao lado dos filtros. */
+.filtros-enviar { display: none; }
+@media (scripting: none) { .filtros-enviar { display: inline-flex; grid-column: span 1; justify-self: start; } }
+.filtros-limpar { grid-column: span 2; align-self: end; padding-bottom: 8px; white-space: nowrap; color: inherit; }
+@media (max-width: 640px) { .filtros .campo, .filtros-limpar { grid-column: span 6; } }
 /* O U+00A0 do "R$ 1.234,56" não quebra, mas a célula estreita sim: dinheiro e número ficam numa linha só. */
 .sem-quebra { white-space: nowrap; }
 .total-pedido { margin: 12px 0 0; text-align: right; font-weight: var(--mx-peso-titulo); font-variant-numeric: var(--mx-fonte-numeros); white-space: nowrap; }
@@ -398,8 +401,10 @@ button.link { background: none; border: 0; padding: 0; color: inherit; font: inh
 /* Parecer da marca (v0.3.28): MC-0205 filtros em 3 colunas com o menu aberto; MC-0206 cartão da tabela. */
 @media (min-width: 801px) and (max-width: 1100px) { .filtros .campo { grid-column: span 3; } }
 .cartao-tabela { background: var(--mx-cor-branco); border: 1px solid var(--mx-cor-borda-tabela); border-radius: 8px; margin: 0 0 16px; }
-.cartao-tabela > .tabela-rolavel { border-radius: 8px 8px 0 0; }
-.cartao-tabela > .barra-acoes { margin: 0; padding: 12px 16px; border-top: 1px solid var(--mx-cor-borda-tabela); }
+.cartao-tabela > .tabela-rolavel { border-radius: 8px; }
+/* RD-2381: a barra da lista é a do rodapé da página, com a paginação junta, à direita. */
+.barra-rodape-lista { align-items: center; margin: 0; }
+.barra-rodape-lista > .paginacao { margin: 0 0 0 auto; }
 /* Topo: em 801-1023 px o nome do usuário sai para o topo caber numa linha. */
 @media (max-width: 1023px) { .casca > .topo .nome-usuario { display: none; } }
 /* /config em 390 px: o topo fica numa linha como o do BKO (assinatura, selo, Empresas, Sair); o nome do superadmin sai. */

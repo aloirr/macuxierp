@@ -80,6 +80,8 @@ export type LinhaStatusFdv = LinhaBaseFdv;
 
 export interface VistaStatusFdv {
   sinal: { texto: string; tom: 'ok' | 'aviso' };
+  /** Sem conector nada é enviado: a tela mostra uma frase só, sem a tabela de "Desligado" (RD-2394). */
+  semConector: boolean;
   linhas: LinhaStatusFdv[];
   comFalha: number;
 }
@@ -96,6 +98,7 @@ export function montarVistaStatus(s: StatusIntegracaoFdvTenant, fuso: string): V
         : { texto: 'ainda sem sinal do conector.', tom: 'aviso' };
   return {
     sinal,
+    semConector: !s.conector_id,
     linhas,
     comFalha: linhas.filter((l) => l.falha).length,
   };
