@@ -20,7 +20,7 @@ import type {
   RepositorioCore,
 } from './portas';
 
-const COLUNAS_USUARIO = 'id, nome, email::text AS email, perfil, filial_ids, ativo, external_id, ultimo_acesso_em, updated_at';
+const COLUNAS_USUARIO = 'id, nome, email::text AS email, perfil, filial_ids, ativo, external_id, ultimo_acesso_em, bloqueado_ate, updated_at';
 const COLUNAS_CERTIFICADO = 'id, filial_id, titular, cnpj::text AS cnpj, valido_de, valido_ate, impressao_digital::text AS impressao_digital, ativo, origem';
 const COLUNAS_EMPRESA = 'id, razao_social, nome_fantasia, cnpj::text AS cnpj, ie, fuso, updated_at';
 
@@ -51,7 +51,7 @@ export class RepositorioCoreSql implements RepositorioCore {
   async listarUsuarios(tx: Transacao, f: { limite: number; cursor?: string; busca?: string; inativos: boolean }): Promise<LinhaUsuario[]> {
     return tx.consultar<LinhaUsuario>(
       `SELECT ${COLUNAS_USUARIO} FROM plataforma.usuario
-        WHERE ($1::boolean OR ativo)
+        WHERE deleted_at IS NULL AND ($1::boolean OR ativo)
           AND ($2::uuid IS NULL OR id > $2::uuid)
           AND ($3::text IS NULL OR nome ILIKE '%' || $3 || '%' OR email::text ILIKE '%' || $3 || '%')
         ORDER BY id LIMIT $4`,
@@ -60,17 +60,17 @@ export class RepositorioCoreSql implements RepositorioCore {
   }
 
   async usuarioPorId(tx: Transacao, id: string): Promise<LinhaUsuario | null> {
-    const [u] = await tx.consultar<LinhaUsuario>(`SELECT ${COLUNAS_USUARIO} FROM plataforma.usuario WHERE id = $1`, [id]);
+    const [u] = await tx.consultar<LinhaUsuario>(`SELECT ${COLUNAS_USUARIO} FROM plataforma.usuario WHERE id = $1 AND deleted_at IS NULL`, [id]);
     return u ?? null;
   }
 
   async usuarioPorEmail(tx: Transacao, email: string): Promise<LinhaUsuario | null> {
-    const [u] = await tx.consultar<LinhaUsuario>(`SELECT ${COLUNAS_USUARIO} FROM plataforma.usuario WHERE email = $1`, [email]);
+    const [u] = await tx.consultar<LinhaUsuario>(`SELECT ${COLUNAS_USUARIO} FROM plataforma.usuario WHERE email = $1 AND deleted_at IS NULL`, [email]);
     return u ?? null;
   }
 
   async usuarioPorExternalId(tx: Transacao, externalId: string): Promise<LinhaUsuario | null> {
-    const [u] = await tx.consultar<LinhaUsuario>(`SELECT ${COLUNAS_USUARIO} FROM plataforma.usuario WHERE external_id = $1`, [externalId]);
+    const [u] = await tx.consultar<LinhaUsuario>(`SELECT ${COLUNAS_USUARIO} FROM plataforma.usuario WHERE external_id = $1 AND deleted_at IS NULL`, [externalId]);
     return u ?? null;
   }
 
@@ -89,10 +89,18 @@ export class RepositorioCoreSql implements RepositorioCore {
     const [linha] = await tx.consultar<LinhaUsuario>(
       `UPDATE plataforma.usuario SET
          nome = COALESCE($2, nome), perfil = COALESCE($3, perfil), filial_ids = COALESCE($4::uuid[], filial_ids),
-         ativo = COALESCE($5, ativo),
-         deleted_at = CASE WHEN COALESCE($5, ativo) THEN NULL ELSE COALESCE(deleted_at, now()) END
-       WHERE id = $1 AND ($6::timestamptz IS NULL OR ${igualToken(6)}) RETURNING ${COLUNAS_USUARIO}`,
+         ativo = COALESCE($5, ativo)
+       WHERE id = $1 AND deleted_at IS NULL AND ($6::timestamptz IS NULL OR ${igualToken(6)}) RETURNING ${COLUNAS_USUARIO}`,
       [id, p.nome ?? null, p.perfil ?? null, p.filial_ids ?? null, p.ativo ?? null, token ?? null],
+    );
+    return linha ?? null;
+  }
+
+  /** RN-CORE-17: Inativar não grava deleted_at (reversível); só o Excluir grava, e o e-mail volta a ficar livre (0078). */
+  async excluirUsuario(tx: Transacao, id: string, _agora?: Date): Promise<LinhaUsuario | null> {
+    const [linha] = await tx.consultar<LinhaUsuario>(
+      `UPDATE plataforma.usuario SET ativo = false, deleted_at = now() WHERE id = $1 AND deleted_at IS NULL RETURNING ${COLUNAS_USUARIO}`,
+      [id],
     );
     return linha ?? null;
   }
@@ -120,12 +128,12 @@ export class RepositorioCoreSql implements RepositorioCore {
   async travarAdministradoresAtivos(tx: Transacao): Promise<void> {
     // RN-CORE-01: trava os administradores ativos antes de contar. Ordem por id: duas transações travam na mesma ordem
     // (sem deadlock) e a segunda espera a primeira confirmar, então duas inativações simultâneas se serializam.
-    await tx.consultar(`SELECT id FROM plataforma.usuario WHERE perfil = 'administrador' AND ativo ORDER BY id FOR UPDATE`);
+    await tx.consultar(`SELECT id FROM plataforma.usuario WHERE perfil = 'administrador' AND ativo AND deleted_at IS NULL ORDER BY id FOR UPDATE`);
   }
 
   async contarAdministradoresAtivos(tx: Transacao, exceto: string): Promise<number> {
     const [r] = await tx.consultar<{ n: string }>(
-      `SELECT count(*)::text AS n FROM plataforma.usuario WHERE perfil = 'administrador' AND ativo AND id <> $1`,
+      `SELECT count(*)::text AS n FROM plataforma.usuario WHERE perfil = 'administrador' AND ativo AND deleted_at IS NULL AND id <> $1`,
       [exceto],
     );
     return Number(r?.n ?? 0);

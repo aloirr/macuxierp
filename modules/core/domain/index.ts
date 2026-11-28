@@ -1,6 +1,7 @@
 export * from './ambiente';
 export * from './certificado';
 export * from './usuarios';
+export * from './usuarios-situacao';
 export * from './portal';
 export * from './conta-bloqueada';
 export * from './senha-esquecida';

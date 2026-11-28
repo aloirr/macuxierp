@@ -234,6 +234,37 @@ describe('RF-CORE-02: usuários', () => {
     expect((await t.chamar('PATCH', '/usuarios/:id', { params: { id: c.id }, corpo: { nome: 'Sem Token' } })).corpo).toMatchObject({ nome: 'Sem Token' });
   });
 
+  it('RN-CORE-17: POST inativar é reversível (situação inativo, segue na lista com inativos) e reativar volta a ativo', async () => {
+    const t = montar();
+    const c = (await t.chamar('POST', '/usuarios', { corpo: novo })).corpo as { id: string };
+    const ina = await t.chamar('POST', '/usuarios/:id/inativar', { params: { id: c.id } });
+    expect(ina.corpo).toMatchObject({ id: c.id, ativo: false, situacao: 'inativo' });
+    expect(t.repo.usuarios.find((u) => u.id === c.id)?.deleted_at ?? null).toBeNull();
+    const todos = (await t.chamar('GET', '/usuarios', { consulta: { inativos: 'true' } })).corpo as { itens: unknown[] };
+    expect(todos.itens).toHaveLength(2);
+    // O e-mail do inativo continua reservado.
+    await expect(t.chamar('POST', '/usuarios', { corpo: novo })).rejects.toMatchObject({ status: 409 });
+    const rea = await t.chamar('POST', '/usuarios/:id/reativar', { params: { id: c.id } });
+    expect(rea.corpo).toMatchObject({ ativo: true, situacao: 'ativo' });
+    expect(t.auditoria.registros.map((a) => (a as { acao: string }).acao).slice(-2)).toEqual(['core.usuario.inativado', 'core.usuario.reativado']);
+  });
+
+  it('RN-CORE-17: excluir grava deleted_at, some da lista e do GET (404) e libera o e-mail; RN-CORE-01 trava o último admin', async () => {
+    const t = montar();
+    const c = (await t.chamar('POST', '/usuarios', { corpo: novo })).corpo as { id: string };
+    const r = await t.chamar('POST', '/usuarios/:id/excluir', { params: { id: c.id } });
+    expect(r.corpo).toEqual({ id: c.id, situacao: 'excluido' });
+    expect(t.repo.usuarios.find((u) => u.id === c.id)?.deleted_at).toEqual(AGORA);
+    const todos = (await t.chamar('GET', '/usuarios', { consulta: { inativos: 'true' } })).corpo as { itens: { id: string }[] };
+    expect(todos.itens.map((u) => u.id)).toEqual([ADM_ID]);
+    await expect(t.chamar('GET', '/usuarios/:id', { params: { id: c.id } })).rejects.toMatchObject({ status: 404 });
+    await expect(t.chamar('POST', '/usuarios/:id/excluir', { params: { id: c.id } })).rejects.toMatchObject({ status: 404 });
+    expect((await t.chamar('POST', '/usuarios', { corpo: novo })).status).toBe(201);
+    expect(t.auditoria.registros.some((a) => (a as { acao: string }).acao === 'core.usuario.excluido')).toBe(true);
+    expect(t.outbox.eventos.some((e) => (e.payload as { id: string; ativo: boolean }).id === c.id && !(e.payload as { ativo: boolean }).ativo)).toBe(true);
+    await regra(t.chamar('POST', '/usuarios/:id/excluir', { params: { id: ADM_ID } }), 'RN-CORE-01');
+  });
+
   it('RF-CORE-02: DELETE inativa, publica ativo=false e a lista esconde inativos por padrão; PATCH exige algo para alterar', async () => {
     const t = montar();
     const c = (await t.chamar('POST', '/usuarios', { corpo: novo })).corpo as { id: string };
@@ -607,7 +638,7 @@ describe('T-0087 (RF-CORE-02/03/05): telas de usuários, perfis, licenças e aud
     expect(csv).toContain('Maria Teste');
     expect(csv).not.toContain('admin@piloto.test');
     expect(csv).not.toContain('senha');
-    expect(csv).toContain(';Leitura;sim;');
+    expect(csv).toContain(';Leitura;Ativo;');
     expect(String((await t.chamar('GET', '/licencas/exportar')).corpo)).toContain('Cadastros;sim;Sem prazo');
   });
 });

@@ -6,6 +6,7 @@
 import { Cnpj, ConsultaLista, EmailUsuario, MODULOS, paginaDe, PERFIS } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 import { FORMATO_FICHA } from './ficha-receita';
+import { SituacaoUsuario } from './usuarios-config';
 import { OrigemCertificado } from '@macuxierp/platform-sdk/certificado-origem';
 
 export const MODULO = 'core' as const;
@@ -52,6 +53,7 @@ export const EmpresaEditar = z.object({
 export type EmpresaEditar = z.infer<typeof EmpresaEditar>;
 
 export * from './ficha-receita';
+export * from './usuarios-config';
 
 // Usuários (RF-CORE-02)
 export const Usuario = z.object({
@@ -61,6 +63,8 @@ export const Usuario = z.object({
   perfil: Perfil,
   filial_ids: z.array(Id),
   ativo: z.boolean(),
+  /** RN-CORE-17 (v0.3.28): ativo, bloqueado (trava do login vigente) ou inativo. */
+  situacao: SituacaoUsuario,
   external_id: z.string().max(64).nullable(),
   ultimo_acesso_em: Instante.nullable(),
   updated_at: Instante,
