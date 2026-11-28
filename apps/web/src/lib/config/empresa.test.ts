@@ -1,6 +1,6 @@
 import { CODIGO_TROCAR_SENHA } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
-import { destinoErroEmpresa, lerApoio } from './empresa';
+import { dataCriacao, destinoErroEmpresa, filtrarEmpresas, lerApoio } from './empresa';
 import { ConfigIndisponivel, ConfigNaoAutenticado, ConfigSemPermissao, ErroPlataforma, SEM_PERMISSAO } from './erros';
 
 describe('destino do erro da ficha da empresa', () => {
@@ -28,5 +28,22 @@ describe('leitura de apoio da aba: cada leitura leva o id da própria falha', ()
     expect(c.requestId).toBeUndefined();
     expect(await lerApoio(async () => 7)).toMatchObject({ valor: 7 });
     expect(await lerApoio(async () => { throw new ConfigNaoAutenticado(); })).toMatchObject({ valor: null, naoAutenticado: true });
+  });
+});
+
+describe('lista de empresas (124 A, RD-2362)', () => {
+  const lista = [
+    { slug: 'acme', codigo: 'AM2808', nome: 'Acme Comércio Ltda' },
+    { slug: 'beta', codigo: null, nome: 'Beta SA' },
+  ];
+  it('a busca única filtra pelo código ou pelo nome, sem caixa e sem acento', () => {
+    expect(filtrarEmpresas(lista, 'am28').map((e) => e.slug)).toEqual(['acme']);
+    expect(filtrarEmpresas(lista, 'COMERCIO').map((e) => e.slug)).toEqual(['acme']);
+    expect(filtrarEmpresas(lista, 'beta').map((e) => e.slug)).toEqual(['beta']);
+    expect(filtrarEmpresas(lista, '  ')).toHaveLength(2);
+    expect(filtrarEmpresas(lista, 'zzz')).toEqual([]);
+  });
+  it('"Criada em" só com a data, no fuso da empresa', () => {
+    expect(dataCriacao({ created_at: '2026-11-23T02:30:00.000Z', fuso: 'America/Manaus' })).toBe('22/11/2026');
   });
 });

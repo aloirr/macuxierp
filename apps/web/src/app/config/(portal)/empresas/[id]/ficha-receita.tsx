@@ -2,7 +2,8 @@
 import type { CampoContato, FichaReceitaPlanaMascarada } from '@macuxierp/core/contracts';
 import { RegiaoErros, ResultadoAcao, useResultado } from '@macuxierp/ui';
 import { useRouter } from 'next/navigation';
-import { Fragment, useRef, useState, useTransition, type ReactNode } from 'react';
+import { Fragment, useId, useRef, useState, useTransition, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { RevelarMascarado } from '@/components/revelar-mascarado';
 import { ChavesIdempotencia } from '@/lib/config/chaves';
 import { resultadoErro, resultadoSucesso } from '@/lib/resultado-acao';
@@ -26,12 +27,18 @@ interface Props {
   editavel: boolean;
   /** O CNPJ (com a troca ou o motivo do bloqueio), no topo do cartão Identificação. */
   cnpj?: ReactNode;
+  /** Rodapé da página (regra 12, RD-2370): quando existe, Salvar, Descartar, Atualizar, Trocar CNPJ e o estado vão para ele; sem ele ficam no rodapé do cartão. */
+  rodapeAlvo?: HTMLElement | null;
+  /** "Trocar CNPJ" (RD-2370): entra na barra da ficha, depois do Atualizar. */
+  acaoCnpj?: ReactNode;
+  /** Bloco que divide a grade da Ficha com os cartões (os Módulos, ao lado de Atividades e Contato). */
+  lateral?: ReactNode;
 }
 
 type Erros = Partial<Record<CampoFicha, string>>;
 type Origem = { tipo: 'manual' } | { tipo: 'receita'; consultadoEm: string };
 
-/** E-mail e telefone: o salvo só aparece mascarado (com o "Mostrar"); o campo vazio mantém o salvo (dito no placeholder). */
+/** E-mail e telefone: o salvo só aparece mascarado (com o "Mostrar"); o campo vazio mantém o salvo (RD-2373: sem placeholder que explique). */
 function SalvoMascarado({ empresaId, campo, mascarado }: { empresaId: string; campo: CampoContato; mascarado: string }) {
   return (
     <span className="dica-campo dica-salvo">
@@ -44,7 +51,7 @@ function Campo({ def, valor, erro, daReceita, desabilitado, aoMudar, extra }: { 
   const id = `ficha-${def.campo}`;
   const comum = { id, name: def.campo, value: valor, disabled: desabilitado, 'aria-invalid': erro ? true : undefined, 'aria-describedby': erro ? `${id}-erro` : undefined } as const;
   return (
-    <div className={`campo-ficha${def.curto ? ' campo-curto' : ''}${def.largo ? ' campo-largo' : ''}${daReceita ? ' veio-da-receita' : ''}`}>
+    <div className={`campo${def.curto ? ' campo-curto' : ''}${def.medio ? ' campo-medio' : ''}${def.oito ? ' campo-8' : ''}${def.largo ? ' campo-largo' : ''}${daReceita ? ' veio-da-receita' : ''}`}>
       <label htmlFor={id} className="rotulo-campo">{def.rotulo}</label>
       {def.tipo === 'regime' ? (
         <select {...comum} onChange={(e) => aoMudar(e.target.value)}>
@@ -60,7 +67,7 @@ function Campo({ def, valor, erro, daReceita, desabilitado, aoMudar, extra }: { 
           type={def.tipo === 'email' ? 'email' : def.tipo === 'telefone' ? 'tel' : 'text'}
           inputMode={def.tipo === 'data' ? 'numeric' : undefined}
           maxLength={def.tipo === 'data' ? 10 : def.max}
-          placeholder={def.tipo === 'email' || def.tipo === 'telefone' ? 'Vazio mantém o salvo' : undefined}
+          placeholder={def.tipo === 'data' ? 'dd/mm/aaaa' : undefined}
           autoComplete="off"
           onChange={(e) => aoMudar(e.target.value)}
         />
@@ -73,12 +80,13 @@ function Campo({ def, valor, erro, daReceita, desabilitado, aoMudar, extra }: { 
 }
 
 /**
- * Ficha da Receita editável (T-0101; v0.3.24, RN-CORE-16), bloco largo da aba Empresa. "Atualizar pela Receita" só preenche o
- * formulário; "Salvar", no rodapé do cartão, grava com auditoria (só nomes de campo). Só o superadmin chega aqui (todo o
+ * Ficha da Receita editável (T-0101; v0.3.24, RN-CORE-16), bloco largo da aba Empresa. "Atualizar" (pela Receita) só preenche o
+ * formulário; "Salvar", na barra do rodapé, grava com auditoria (só nomes de campo). Só o superadmin chega aqui (todo o
  * /config é dele). A API revalida tudo.
  */
-export function FichaReceita({ empresaId, ficha, razaoEmpresa, lugar = null, fuso, editavel, cnpj }: Props) {
+export function FichaReceita({ empresaId, ficha, razaoEmpresa, lugar = null, fuso, editavel, cnpj, rodapeAlvo = null, acaoCnpj = null, lateral = null }: Props) {
   const router = useRouter();
+  const idForm = useId();
   const [salvo, setSalvo] = useState<FormFicha>(() => formDaFicha(ficha, razaoEmpresa));
   const [form, setForm] = useState<FormFicha>(salvo);
   const [origem, setOrigem] = useState<Origem>({ tipo: 'manual' });
@@ -191,18 +199,34 @@ export function FichaReceita({ empresaId, ficha, razaoEmpresa, lugar = null, fus
     return descricaoCnae(c);
   };
 
+  const barra = (
+    <>
+      <button className={mudados.length > 0 ? 'mx-botao' : 'mx-botao-secundario'} type="submit" form={idForm} disabled={bloqueado || mudados.length === 0}>
+        {acao === 'salvar' ? 'Salvando…' : 'Salvar'}
+      </button>
+      {mudados.length > 0 && (
+        <button className="mx-botao-secundario" type="button" disabled={bloqueado} onClick={descartar}>Descartar</button>
+      )}
+      <button className="mx-botao-secundario" type="button" disabled={bloqueado} onClick={atualizar}>
+        {acao === 'previa' ? 'Consultando a Receita…' : 'Atualizar'}
+      </button>
+      {acaoCnpj}
+      <span className="rodape-estado apoio" role="status">
+        {mudados.length === 0 ? '' : mudados.length === 1 ? '1 campo alterado' : `${mudados.length} campos alterados`}
+      </span>
+    </>
+  );
+
   return (
     <section className="bloco bloco-largo ficha-editavel" aria-labelledby="h-ficha">
       <RegiaoErros temErro={Object.keys(erros).length > 0} />
       <div className="cabecalho-ficha">
         <h2 id="h-ficha">Ficha da Receita</h2>
         <p className="apoio">{consulta ?? (estado === 'com_dados' ? '' : TEXTO_FICHA_VAZIA[estado])}</p>
-        <button className="mx-botao-secundario" type="button" disabled={bloqueado} onClick={atualizar}>
-          {acao === 'previa' ? 'Consultando a Receita…' : 'Atualizar pela Receita'}
-        </button>
       </div>
       <ResultadoAcao resultado={rPrevia} chave={kPrevia} />
       <form
+        id={idForm}
         noValidate
         aria-labelledby="h-ficha"
         onSubmit={(e) => {
@@ -210,28 +234,25 @@ export function FichaReceita({ empresaId, ficha, razaoEmpresa, lugar = null, fus
           if (mudados.length > 0) salvar();
         }}
       >
-        <div className="grade-cartoes">
+        <div className="formulario">
           {GRUPOS_FICHA.map((g) => (
-            <fieldset key={g.id} className={`cartao-campos${g.largo ? ' cartao-largo' : ''}`} aria-labelledby={`h-ficha-${g.id}`}>
-              <h3 id={`h-ficha-${g.id}`} className="titulo-cartao">{g.titulo}</h3>
-              {g.campos.map((d) => (
-                <Fragment key={d.campo}>
-                  <Campo def={d} valor={form[d.campo]} erro={erros[d.campo]} daReceita={daReceita.has(d.campo)} desabilitado={bloqueado} aoMudar={(v) => mudar(d.campo, v)} extra={extra(d.campo)} />
-                  {/* o CNPJ logo depois da razão social, ao lado do nome fantasia */}
-                  {d.campo === 'razao_social' && cnpj}
-                </Fragment>
-              ))}
-            </fieldset>
+            <Fragment key={g.id}>
+              <fieldset className={`formulario cartao-ficha cartao-${g.colunas}`} aria-labelledby={`h-ficha-${g.id}`}>
+                <h3 id={`h-ficha-${g.id}`} className="titulo-cartao">{g.titulo}</h3>
+                {g.campos.map((d) => (
+                  <Fragment key={d.campo}>
+                    <Campo def={d} valor={form[d.campo]} erro={erros[d.campo]} daReceita={daReceita.has(d.campo)} desabilitado={bloqueado} aoMudar={(v) => mudar(d.campo, v)} extra={extra(d.campo)} />
+                    {/* o CNPJ logo depois do nome fantasia, na mesma linha (simulação aprovada) */}
+                    {d.campo === 'nome_fantasia' && cnpj}
+                  </Fragment>
+                ))}
+              </fieldset>
+              {/* os Módulos ficam ao lado de Atividades e Contato, na mesma linha da grade */}
+              {g.id === 'contato' && lateral}
+            </Fragment>
           ))}
         </div>
-        <div className="barra-acoes rodape-cartao">
-          {mudados.length > 0 && (
-            <button className="mx-botao-secundario" type="button" disabled={bloqueado} onClick={descartar}>Descartar</button>
-          )}
-          <button className={mudados.length > 0 ? 'mx-botao' : 'mx-botao-secundario'} type="submit" disabled={bloqueado || mudados.length === 0}>
-            {acao === 'salvar' ? 'Salvando…' : 'Salvar'}
-          </button>
-        </div>
+        {rodapeAlvo ? createPortal(barra, rodapeAlvo) : <div className="barra-acoes rodape-cartao">{barra}</div>}
         <ResultadoAcao resultado={rSalvar} chave={kSalvar} />
       </form>
     </section>

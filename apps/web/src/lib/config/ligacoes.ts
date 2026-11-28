@@ -1,5 +1,5 @@
 import type { CadastroCargaPortal, IntegracaoFdvPlataforma, LoteEntradaResumo, MonitorConectorFdv, PortalEntradaLeitura } from '@macuxierp/platform-sdk';
-import { plural } from '@macuxierp/platform-sdk';
+import { plural, rotuloCadastroCarga } from '@macuxierp/platform-sdk';
 import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
 import { AMBIENTES_FDV } from './integracao-fdv';
 import { situacaoDoConector, type Tom } from './operacao-fdv';
@@ -97,8 +97,8 @@ export function ultimoLoteDoCadastro(lotes: readonly LoteEntradaResumo[], cadast
   return maisRecentePor(lotes.filter((l) => ents.includes(l.entidade)), 'recebido_em');
 }
 
-/** Origem da última carga: "Automática" (veio pela ligação do sistema do cliente) ou "Planilha" (CSV), a mais recente das duas. */
-export function origemDaCarga(ultimaCargaEm: string | null, lote: LoteEntradaResumo | null): 'Automática' | 'Planilha' | null {
-  if (lote && (!ultimaCargaEm || Date.parse(lote.recebido_em) >= Date.parse(ultimaCargaEm))) return 'Automática';
-  return ultimaCargaEm ? 'Planilha' : null;
+/** "Cadastro" de um lote recebido (Envios recentes): o rótulo da carga a que a entidade pertence; sem correspondência, a entidade como veio. */
+export function rotuloDoLote(entidade: string): string {
+  const par = (Object.entries(ENTIDADES_DO_CADASTRO) as [CadastroCargaPortal, readonly string[]][]).find(([, e]) => e.includes(entidade));
+  return par ? rotuloCadastroCarga(par[0]) : entidade;
 }

@@ -35,7 +35,7 @@ describe('ações de linha da TabelaVista (T-0099)', () => {
     expect(menu.match(/mx-acoes-alvo/g)).toHaveLength(1);
   });
   it('a coluna Ações não aparece sem nenhuma ação, e a linha sem ação fica vazia nela', () => {
-    expect(html([{ chave: '1', celulas: { a: '1' } }])).not.toContain('>Ações<');
+    expect(html([{ chave: '1', celulas: { a: '1' } }])).not.toMatch(/>Ações<|aria-label="Ações de /);
     const h = html([{ chave: '1', celulas: { a: '1' }, acao: emitir }, { chave: '2', celulas: { a: '2' } }]);
     expect(h.match(/mx-acoes-alvo/g)).toHaveLength(1);
   });

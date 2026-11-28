@@ -1,12 +1,12 @@
 'use client';
-import type { EmpresaPlataforma } from '@macuxierp/platform-sdk';
+import { formatarDocumento, type EmpresaPlataforma } from '@macuxierp/platform-sdk';
 import { ResultadoAcao, TabelaDensa, useResultado, type ColunaTabela } from '@macuxierp/ui';
 import { resultadoErro } from '@/lib/resultado-acao';
 import { acumularPagina } from '@macuxierp/ui/paginacao';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
-import { codigoExibido } from '@/lib/config/empresa';
+import { AUSENTE, codigoExibido, dataCriacao, filtrarEmpresas } from '@/lib/config/empresa';
 import { modulosLigados, nomeModulo, resumoModulos } from '@/lib/config/modulos';
 import { maisEmpresasAcao } from '@/lib/acoes-cliente';
 import { SeloSituacao } from './selo-situacao';
@@ -15,7 +15,7 @@ import { SeloSituacao } from './selo-situacao';
 function CelulaModulos({ modulos }: { modulos: EmpresaPlataforma['modulos'] }) {
   const ligados = modulosLigados(modulos);
   if (ligados.length === 0) return <span>{resumoModulos(0)}</span>;
-  const lista = ligados.map(nomeModulo).join(', ');
+  const lista = ligados.map(nomeModulo).join(' · ');
   return (
     <span title={lista} aria-label={lista} className="modulos-celula">
       <span className="modulos-lista">{lista}</span>
@@ -24,12 +24,19 @@ function CelulaModulos({ modulos }: { modulos: EmpresaPlataforma['modulos'] }) {
   );
 }
 
+/**
+ * Lista de Empresas do /config (simulação aprovada 124 A; RD-2360 a RD-2363): um título só, com a contagem, e a busca única na
+ * mesma linha (colunas 1 a 8 e 9 a 12), que filtra ao digitar pelo código ou pelo nome; a tabela na largura toda e, logo abaixo,
+ * a barra com "Nova empresa". Sem JS, o Enter manda a busca ao servidor (`?busca=`, pelo código).
+ */
 export function ListaEmpresas({ empresas, vazio, proximo = null, busca = '' }: { empresas: EmpresaPlataforma[]; vazio: string; proximo?: string | null; busca?: string }) {
   const router = useRouter();
   const [linhas, setLinhas] = useState(empresas);
   const [cursor, setCursor] = useState(proximo);
+  const [termo, setTermo] = useState('');
   const [resultado, chaveResultado, mostrar, limpar] = useResultado(); // 36 A: abaixo da tabela, onde fica o "Carregar mais"
   const [pendente, iniciar] = useTransition();
+  const visiveis = filtrarEmpresas(linhas, termo);
   const carregarMais = () => {
     if (!cursor) return;
     iniciar(async () => {
@@ -44,33 +51,56 @@ export function ListaEmpresas({ empresas, vazio, proximo = null, busca = '' }: {
     });
   };
   const colunas: ColunaTabela<EmpresaPlataforma>[] = [
-    { id: 'codigo', titulo: 'Código', celula: (e) => (
-        <Link href={`/config/empresas/${e.id}`} className="codigo" onClick={(ev) => ev.stopPropagation()}>
-          {codigoExibido(e)}
+    { id: 'nome', titulo: 'Empresa', celula: (e) => (
+        <Link href={`/config/empresas/${e.id}`} className="link-nome" onClick={(ev) => ev.stopPropagation()}>
+          {e.nome}
         </Link>
       ),
     },
-    { id: 'nome', titulo: 'Nome', celula: (e) => e.nome },
+    { id: 'codigo', titulo: 'Código', celula: (e) => <span className="codigo">{codigoExibido(e)}</span> },
+    { id: 'cnpj', titulo: 'CNPJ', celula: (e) => <span className="sem-quebra">{e.cnpj ? formatarDocumento(e.cnpj) : AUSENTE}</span> },
     { id: 'situacao', titulo: 'Situação', celula: (e) => <SeloSituacao situacao={e.situacao} /> },
     { id: 'modulos', titulo: 'Módulos', celula: (e) => <CelulaModulos modulos={e.modulos} /> },
+    { id: 'criada', titulo: 'Criada em', celula: (e) => <span className="sem-quebra">{dataCriacao(e)}</span> },
   ];
   return (
     <>
+    <div className="titulo-lista">
+      {/* A API não manda o total: com "Carregar mais" à vista, o número só das linhas carregadas daria a entender o total, e fica de fora. */}
+      <h1>Empresas{cursor === null && <> <span className="contagem">· {visiveis.length}</span></>}</h1>
+      <form method="get" action="/config" role="search" className="busca-lista" onSubmit={(ev) => ev.preventDefault()}>
+        <input
+          type="search"
+          name="busca"
+          defaultValue={busca}
+          maxLength={80}
+          autoComplete="off"
+          placeholder="Buscar por código ou nome"
+          aria-label="Buscar por código ou nome"
+          onChange={(ev) => setTermo(ev.target.value)}
+        />
+      </form>
+    </div>
+    <div className="cartao-tabela">
     <div className="tabela-rolavel com-sinal-rolagem legenda-so-leitor">
       <TabelaDensa
         colunas={colunas}
-        linhas={linhas}
+        linhas={visiveis}
         chaveLinha={(e) => e.id}
         aoClicarLinha={(e) => router.push(`/config/empresas/${e.id}`)}
         rotuloLinha={(e) => `Abrir empresa ${codigoExibido(e)}`}
-        textoVazio={vazio}
+        textoVazio={termo.trim() && linhas.length > 0 ? 'Nenhuma empresa encontrada.' : vazio}
         legenda="Empresas"
         temMais={cursor !== null}
         carregandoMais={pendente}
         aoCarregarMais={carregarMais}
       />
     </div>
+    </div>
     <ResultadoAcao resultado={resultado} chave={chaveResultado} />
+    <div className="barra-acoes rodape-lista">
+      <Link className="mx-botao" href="/config/empresas/nova">Nova empresa</Link>
+    </div>
     </>
   );
 }

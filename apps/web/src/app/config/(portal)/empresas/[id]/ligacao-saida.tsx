@@ -3,7 +3,7 @@ import type { IntegracaoFdvPlataforma, MonitorConectorFdv } from '@macuxierp/pla
 import { Dialogo, ResultadoAcao, useResultado } from '@macuxierp/ui';
 import { MSG_SEM_LICENCA } from '@macuxierp/integracao-fdv/contracts';
 import { useRouter } from 'next/navigation';
-import { cloneElement, useId, useRef, useState, useTransition, type ReactElement } from 'react';
+import { cloneElement, useId, useRef, useState, useTransition, type ReactElement, type ReactNode } from 'react';
 import { AMBIENTES_FDV } from '@/lib/config/integracao-fdv';
 import { ChavesIdempotencia } from '@/lib/config/chaves';
 import { LIGACAO_SAIDA, ROTULO_DESTINO_FDV, fichaSaida } from '@/lib/config/ligacoes';
@@ -23,13 +23,15 @@ const ROTULO_FICHA_FDV = `Chave do ${ROTULO_DESTINO_FDV}`;
  * "Trocar chave" (diálogo com Nova chave e Ambiente; o código fica fixo) e "Testar conexão". A chave fica só no campo até o
  * envio: sem estado, URL, armazenamento nem log; depois de salvar, o campo é limpo.
  */
-export function LigacaoSaida({ empresaId, dados, monitor, fuso }: { empresaId: string; dados: IntegracaoFdvPlataforma; monitor: MonitorConectorFdv | null; fuso: string }) {
+export function LigacaoSaida({ empresaId, dados, monitor, fuso, corpo }: { empresaId: string; dados: IntegracaoFdvPlataforma; monitor: MonitorConectorFdv | null; fuso: string; /** Registros por lote e a tabela "Cadastros enviados"; recebe a barra do cartão, onde entram o Salvar e o Zerar pedidos (uma barra só, regra 12). */ corpo?: (barra: HTMLElement | null) => ReactNode }) {
   const router = useRouter();
   const [pendente, iniciar] = useTransition();
   const [rChave, kChave, mostrarChave, limparChave] = useResultado();
   const [rTestar, kTestar, mostrarTestar] = useResultado();
   const [campos, setCampos] = useState<Record<string, string>>({});
   const [trocar, setTrocar] = useState(false);
+  const idForm = useId();
+  const [barra, setBarra] = useState<HTMLElement | null>(null);
   const chaves = useRef(new ChavesIdempotencia());
   const ficha = fichaSaida(dados, monitor, fuso);
   const bloqueado = pendente || !dados.modulo_licenciado;
@@ -58,22 +60,27 @@ export function LigacaoSaida({ empresaId, dados, monitor, fuso }: { empresaId: s
     });
 
   return (
-    <CartaoLigacao ligacao={LIGACAO_SAIDA}>
+    <CartaoLigacao ligacao={LIGACAO_SAIDA} ficha={ficha}>
       {!dados.modulo_licenciado && <p className="faixa-aviso" role="status">{MSG_SEM_LICENCA}</p>}
       {ficha ? (
-        <>
-          <FichaDaLigacao ficha={ficha} rotulo={ROTULO_FICHA_FDV} />
-          <div className="barra-acoes">
-            <button type="button" className="mx-botao-secundario" disabled={bloqueado} onClick={() => { setCampos({}); setTrocar(true); }}>{ROTULOS_FDV.trocarChave}</button>
-            <button type="button" className="mx-botao-secundario" disabled={bloqueado} onClick={testar}>Testar conexão</button>
-          </div>
-        </>
+        <FichaDaLigacao ficha={ficha} rotulo={ROTULO_FICHA_FDV} />
       ) : (
-        <form noValidate aria-label={ROTULO_FICHA_FDV} onSubmit={(ev) => { ev.preventDefault(); salvar(ev.currentTarget); }}>
+        <form id={idForm} noValidate aria-label={ROTULO_FICHA_FDV} onSubmit={(ev) => { ev.preventDefault(); salvar(ev.currentTarget); }}>
           <CamposChave campos={campos} codigo={dados.conector_id ?? ''} ambiente={dados.ambiente ?? 'teste'} />
-          <div className="barra-acoes"><button className="mx-botao" type="submit" disabled={bloqueado}>{ROTULOS_FDV.salvarChave}</button></div>
         </form>
       )}
+      {corpo?.(barra)}
+      <div className="barra-acoes barra-bloco">
+        {ficha ? (
+          <>
+            <button type="button" className="mx-botao-secundario" disabled={bloqueado} onClick={testar}>Testar conexão</button>
+            <button type="button" className="mx-botao-secundario" disabled={bloqueado} onClick={() => { setCampos({}); setTrocar(true); }}>{ROTULOS_FDV.trocarChave}</button>
+          </>
+        ) : (
+          <button className="mx-botao" type="submit" form={idForm} disabled={bloqueado}>{ROTULOS_FDV.salvarChave}</button>
+        )}
+        <div ref={setBarra} className="barra-destino" />
+      </div>
       {/* 36 A: um retorno por botão, logo abaixo da fila, na ordem dos botões. */}
       <ResultadoAcao resultado={rChave} chave={kChave} />
       <ResultadoAcao resultado={rTestar} chave={kTestar} />
@@ -85,21 +92,22 @@ export function LigacaoSaida({ empresaId, dados, monitor, fuso }: { empresaId: s
 /** Campos da chave. O erro de campo só aparece depois do envio (`campos` vem da resposta), com `aria-invalid` e logo abaixo. */
 function CamposChave({ campos, codigo, ambiente, nova = false }: { campos: Record<string, string>; codigo?: string; ambiente: string; nova?: boolean }) {
   const id = useId();
-  const campo = (nome: string, rotulo: string, input: ReactElement<Record<string, unknown>>) => (
+  const campo = (nome: string, rotulo: string, input: ReactElement<Record<string, unknown>>, largura = '') => (
     <>
-      <label className="campo">
+      <label className={`campo ${largura}`.trim()}>
         <span>{rotulo}</span>
         {cloneElement(input, { 'aria-invalid': campos[nome] ? true : undefined, 'aria-describedby': campos[nome] ? `${id}-${nome}` : undefined })}
       </label>
       {campos[nome] && <p id={`${id}-${nome}`} className="erro-campo" role="alert">{campos[nome]}</p>}
     </>
   );
+  // grade de 12 do cartão (regra 11): Código e Ambiente curtos, lado a lado; a Chave na linha toda
   return (
-    <>
-      {!nova && campo('conector_id', 'Código', <input name="conector_id" defaultValue={codigo} maxLength={64} autoComplete="off" spellCheck={false} />)}
-      {campo('chave', nova ? 'Nova chave' : 'Chave', <input name="chave" type="password" autoComplete="new-password" spellCheck={false} maxLength={512} />)}
-      {campo('ambiente', 'Ambiente', <select name="ambiente" defaultValue={ambiente}>{AMBIENTES_FDV.map(([v, r]) => <option key={v} value={v}>{r}</option>)}</select>)}
-    </>
+    <div className="formulario">
+      {!nova && campo('conector_id', 'Código', <input name="conector_id" defaultValue={codigo} maxLength={64} autoComplete="off" spellCheck={false} />, 'campo-curto')}
+      {campo('ambiente', 'Ambiente', <select name="ambiente" defaultValue={ambiente}>{AMBIENTES_FDV.map(([v, r]) => <option key={v} value={v}>{r}</option>)}</select>, 'campo-curto')}
+      {campo('chave', nova ? 'Nova chave' : 'Chave', <input name="chave" type="password" autoComplete="new-password" spellCheck={false} maxLength={512} />, 'campo-largo')}
+    </div>
   );
 }
 

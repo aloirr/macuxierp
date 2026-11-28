@@ -1,4 +1,5 @@
 import { CODIGO_TROCAR_SENHA, formatarDataHora, type EmpresaPlataforma } from '@macuxierp/platform-sdk';
+import { semAcento } from '../texto-busca';
 import { ConfigIndisponivel, ConfigNaoAutenticado, ConfigSemPermissao, EMPRESA_NAO_ENCONTRADA, ErroPlataforma, SEM_PERMISSAO } from './erros';
 
 export const AUSENTE = '—';
@@ -21,6 +22,16 @@ export function lugarDaEmpresa(e: Pick<EmpresaPlataforma, 'cidade' | 'uf'>, fich
 
 /** "Criada em 23/11/2026 08:00", no fuso da empresa, no cabeçalho da tela da empresa (docs/design/telas-horizontais §3). */
 export const textoCriadaEm = (e: Pick<EmpresaPlataforma, 'created_at' | 'fuso'>): string => `Criada em ${formatarDataHora(e.created_at, e.fuso)}`;
+
+/** "22/11/2026": só a data de criação, no fuso da empresa (coluna "Criada em" da lista, simulação 124 A). */
+export const dataCriacao = (e: Pick<EmpresaPlataforma, 'created_at' | 'fuso'>): string => formatarDataHora(e.created_at, e.fuso).slice(0, 10);
+
+/** Busca única da lista (RD-2362, 124 A): filtra ao digitar pelo código ou pelo nome, sem caixa e sem acento. */
+export function filtrarEmpresas<E extends Pick<EmpresaPlataforma, 'slug' | 'codigo' | 'nome'>>(lista: readonly E[], termo: string): E[] {
+  const q = semAcento(termo);
+  if (!q) return [...lista];
+  return lista.filter((e) => semAcento(`${codigoExibido(e)} ${e.slug} ${e.nome}`).includes(q));
+}
 
 export type DestinoErroEmpresa = { tipo: 'senha' } | { tipo: 'tela'; texto: string; naoAchou: boolean; requestId?: string };
 

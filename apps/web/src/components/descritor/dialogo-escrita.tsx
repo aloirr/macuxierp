@@ -175,7 +175,7 @@ export function DialogoEscrita({ titulo, aviso = null, ambiente, limitesTexto, r
                 {faixa.filiais.map((f) => <option key={f.valor} value={f.valor}>{f.rotulo}</option>)}
               </select>
             </label>
-            <div className="campos-linha">
+            <div className="formulario formulario-dialogo">
               <label className="campo">
                 <span>Número inicial</span>
                 <input className="entrada" inputMode="numeric" value={inicial} onChange={(e) => edita(setInicial, e.target.value)} aria-invalid={invalido} />

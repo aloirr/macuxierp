@@ -36,7 +36,7 @@ export function FormularioEmpresa({ chaveInicial }: { chaveInicial: string }) {
     <form method="post" onSubmit={enviar} className="formulario" noValidate>
       <RegiaoErros temErro={Object.keys(campos).length > 0 || erro !== ''} />
       {erro && <p className="erro">{erro}</p>}
-      <label className="campo">
+      <label className="campo campo-curto">
         <span>Código do FDV</span>
         <input name="codigo" autoCapitalize="characters" autoComplete="off" maxLength={6} required aria-invalid={campos.codigo ? true : undefined} aria-describedby="ajuda-codigo erro-codigo" />
         <span id="ajuda-codigo" className="apoio">UF e 4 dígitos, como no FDV, por exemplo AM2808.</span>
@@ -47,7 +47,7 @@ export function FormularioEmpresa({ chaveInicial }: { chaveInicial: string }) {
         <input name="nome" required maxLength={120} autoComplete="off" aria-invalid={campos.nome ? true : undefined} aria-describedby="erro-nome" />
         {campos.nome && <span id="erro-nome" className="erro-campo">{campos.nome}</span>}
       </label>
-      <label className="campo">
+      <label className="campo campo-medio">
         <span>Fuso</span>
         <input name="fuso" defaultValue="America/Manaus" autoComplete="off" aria-invalid={campos.fuso ? true : undefined} aria-describedby="erro-fuso" />
         {campos.fuso && <span id="erro-fuso" className="erro-campo">{campos.fuso}</span>}
