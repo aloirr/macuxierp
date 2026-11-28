@@ -20,7 +20,7 @@
 - **Modo escuro** (mesmas cores do e-mail do FDV `depois-backoffice.html`): fundo e folha #1E3350, título e valores #FFFFFF, texto e rótulos #C9CED5, cartão e borda #3A4D68, filete #C9CED5, botão #FFFFFF com texto #1E3350. Estrutura e classes `mx-*` (`mx-claro`/`mx-escuro` para os dois logos) seguem o FDV.
 - **Senha selecionável inteira:** texto puro num único bloco, com `user-select: all` (um toque seleciona tudo). Não separar em partes nem usar imagem.
 - **Sem código da empresa (T-0133, v0.3.30):** a empresa some de qualquer tela; o e-mail mostra só e-mail e senha, e o link abre o login já com o e-mail (`/#email=…`). Nenhum prefixo "Erro.", "Aviso." ou "Pronto." nos textos (decisão 125 B).
-  **Pendência:** as prévias PNG ainda mostram a linha antiga; regerar na próxima passada com Chromium.
+  As 4 prévias foram regeradas sem a linha, em 2x (1280 → 2560 px, 390 → 780 px).
 - Sem dado real: os exemplos são fictícios (`EXEMPLO`, `ana.souza@exemplo.com.br`, `Tr4m-Qa7p-Zx2k`).
 
 ## Textos exatos (o core copia sem alterar, em `modules/core/domain`)
