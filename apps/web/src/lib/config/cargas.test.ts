@@ -15,6 +15,13 @@ const csv = (nome = 'produto.csv', tamanho = 20) => new File(['x'.repeat(tamanho
 const json = (c: unknown, status = 200) => new Response(JSON.stringify(c), { status, headers: { 'content-type': 'application/json' } });
 describe('linhas da aba Cargas (T-0058)', () => {
   const linhas = linhasCargas(situacoes({ filial: { situacao: 'carregado', quantidade: 1 }, produto: { situacao: 'com_erro', erros: 2 } }), 'America/Manaus');
+  it('registros e erros da linha são os mesmos do chip e da "Última carga" (RD-2422)', () => {
+    expect(linhas[0]!.registros).toBe(1);
+    expect(linhas[0]!.erros).toBeNull();
+    const p = linhas.find((l) => l.cadastro === 'produto')!;
+    expect(p.erros).toBe(2);
+    expect(p.chip.texto).toBe('2 com erro');
+  });
   it('uma linha por cadastro, na ordem do SDK, numerada de 1 ao total', () => {
     expect(linhas.map((l) => l.cadastro)).toEqual(ORDEM);
     expect(linhas.map((l) => l.numero)).toEqual(CADASTROS_CARGA_PORTAL.map((_, i) => i + 1));

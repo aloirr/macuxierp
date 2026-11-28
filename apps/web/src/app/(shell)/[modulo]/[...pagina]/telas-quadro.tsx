@@ -9,6 +9,7 @@ import { ApiIndisponivel, NaoAutenticado, SemPermissao, getValidado } from '@/li
 import { ROTA_SENHA, TrocarSenhaPendente } from '@/lib/troca-pendente';
 import { RespostaFonte, opcoesDaResposta } from '@/lib/descritor/fontes';
 import { cartoesDaBandeira } from '@/lib/telas/bandeira';
+import { ambientesComPadrao } from '@/lib/telas/ambiente';
 import { matrizDePerfis } from '@/lib/telas/core';
 import { VistaAmbienteFiscal, VistaPerfis } from '@/components/core/vistas';
 import { VistaBandeira } from '@/components/faturamento/vista-bandeira';
@@ -60,7 +61,7 @@ export async function TelaAmbienteFiscal({ acesso, perfil }: { acesso: string; p
       getValidado('/v1/core/ambientes-fiscais', ListaAmbientes, acesso, 'ambientes', true),
       nomesDasFiliais(acesso, perfil),
     ]);
-    return <VistaAmbienteFiscal quadro={quadroEmpresaFiscal(empresa, ambientes.itens, nomes)} />;
+    return <VistaAmbienteFiscal quadro={quadroEmpresaFiscal(empresa, ambientesComPadrao(ambientes.itens, Object.keys(nomes)), nomes)} />;
   } catch (e) {
     return falhaDoQuadro(e);
   }

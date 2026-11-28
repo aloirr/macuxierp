@@ -58,7 +58,8 @@ describe('usuários: um botão por linha e filtro da auditoria (T-0135)', () => 
     expect(a.maisAcoes?.(usuario() as never, 'administrador').map((x) => x.id)).toEqual(['editar', 'redefinir-senha', 'inativar', 'excluir']);
   });
   it('o filtro da auditoria se chama "Usuário"', () => {
-    expect(LISTA_AUDITORIA.filtrosTela.find((f) => f.chave === 'usuario_id')?.rotulo).toBe('Usuário');
+    expect(LISTA_AUDITORIA.filtrosTela.find((f) => f.chave === 'usuario')?.rotulo).toBe('Usuário');
+    expect(LISTA_AUDITORIA.filtrosTela.some((f) => f.chave === 'usuario_id')).toBe(false); // RD-2419: busca pelo nome, nunca pelo id
   });
 });
 
@@ -173,8 +174,8 @@ describe('auditoria: filtros de data viram datetime ISO completo', () => {
     expect(LISTA_AUDITORIA.pagina.consulta.safeParse({ de: '2026-11-01' }).success).toBe(false);
   });
   it('a linha da auditoria mostra a ação em português e o horário no fuso da empresa', () => {
-    const l = LISTA_AUDITORIA.linha({ id: ID, usuario_id: null, acao: 'core.usuario.senha_redefinida', entidade: 'usuario', entidade_id: ID, ocorrido_em: '2026-11-24T14:05:00.000Z' }, 'America/Manaus');
-    expect(l).toMatchObject({ ocorrido_em: '24/11/2026 10:05', usuario_id: 'Sistema', acao: 'Senha redefinida' });
+    const l = LISTA_AUDITORIA.linha({ id: ID, usuario_id: null, usuario_nome: null, acao: 'core.usuario.senha_redefinida', entidade: 'usuario', entidade_id: ID, ocorrido_em: '2026-11-24T14:05:00.000Z' }, 'America/Manaus');
+    expect(l).toMatchObject({ ocorrido_em: '24/11/2026 10:05', usuario_nome: 'Sistema', acao: 'Senha redefinida' });
   });
 });
 
@@ -193,10 +194,12 @@ describe('perfis e permissões (RF-CORE-02)', () => {
 });
 
 describe('auditoria: entidade com rótulo em português', () => {
-  const item = (entidade: string) => ({ id: '8a2b4c6d-1e3f-4a5b-9c7d-0e1f2a3b4c5d', ocorrido_em: '2026-11-24T14:00:00.000Z', usuario_id: null, acao: 'core.usuario.criado', entidade, entidade_id: null });
-  it('entidade do core vira rótulo; a de outro módulo aparece como veio; o filtro lista as do core', () => {
+  const item = (entidade: string) => ({ id: '8a2b4c6d-1e3f-4a5b-9c7d-0e1f2a3b4c5d', ocorrido_em: '2026-11-24T14:00:00.000Z', usuario_id: null, usuario_nome: null, acao: 'core.usuario.criado', entidade, entidade_id: null });
+  it('entidade vira rótulo; a desconhecida vira o texto genérico, nunca o código; o filtro não repete rótulo', () => {
     expect(LISTA_AUDITORIA.linha(item('ambiente_fiscal') as never, 'America/Manaus').entidade).toBe('Ambiente fiscal');
-    expect(LISTA_AUDITORIA.linha(item('preco') as never, 'America/Manaus').entidade).toBe('preco');
+    expect(LISTA_AUDITORIA.linha(item('xpto_nova') as never, 'America/Manaus').entidade).toBe('Outro registro');
+    const opcoes = (LISTA_AUDITORIA.filtrosTela.find((f) => f.chave === 'entidade') as unknown as { opcoes: { rotulo: string }[] }).opcoes.map((o) => o.rotulo);
+    expect(new Set(opcoes).size).toBe(opcoes.length);
     expect(LISTA_AUDITORIA.filtrosTela.find((f) => f.chave === 'entidade')).toMatchObject({ tipo: 'selecao', opcoes: expect.arrayContaining([{ valor: 'usuario', rotulo: 'Usuário' }]) });
   });
 });

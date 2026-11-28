@@ -75,9 +75,9 @@ export function AbaDados({ empresaId, dados, fuso, integracao = null, entrada = 
     { id: 'cadastro', titulo: 'Cadastro', largura: '42%', celula: (l) => <>{l.rotulo}{l.ultima && <span className="carga-sob-nome">Última carga: {l.ultima}</span>}</> },
     { id: 'situacao', titulo: 'Situação', tipo: 'status', celula: (l) => <Chip tom={l.chip.tom}>{l.chip.texto}</Chip> },
     { id: 'ultima', titulo: 'Última carga', tipo: 'data', celula: (l) => l.ultima ?? AUSENTE },
-    // "Registros" e "Com erro" são do último lote recebido pela ligação do sistema do cliente (a tabela "Lotes recebidos" saiu, RD-1103).
-    { id: 'registros', titulo: 'Registros', tipo: 'numero', celula: (l) => lotes.get(l.cadastro)?.recebidos ?? '—' },
-    { id: 'comErro', titulo: 'Com erro', tipo: 'numero', celula: (l) => lotes.get(l.cadastro)?.com_erro ?? '—' },
+    // "Registros" e "Com erro" são do último lote recebido pela ligação do sistema do cliente (a tabela "Lotes recebidos" saiu, RD-1103); sem lote, vêm da própria carga, a mesma do selo e da "Última carga" (RD-2422).
+    { id: 'registros', titulo: 'Registros', tipo: 'numero', celula: (l) => lotes.get(l.cadastro)?.recebidos ?? l.registros ?? '—' },
+    { id: 'comErro', titulo: 'Com erro', tipo: 'numero', celula: (l) => lotes.get(l.cadastro)?.com_erro ?? l.erros ?? '—' },
     { id: 'acoes', titulo: 'Ações', largura: '1%', celula: (l) => {
       const c = estadoCargaCompleta(l.cadastro, integracao);
       // Um botão "Ações" só (T-0099, regra 12): Importar, o Modelo (baixa o CSV) e a Carga completa ficam no menu.
