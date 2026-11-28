@@ -127,6 +127,13 @@ describe('contratos do portal /config (ADR 0012)', () => {
     expect(EmpresaPlataforma.parse(empresa).codigo).toBeUndefined();
   });
 
+  it('EmpresaPlataforma: tem_fdv preservado quando vem; ausente vira false (migração 0080)', () => {
+    expect(EmpresaPlataforma.parse({ ...empresa, tem_fdv: true }).tem_fdv).toBe(true);
+    expect(EmpresaPlataforma.parse({ ...empresa, tem_fdv: false }).tem_fdv).toBe(false);
+    expect(EmpresaPlataforma.parse(empresa).tem_fdv).toBe(false);
+    expect(() => EmpresaPlataforma.parse({ ...empresa, tem_fdv: 'sim' })).toThrow();
+  });
+
   it('EmpresaPlataforma: só ativo, suspenso ou encerrado (o tenant de referência nunca aparece); 1º admin sem e-mail nem nome', () => {
     expect(EmpresaPlataforma.parse(empresa).situacao).toBe('ativo');
     expect(() => EmpresaPlataforma.parse({ ...empresa, situacao: 'referencia' })).toThrow();

@@ -369,8 +369,26 @@ export const IsItem = z
   .partial();
 export type IsItem = z.infer<typeof IsItem>;
 
+/**
+ * Imposto (ICMS-ST ou IPI) calculado por regra, em centavos e alíquota de 4 casas (RN-FIS-05, decisão 63 A).
+ * Só existe quando houve regra aplicada; o valor 0 COM regra é legítimo (ex.: base reduzida a zero).
+ */
+export const ImpostoCalculado = z.object({ v_bc: CentavosNaoNeg, p_aliq: Percentual, v_valor: CentavosNaoNeg });
+export type ImpostoCalculado = z.infer<typeof ImpostoCalculado>;
+/** Total de ICMS-ST ou IPI; omitido se algum item não tem regra (RN-FIS-05). */
+export const TotalImpostoCalculado = z.object({ v_bc: CentavosNaoNeg, v_valor: CentavosNaoNeg });
+export type TotalImpostoCalculado = z.infer<typeof TotalImpostoCalculado>;
+/** Indicador explícito por imposto: true = houve regra aplicada (o grupo `calc_*` do imposto vem junto); false = sem regra (grupo omitido). */
+export const RegraAplicada = z.object({ st: z.boolean(), ipi: z.boolean() });
+export type RegraAplicada = z.infer<typeof RegraAplicada>;
+
 export const ItemResultado = z.object({
   item_id: z.string(),
+  /** RN-FIS-05 (aditivo no @1): indicador de regra aplicada por imposto. Ausente = emissor antigo, sem informação. */
+  regra_aplicada: RegraAplicada.optional(),
+  /** RN-FIS-05 (aditivo no @1): ICMS-ST e IPI do item por regra. Omitidos sem regra; 0 só com regra. */
+  calc_st: ImpostoCalculado.optional(),
+  calc_ipi: ImpostoCalculado.optional(),
   icms: IcmsItem,
   /** Reservados: IPI/PIS/COFINS (lote 2) e IBS/CBS/IS (lote 3). */
   ipi: IpiItem.optional(),
@@ -426,6 +444,9 @@ export const TotaisCalculo = z.object({
   /** vNFTot da NT: total da NF com IBS, CBS e IS por fora = vNF + vIBS + vCBS + vIS. Só sai quando há IBS/CBS ou IS no documento. */
   v_nf_tot: CentavosNaoNeg.optional(),
   v_tot_trib: CentavosNaoNeg.optional(),
+  /** RN-FIS-05 (aditivo no @1): total de ST e de IPI por regra. Omitidos se algum item não tem regra (os `v_st` e `v_ipi` acima continuam). */
+  calc_st: TotalImpostoCalculado.optional(),
+  calc_ipi: TotalImpostoCalculado.optional(),
 });
 export type TotaisCalculo = z.infer<typeof TotaisCalculo>;
 
@@ -456,6 +477,17 @@ export const CalculoSaida = z.object({
   operacao: z.enum(['interna', 'interestadual']),
   itens: z.array(ItemResultado),
   totais: TotaisCalculo,
+}).superRefine((c, ctx) => {
+  // RN-FIS-05: o indicador `regra_aplicada` e o grupo `calc_*` andam juntos; o total só existe se todos os itens têm regra.
+  for (const imp of ['st', 'ipi'] as const) {
+    const key = `calc_${imp}` as const;
+    c.itens.forEach((it, i) => {
+      const aplicada = it.regra_aplicada?.[imp] === true;
+      if (aplicada !== (it[key] !== undefined)) ctx.addIssue({ code: 'custom', path: ['itens', i, key], message: `RN-FIS-05: ${key} só com regra_aplicada.${imp} = true` });
+    });
+    const todos = c.itens.length > 0 && c.itens.every((it) => it.regra_aplicada?.[imp] === true);
+    if (todos !== (c.totais[key] !== undefined)) ctx.addIssue({ code: 'custom', path: ['totais', key], message: `RN-FIS-05: total ${key} só se todos os itens têm regra` });
+  }
 });
 export type CalculoSaida = z.infer<typeof CalculoSaida>;
 

@@ -50,6 +50,17 @@ describe('registro das telas do core (T-0087)', () => {
   });
 });
 
+describe('usuários: um botão por linha e filtro da auditoria (T-0135)', () => {
+  it('sem botão solto: todas as ações da linha, o Editar entre elas, ficam no "Ações ▾"', () => {
+    const a = LISTA_USUARIOS.acaoDaLinha!;
+    expect(a.acao(usuario() as never, 'administrador')).toBeNull();
+    expect(a.maisAcoes?.(usuario() as never, 'administrador').map((x) => x.id)).toEqual(['editar', 'redefinir-senha', 'inativar', 'excluir']);
+  });
+  it('o filtro da auditoria se chama "Usuário"', () => {
+    expect(LISTA_AUDITORIA.filtrosTela.find((f) => f.chave === 'usuario_id')?.rotulo).toBe('Usuário');
+  });
+});
+
 describe('usuários: colunas, filtros e CSV', () => {
   it('colunas e linha pelo módulo, último acesso no fuso da empresa e Ativo em selo', () => {
     const l = LISTA_USUARIOS as TelaLista;

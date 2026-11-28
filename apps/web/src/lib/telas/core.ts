@@ -148,8 +148,9 @@ export const LISTA_USUARIOS: TelaLista = {
   },
   novo: { rota: ROTA_USUARIO_NOVO, rotulo: 'Novo usuário', criar: GERIR },
   acaoDaLinha: {
-    acao: (l, perfil) => acoesDoUsuario(l, perfil)[0] ?? null,
-    maisAcoes: (l, perfil) => acoesDoUsuario(l, perfil).slice(1),
+    // Um botão só por linha: o "Ações ▾" leva todas as ações, o Editar entre elas (T-0135, regra 12).
+    acao: () => null,
+    maisAcoes: (l, perfil) => acoesDoUsuario(l, perfil),
     validarAcao: validarAcaoUsuario,
     escritas: ESCRITAS_USUARIO,
     novaChave,
@@ -182,7 +183,7 @@ export const LISTA_AUDITORIA: TelaLista = {
   pagina: paginaAuditoria as unknown as TelaLista['pagina'],
   filtrosTela: [
     { chave: 'entidade', rotulo: 'Entidade', tipo: 'selecao', vazio: 'Todas', opcoes: Object.entries(ROTULO_ENTIDADE).map(([valor, rotulo]) => ({ valor, rotulo })) },
-    { chave: 'usuario_id', rotulo: 'Código do usuário', tipo: 'texto' },
+    { chave: 'usuario_id', rotulo: 'Usuário', tipo: 'texto' },
     { chave: 'de', rotulo: 'De', tipo: 'data', instante: 'inicio' },
     { chave: 'ate', rotulo: 'Até', tipo: 'data', instante: 'fim' },
   ],

@@ -16,7 +16,7 @@ import { ListaEmpresas } from './lista-empresas';
 import { TopoPlataforma } from './topo-plataforma';
 import { PainelEmpresa } from './empresas/[id]/painel';
 
-const base = { fuso: 'America/Manaus', created_at: '2026-11-23T12:00:00.000Z', updated_at: '2026-11-23T12:00:00.000Z' };
+const base = { tem_fdv: false, fuso: 'America/Manaus', created_at: '2026-11-23T12:00:00.000Z', updated_at: '2026-11-23T12:00:00.000Z' };
 const lic = (...a: string[]) => ['core', 'cadastros', 'pedido', 'faturamento', 'fiscal', 'integracao-fdv'].map((modulo) => ({ modulo, ativo: modulo === 'core' || a.includes(modulo), valido_ate: null })) as EmpresaPlataforma['modulos'];
 const acme: EmpresaPlataforma = { ...base, codigo: 'AM2808', id: '11111111-1111-4111-8111-111111111111', slug: 'acme', nome: 'Acme Ltda', situacao: 'ativo', modulos: lic('cadastros', 'fiscal'), primeiro_admin: { id: '22222222-2222-4222-8222-222222222222', ativo: true, bloqueado: false } };
 const beta: EmpresaPlataforma = { ...acme, codigo: null, id: '33333333-3333-4333-8333-333333333333', slug: 'beta', nome: 'Beta SA', situacao: 'suspenso', modulos: lic(), primeiro_admin: null };
@@ -25,8 +25,8 @@ const chaves = { situacao: 'k3' };
 
 describe('lista de empresas', () => {
   const h = renderToStaticMarkup(<ListaEmpresas empresas={[acme, beta]} vazio="Nenhuma empresa ainda. Crie a primeira." />);
-  it('colunas como a simulação 124 A (Empresa, Código, CNPJ, Situação, Módulos, Criada em), linha com rótulo "Abrir empresa <código>"', () => {
-    expect([...h.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1])).toEqual(['Empresa', 'Código', 'CNPJ', 'Situação', 'Módulos', 'Criada em']);
+  it('colunas como a simulação 124 A (Empresa, Código, CNPJ, Situação, Macuxi FDV, Módulos, Criada em, Ações), linha com rótulo "Abrir empresa <código>"', () => {
+    expect([...h.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1])).toEqual(['Empresa', 'Código', 'CNPJ', 'Situação', 'Macuxi FDV', 'Módulos', 'Criada em', '']);
     expect(h).toContain('<span class="codigo">AM2808</span>'); // o código é texto; o link é o nome
     expect(h).toContain('Abrir empresa AM2808');
     expect(h).toMatch(/<a [^>]*href="\/config\/empresas\/11111111-1111-4111-8111-111111111111"[^>]*>Acme Ltda<\/a>/);
@@ -87,7 +87,7 @@ describe('empresa: módulos, 1º administrador e situação', () => {
     expect(h).not.toContain('Sempre ligado');
     expect(h).not.toMatch(/<li[^>]*>(?:(?!<\/li>).)*>Core</);
     expect(h).toMatch(/Exige [^<]*Fiscal/);
-    expect(h).toMatch(/<button[^>]*disabled=""[^>]*>Salvar módulos<\/button>/);
+    expect(h).toMatch(/<button[^>]*disabled=""[^>]*>Salvar<\/button>/);
   });
   it('todo checkbox de módulo, inclusive o desabilitado por dependência, usa .mx-checkbox (#311)', () => {
     const h = renderToStaticMarkup(<PainelEmpresa empresa={beta} deps={deps} chaves={chaves} />);

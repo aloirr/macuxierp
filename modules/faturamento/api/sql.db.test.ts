@@ -111,6 +111,16 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     expect(cont?.cobranca?.parcelas).toHaveLength(2);
   });
 
+  it('RN-FIS-05: a leitura da nota traz calc_st e calc_ipi só do item com regra_aplicada = true; sem regra os campos ficam ausentes', async () => {
+    const r = await emitir(A, 'idem-db-impostos');
+    if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
+    const st = { v_bc: 10_000, p_aliq: 180_000, v_valor: 1800 };
+    await admin(`UPDATE faturamento.nota_item SET tributos = tributos || $2::jsonb WHERE nota_id = $1 AND n_item = 1`, [r.nota.id, JSON.stringify({ regra_aplicada: { st: true, ipi: false }, calc_st: st, calc_ipi: st })]);
+    const n = await app.comTenant(A, (tx) => repos.notas.obter(tx, r.nota.id));
+    expect(n?.itens[0]).toMatchObject({ sequencia: 1, calc_st: st });
+    expect(n?.itens[0]).not.toHaveProperty('calc_ipi');
+    expect(n?.itens[1]).not.toHaveProperty('calc_st');
+  });
   it('RN-FAT-05/08: com a SVC-RS aberta da filial, a nota nasce com tipo_emissao 7, contingencia_em e a justificativa gravados (a constraint 0013 exige os três), na mesma sequência; encerrada, a nota volta ao normal e o conteúdo lido traz dhCont e xJust', async () => {
     const MOTIVO = 'SEFAZ-AM fora do ar desde as 9h';
     const INICIO = new Date('2026-11-21T09:00:00Z');

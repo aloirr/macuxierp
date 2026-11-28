@@ -19,3 +19,4 @@ export * from './status';
 export * from './troca-chave';
 export * from './recebidos-log';
 export * from './sondagem';
+export * from './bandeiras';

@@ -38,8 +38,8 @@ const ORIGENS = ['0', '1', '2', '3', '4', '5', '6', '7', '8'] as const;
 export const CAMPOS_PRODUTO: readonly CampoEdicao[] = [
   { nome: 'codigo', rotulo: 'Código', tipo: 'texto', obrigatorio: true },
   { nome: 'descricao', rotulo: 'Descrição', tipo: 'texto', obrigatorio: true },
-  { nome: 'ncm', rotulo: 'NCM', tipo: 'texto', obrigatorio: true, ajuda: '8 números; precisa existir e estar vigente.' },
-  { nome: 'cest', rotulo: 'CEST', tipo: 'texto', ajuda: '7 números; obrigatório quando o NCM tem substituição tributária.' },
+  { nome: 'ncm', rotulo: 'NCM', tipo: 'texto', obrigatorio: true, ajuda: 'Código fiscal do produto; precisa existir e estar vigente.' },
+  { nome: 'cest', rotulo: 'CEST', tipo: 'texto', ajuda: 'Obrigatório quando o produto tem substituição tributária.' },
   { nome: 'unidade_comercial', rotulo: 'Unidade comercial', tipo: 'texto', obrigatorio: true },
   { nome: 'ean', rotulo: 'EAN/GTIN', tipo: 'texto', ajuda: '8, 12, 13 ou 14 números, ou "SEM GTIN".' },
   { nome: 'marca', rotulo: 'Marca', tipo: 'texto' },
@@ -61,10 +61,10 @@ export function valoresDoProduto(p: ProdutoResumo): Valores {
 export function validarProduto(v: Valores, modo: Modo, perfil: Perfil): Erros {
   const campos = camposDoProduto(perfil, modo);
   const e = faltandoObrigatorios(campos, v);
-  if (!e.ncm && !ProdutoDados.shape.ncm.safeParse(soDigitos(v.ncm)).success) e.ncm = 'O NCM tem 8 números';
-  if (vazioParaNulo(v.cest) !== null && !ProdutoDados.shape.cest.safeParse(soDigitos(v.cest)).success) e.cest = 'O CEST tem 7 números';
+  if (!e.ncm && !ProdutoDados.shape.ncm.safeParse(soDigitos(v.ncm)).success) e.ncm = 'Informe o NCM completo, com 8 dígitos';
+  if (vazioParaNulo(v.cest) !== null && !ProdutoDados.shape.cest.safeParse(soDigitos(v.cest)).success) e.cest = 'Informe o CEST completo, com 7 dígitos';
   const ean = vazioParaNulo(v.ean);
-  if (ean !== null && !Ean.safeParse(ean).success) e.ean = 'EAN com 8, 12, 13 ou 14 números, ou "SEM GTIN"';
+  if (ean !== null && !Ean.safeParse(ean).success) e.ean = 'Informe o código de barras completo ou "SEM GTIN"';
   if (campos.some((c) => c.nome === 'custo_centavos') && centavosDoTexto(v.custo_centavos) === null) e.custo_centavos = 'Informe o custo em reais, como 12,50';
   return e;
 }

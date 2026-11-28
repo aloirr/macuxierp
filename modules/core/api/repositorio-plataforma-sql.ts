@@ -116,8 +116,14 @@ async function comErrosDeUsuario<R>(fn: () => Promise<R>): Promise<R> {
 const usuario = <R = ItemUsuarioBanco>(tx: Transacao, sql: string, parametros: readonly unknown[]): Promise<R> =>
   comErrosDeUsuario(async () => (await primeiraLinha<{ u: R }>(tx, sql, parametros)).u);
 
+/**
+ * T-0134: `tem_fdv` vem do banco (0080, lê a licença da integração FDV). Antes da 0080 o campo não vem: vale `false`.
+ * O campo entra no contrato `EmpresaPlataforma` (SDK) por pedido ao engenheiro-software; até lá o tipo é local.
+ */
+const comTemFdv = <E extends object>(e: E): E & { tem_fdv: boolean } => ({ ...e, tem_fdv: (e as { tem_fdv?: unknown }).tem_fdv === true });
+
 const empresa = async (tx: Transacao, sql: string, parametros: readonly unknown[]): Promise<EmpresaPlataforma> =>
-  (await primeiraLinha<{ e: EmpresaPlataforma }>(tx, sql, parametros)).e;
+  comTemFdv((await primeiraLinha<{ e: EmpresaPlataforma }>(tx, sql, parametros)).e);
 
 export class RepositorioPlataformaSql implements RepositorioPlataforma {
   async listarEmpresas(tx: Transacao, p: { busca?: string; cursor?: string; limite: number }): Promise<EmpresaPlataforma[]> {
@@ -126,13 +132,13 @@ export class RepositorioPlataformaSql implements RepositorioPlataforma {
       p.cursor ?? null,
       p.limite,
     ]);
-    return ls.map((l) => l.e);
+    return ls.map((l) => comTemFdv(l.e));
   }
 
   /** A linha do `empresa_ler`: a empresa e, na chave `ficha` (0063), a ficha mascarada ainda sem descrições. */
   private async lerLinha(tx: Transacao, id: string): Promise<(EmpresaPlataforma & { ficha?: FichaReceitaPlanaMascarada | null }) | null> {
     const [l] = await tx.consultar<{ e: (EmpresaPlataforma & { ficha?: FichaReceitaPlanaMascarada | null }) | null }>('SELECT plataforma.empresa_ler($1::uuid) e', [id]);
-    return l?.e ?? null;
+    return l?.e ? comTemFdv(l.e) : null;
   }
 
   async lerEmpresa(tx: Transacao, id: string): Promise<EmpresaPlataforma | null> {

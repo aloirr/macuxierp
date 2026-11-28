@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { CalculoEntrada, EmitenteCalculo, CalculoResultado, ItemCalculo, ItemResultado, RegraTributaria, TotaisCalculo } from './index';
+import { CalculoSaida, CalculoEntrada, EmitenteCalculo, CalculoResultado, ItemCalculo, ItemResultado, RegraTributaria, TotaisCalculo } from './index';
 import { regra } from '../domain/fixtures';
+import { calculoComRegra, calculoItemMisto, calculoSemRegra } from './fixtures';
 
 const regraOk = regra({ ncm_prefixo: '2202' });
 const itemOk = { id: 'i1', ncm: '22021000', cfop: '5102', quantidade: 2, valor_unitario_centavos: 500, valor_bruto_centavos: 1000, origem: '0' };
@@ -50,5 +51,29 @@ describe('contrato fiscal.calculo@1', () => {
     const t = { v_bc: 0, v_icms: 0, v_bc_st: 0, v_st: 0, v_fcp: 0, v_fcp_st: 0, v_prod: 0, v_desc: 0, v_frete: 0, v_seg: 0, v_outro: 0, v_ipi: 0, v_nf: 0, v_cred_icms_sn: 0 };
     expect(TotaisCalculo.safeParse(t).success).toBe(true);
     expect(TotaisCalculo.safeParse({ ...t, v_pis: 1, v_tot_trib: 2 }).success).toBe(true);
+  });
+});
+
+describe('contrato fiscal.calculo@1: ST e IPI por regra (RN-FIS-05)', () => {
+  it('RN-FIS-05: com regra, o item e o total trazem calc_st e calc_ipi, e o 0 com regra é válido', () => {
+    const r = CalculoSaida.parse(calculoComRegra);
+    expect(r.itens[1]?.calc_st?.v_valor).toBe(0);
+    expect(r.totais.calc_st?.v_valor).toBe(360);
+  });
+  it('RN-FIS-05: sem regra, os campos são omitidos; um 0 sem regra é recusado', () => {
+    expect(CalculoSaida.safeParse(calculoSemRegra).success).toBe(true);
+    const zeroSemRegra = { ...calculoSemRegra, itens: [{ ...calculoSemRegra.itens[0], calc_st: { v_bc: 0, p_aliq: 0, v_valor: 0 } }] };
+    expect(CalculoSaida.safeParse(zeroSemRegra).success).toBe(false);
+  });
+  it('RN-FIS-05: item misto omite o total; total presente com item sem regra é recusado', () => {
+    const r = CalculoSaida.parse(calculoItemMisto);
+    expect(r.totais.calc_st).toBeUndefined();
+    expect(r.totais.calc_ipi).toBeUndefined();
+    const total = { ...calculoItemMisto, totais: { ...calculoItemMisto.totais, calc_ipi: { v_bc: 0, v_valor: 0 } } };
+    expect(CalculoSaida.safeParse(total).success).toBe(false);
+  });
+  it('RN-FIS-05: compatível com o @1, o resultado antigo (sem os campos novos) continua válido', () => {
+    const antigo = { operacao: 'interna', itens: [{ item_id: 'a', icms: { orig: '0' }, regra: { id: regraOk.id, fonte: regraOk.fonte, versao: '1' } }], totais: calculoSemRegra.totais };
+    expect(CalculoSaida.safeParse(antigo).success).toBe(true);
   });
 });

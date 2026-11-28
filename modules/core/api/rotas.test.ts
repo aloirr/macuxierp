@@ -202,6 +202,15 @@ describe('RF-CORE-02: usuários', () => {
     await expect(t.chamar('POST', '/usuarios', { corpo: { ...novo, email: 'MARIA@piloto.test' } })).rejects.toMatchObject({ status: 409 });
   });
 
+  it('RN-CORE-05: reenvio com o external_id de usuário excluído é 409 (não 500) e não reativa nem duplica', async () => {
+    const t = montar();
+    const a = await t.chamar('POST', '/usuarios', { corpo: { ...novo, external_id: 'ext-9' } });
+    await t.chamar('POST', '/usuarios/:id/excluir', { params: { id: (a.corpo as { id: string }).id } });
+    const antes = t.repo.usuarios.length;
+    await expect(t.chamar('POST', '/usuarios', { corpo: { ...novo, email: 'volta@piloto.test', external_id: 'ext-9' } })).rejects.toMatchObject({ status: 409 });
+    expect(t.repo.usuarios).toHaveLength(antes);
+  });
+
   it('RN-CORE-18: e-mail vivo em outra empresa é recusado com 409 email_em_uso e nada é gravado', async () => {
     const t = montar();
     t.repo.emailsEmOutrasContas.add('rita@outra.test');

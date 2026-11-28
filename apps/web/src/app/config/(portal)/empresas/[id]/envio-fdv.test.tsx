@@ -21,6 +21,16 @@ const dados = (extra: Record<string, unknown> = {}, com = true) =>
   });
 const render = (d = dados()) => renderToStaticMarkup(<SecaoEnvioFdv empresaId={ID} dados={d} fuso="America/Manaus" />);
 
+describe('T-0135: um botão por bloco', () => {
+  it('sem chave salva o "Salvar" dos registros por lote não aparece (só o "Salvar chave" do cartão); com chave, aparece', () => {
+    expect(render(dados({}, false))).not.toMatch(/>Salvar<\/button>/);
+    expect(render()).toMatch(/>Salvar<\/button>/);
+  });
+  it('sem último envio a linha "Último envio: —" não sobe para sob o nome', () => {
+    expect(render()).not.toContain('Último envio: —');
+  });
+});
+
 describe('v0.3.24: aba Dados, seção "ERP → Força de vendas" (a tabela saiu da aba Integração)', () => {
   it('título com a direção, Registros por lote com o Salvar na mesma linha, "Cadastros enviados" e Zerar pedidos', () => {
     const h = render();

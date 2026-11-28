@@ -53,7 +53,7 @@ export function FormularioEmpresa({ chaveInicial }: { chaveInicial: string }) {
         {campos.fuso && <span id="erro-fuso" className="erro-campo">{campos.fuso}</span>}
       </label>
       <div className="barra-acoes">
-        <button className="mx-botao" type="submit" disabled={pendente}>{pendente ? 'Criando…' : 'Criar empresa'}</button>
+        <button className="mx-botao" type="submit" disabled={pendente}>{pendente ? 'Criando…' : 'Criar'}</button>
         <a className="mx-botao-secundario" href="/config">Cancelar</a>
       </div>
     </form>

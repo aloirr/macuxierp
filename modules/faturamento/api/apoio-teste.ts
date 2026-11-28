@@ -16,7 +16,7 @@ import { CNPJ_EMITENTE_DE_TESTE, INSTANTE_DE_TESTE, VALIDADE_DE_TESTE, gerarA1De
 import type { Transacao } from '@macuxierp/platform-sdk';
 import { paginar } from '@macuxierp/platform-sdk';
 import type { Ambiente, BaixaTituloResumo, ContingenciaResumo, StatusNota, TituloResumo } from '../contracts';
-import { digestValueDoXml, emTransmissao, calcularTotais, interpretarRetorno, nfeVaiAoFdv, resumoDoItem, type ConteudoNota } from '../domain';
+import { digestValueDoXml, emTransmissao, calcularTotais, interpretarRetorno, nfeVaiAoFdv, resumoDoItemMontado, type ConteudoNota } from '../domain';
 import { calc, IDS, itemPedido, pedidoAprovado } from '../domain/fixtures';
 import type { DepsEmissao } from './emissao';
 import { criarPluginFaturamento } from './index';
@@ -86,7 +86,7 @@ export function repoFake() {
         recibo: null,
         vai_ao_fdv: nfeVaiAoFdv(n.ambiente),
         revisao: 1,
-        itens: conteudo.itens.map((i) => ({ ...resumoDoItem(i), produto_id: i.produto_id })),
+        itens: conteudo.itens.map((i) => ({ ...resumoDoItemMontado(i), produto_id: i.produto_id })),
       };
       notas.set(nota.id, nota);
       atualizadaEm.set(nota.id, estado.relogio);
@@ -102,7 +102,7 @@ export function repoFake() {
         total_centavos: calcularTotais(conteudo.itens).vNF,
         recibo: null,
         revisao: n.revisao + 1,
-        itens: conteudo.itens.map((i) => ({ ...resumoDoItem(i), produto_id: i.produto_id })),
+        itens: conteudo.itens.map((i) => ({ ...resumoDoItemMontado(i), produto_id: i.produto_id })),
       });
       atualizadaEm.set(id, estado.relogio);
       conteudos.set(id, conteudo);

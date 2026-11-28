@@ -58,7 +58,7 @@ function BlocoModulos({ empresa, deps, aoErro }: Comum & { deps: Dependencia[] }
   const [marcados, setMarcados] = useState<Set<ModuloId>>(() => ativosDe(empresa.modulos));
   const [desligar, setDesligar] = useState<{ modulo: ModuloId; dependentes: ModuloId[] } | null>(null);
   const [campos, setCampos] = useState<Record<string, string>>({});
-  const [resultado, chaveResultado, mostrar, limpar] = useResultado(); // 36 A: abaixo do "Salvar módulos"
+  const [resultado, chaveResultado, mostrar, limpar] = useResultado(); // 36 A: abaixo do "Salvar"
   const [pendente, iniciar] = useTransition();
   const mudancas = mudancasDe(empresa.modulos, marcados);
   const editavel = empresa.situacao !== 'encerrado';
@@ -101,7 +101,7 @@ function BlocoModulos({ empresa, deps, aoErro }: Comum & { deps: Dependencia[] }
       </ul>
       <div className="barra-acoes">
         <button className={mudancas.length > 0 ? 'mx-botao' : 'mx-botao-secundario'} type="button" disabled={mudancas.length === 0 || pendente || !editavel} onClick={salvar}>
-          {pendente ? 'Salvando…' : 'Salvar módulos'}
+          {pendente ? 'Salvando…' : 'Salvar'}
         </button>
       </div>
       <ResultadoAcao resultado={resultado} chave={chaveResultado} />
