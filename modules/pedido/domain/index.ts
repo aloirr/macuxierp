@@ -9,3 +9,4 @@ export * from './valores';
 export * from './violacao';
 export * from './zeragem';
 export * from './privacidade';
+export * from './impostos-nota';

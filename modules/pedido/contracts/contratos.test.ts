@@ -85,6 +85,18 @@ describe('ResultadoRecebimentoFdv', () => {
       nota: { id: U, numero: 1, serie: 1, chave: '13261112345678000199550010000001231876543210', emitida_em: '2026-11-22T10:00:00.000Z', total_centavos: 100 },
       itens_faturados: [{ sequencia: 1, produto_id: U, quantidade: 10_000, valor_centavos: 100 }],
     };
+    it('RN-FIS-05 (63 A): regra_aplicada, calc_st e calc_ipi nos itens e no total da nota são opcionais (aditivo no @1)', () => {
+      expect(PedidoFaturadoV1.safeParse(base).success).toBe(true);
+      const calc = { v_bc: 100, p_aliq: 180000, v_valor: 18 };
+      const comRegra = {
+        ...base,
+        nota: { ...base.nota, calc_st: { v_bc: 100, v_valor: 18 }, calc_ipi: { v_bc: 100, v_valor: 5 } },
+        itens_faturados: [{ ...base.itens_faturados[0], regra_aplicada: { st: true, ipi: true }, calc_st: calc, calc_ipi: { ...calc, v_valor: 5 } }],
+      };
+      expect(PedidoFaturadoV1.safeParse(comRegra).success).toBe(true);
+      expect(PedidoFaturadoV1.safeParse({ ...comRegra, itens_faturados: [{ ...comRegra.itens_faturados[0], calc_st: { v_bc: -1, p_aliq: 1, v_valor: 1 } }] }).success).toBe(false);
+      expect(PedidoFaturadoV1.safeParse({ ...comRegra, itens_faturados: [{ ...comRegra.itens_faturados[0], regra_aplicada: { st: true } }] }).success).toBe(false);
+    });
     it('T-0015: conta_como_real é opcional e booleano (aditivo no @1)', () => {
       expect(PedidoFaturadoV1.safeParse(base).success).toBe(true);
       expect(PedidoFaturadoV1.safeParse({ ...base, conta_como_real: true }).success).toBe(true);
