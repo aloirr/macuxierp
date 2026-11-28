@@ -6,7 +6,7 @@ import { escritaDeclarada, telaDaRota, telaFormulario } from '../telas';
 import { MANIFESTOS } from '../manifestos';
 import { montarMenu, resolverPagina } from '../menu';
 import { larguraDoCampo } from '../../components/descritor/formulario-generico';
-import { NOVA_FILIAL, EDITAR_CLIENTE, LISTA_CLIENTES, NOVO_CLIENTE, ROTA_CLIENTE, ROTA_CLIENTE_NOVO, ROTA_CLIENTES } from './cadastros';
+import { paraCampo, NOVA_FILIAL, EDITAR_CLIENTE, LISTA_CLIENTES, NOVO_CLIENTE, ROTA_CLIENTE, ROTA_CLIENTE_NOVO, ROTA_CLIENTES } from './cadastros';
 
 const FUSO = 'America/Manaus';
 const ID = '3f1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c70';
@@ -120,5 +120,14 @@ describe('Nova filial: endereço em 12 colunas (marca, v0.3.30)', () => {
     const todos = NOVA_FILIAL.camposDoPerfil?.('gerente') ?? NOVA_FILIAL.campos;
     const soma = nomes.map((n) => SPAN[larguraDoCampo(todos.find((c) => c.nome === n)!).replace(' campo-inicio-linha', '')] ?? 0);
     expect(soma).toEqual([4, 4, 4]);
+  });
+});
+
+describe('T-0135: colunas do campo do cadastros chegam ao formulário', () => {
+  it('copia colunas e a grade do campo vale (campo-col-3), mesmo em nome de endereço', () => {
+    const c = paraCampo({ nome: 'cep', rotulo: 'CEP', tipo: 'texto', colunas: 3 } as Parameters<typeof paraCampo>[0]);
+    expect(c.colunas).toBe(3);
+    expect(larguraDoCampo(c)).toBe(' campo-col-3');
+    expect(paraCampo({ nome: 'x', rotulo: 'X', tipo: 'texto' }).colunas).toBeUndefined();
   });
 });

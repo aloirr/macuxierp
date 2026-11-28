@@ -13,7 +13,7 @@ import {
 } from '@macuxierp/cadastros/web';
 import { colunasDoPerfil } from '@macuxierp/platform-sdk/listas';
 import type { Perfil } from '@macuxierp/platform-sdk';
-import type { CampoFormulario, FiltroTela, TelaDescrita, TelaFormulario, TelaLista } from '../descritor/tipos';
+import type { CampoFormulario, ColunasCampo, FiltroTela, TelaDescrita, TelaFormulario, TelaLista } from '../descritor/tipos';
 import { colunasDoModulo, novaChave } from './comum';
 
 export {
@@ -34,11 +34,15 @@ const FILTRO_INATIVOS: FiltroTela = { chave: 'inativos', rotulo: 'Situação', t
 
 const SIM_NAO = [{ valor: 'true', rotulo: 'Sim' }, { valor: 'false', rotulo: 'Não' }] as const;
 
+const colunasDe = (c: CampoEdicao): ColunasCampo | undefined => (c as { colunas?: ColunasCampo }).colunas;
+
 /** Campo do descritor do módulo no campo do formulário genérico (dinheiro digita como número, em reais; sim/não vira seleção). */
-const paraCampo = (c: CampoEdicao): CampoFormulario => ({
+export const paraCampo = (c: CampoEdicao): CampoFormulario => ({
   nome: c.nome, rotulo: c.rotulo, tipo: c.tipo === 'dinheiro' ? 'numero' : c.tipo === 'booleano' ? 'selecao' : c.tipo,
   ...(c.obrigatorio ? { obrigatorio: true } : {}), ...(c.fonte ? { fonte: c.fonte } : {}), ...(c.ajuda ? { ajuda: c.ajuda } : {}),
   ...(c.tipo === 'booleano' ? { opcoes: SIM_NAO } : c.opcoes ? { opcoes: c.opcoes } : {}), ...(c.mostrarSe ? { mostrarSe: c.mostrarSe } : {}),
+  // T-0135: `colunas` chega do cadastros num PR do dono; a leitura tolerante compila com e sem o campo no tipo.
+  ...(colunasDe(c) ? { colunas: colunasDe(c) as ColunasCampo } : {}),
 });
 const camposDe = (campos: (perfil: Perfil, modo: Modo) => CampoEdicao[], modo: Modo) => (perfil: Perfil): readonly CampoFormulario[] => campos(perfil, modo).map(paraCampo);
 
