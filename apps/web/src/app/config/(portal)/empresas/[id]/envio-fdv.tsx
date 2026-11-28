@@ -20,6 +20,7 @@ import { ZerarPedidos } from './zerar-pedidos';
 type Pedido = { tipo: 'ligar' | 'desligar' | 'retomar' | 'reenviar'; linha: LinhaCadastroFdv };
 
 const LEGENDA_ENVIADOS = 'Cadastros enviados';
+const TEXTO_SEM_CHAVE_FDV = 'Salve a chave para enviar os cadastros ao Macuxi FDV.';
 
 /**
  * Aba Dados, seção "ERP → Macuxi FDV" (v0.3.24, docs/design/integracao-duas-ligacoes; era a parte de baixo da aba Integração):
@@ -133,9 +134,14 @@ export function SecaoEnvioFdv({ empresaId, dados, fuso, barra }: { empresaId: st
         {campos.limite_registros_lote && <p id="erro-limite-lote" className="erro-campo" role="alert">{campos.limite_registros_lote}</p>}
       </form>
       <ResultadoAcao resultado={rLimite} chave={kLimite} />
-      <div className="tabela-rolavel com-sinal-rolagem tabela-fdv tabela-fdv-config legenda-so-leitor">
-        <TabelaDensa colunas={colunas} linhas={linhas} chaveLinha={(l) => l.entidade} textoVazio="Nenhum cadastro." legenda={LEGENDA_ENVIADOS} />
-      </div>
+      {/* RD-2423: sem chave salva nada é enviado; uma frase em vez de 10 linhas "Desligado — —". */}
+      {semCredencial ? (
+        <p className="apoio" role="status">{TEXTO_SEM_CHAVE_FDV}</p>
+      ) : (
+        <div className="tabela-rolavel com-sinal-rolagem tabela-fdv tabela-fdv-config legenda-so-leitor">
+          <TabelaDensa colunas={colunas} linhas={linhas} chaveLinha={(l) => l.entidade} textoVazio="Nenhum cadastro." legenda={LEGENDA_ENVIADOS} />
+        </div>
+      )}
       <ResultadoAcao resultado={rLinha} chave={kLinha} />
       {/* sem `barra` (uso solto) a barra é própria; com ela, os botões entram na do cartão (null = ainda montando) */}
       {barra === undefined ? <div className="barra-acoes barra-bloco">{botoesDoBloco}</div> : barra && createPortal(botoesDoBloco, barra)}

@@ -46,11 +46,12 @@ export const CAMPOS_FILIAL: readonly CampoEdicao[] = [
   { nome: 'ie', rotulo: 'Inscrição estadual', tipo: 'texto', colunas: 3 },
   { nome: 'crt', rotulo: 'Regime tributário (CRT)', tipo: 'selecao', obrigatorio: true, opcoes: opcoes(ROTULO_CRT), colunas: 3 },
   { nome: 'regime_pis_cofins', rotulo: 'Regime de PIS/COFINS', tipo: 'selecao', obrigatorio: true, opcoes: opcoes(ROTULO_REGIME_PIS_COFINS), mostrarSe: (v) => v.crt === '3', colunas: 3 },
-  { nome: 'industrial_ipi', rotulo: 'Estabelecimento industrial (IPI)', tipo: 'booleano', colunas: 3 },
-  { nome: 'padrao', rotulo: 'Filial padrão', tipo: 'booleano', colunas: 3, inicioLinha: true },
-  { nome: 'emissora', rotulo: 'Emite NF-e', tipo: 'booleano', colunas: 3 },
+  // Sem o regime (CRT diferente de 3) o IPI toma as 3 colunas dele: a linha fecha em 12 sem buraco.
+  { nome: 'industrial_ipi', rotulo: 'Estabelecimento industrial (IPI)', tipo: 'booleano', colunas: 3, colunasSe: (v) => (v.crt === '3' ? 3 : 6) },
+  { nome: 'padrao', rotulo: 'Filial padrão', tipo: 'booleano', colunas: 4, inicioLinha: true },
+  { nome: 'emissora', rotulo: 'Emite NF-e', tipo: 'booleano', colunas: 4 },
   { nome: 'nfe_serie', rotulo: 'Série da NF-e', tipo: 'texto', colunas: 2 },
-  { nome: 'nfe_numero_inicial', rotulo: 'Número inicial da NF-e', tipo: 'texto', colunas: 4 },
+  { nome: 'nfe_numero_inicial', rotulo: 'Número inicial da NF-e', tipo: 'texto', colunas: 2 },
   // Sem latitude e longitude (a filial não tem coluna): Bairro 4, Município 6 e UF 2 fecham a linha.
   ...CAMPOS_ENDERECO.map((c) => (c.nome === 'end_bairro' ? { ...c, colunas: 4 as const } : c.nome === 'end_municipio_ibge' ? { ...c, colunas: 6 as const } : c.nome === 'end_uf' ? { ...c, colunas: 2 as const } : c)),
 ];

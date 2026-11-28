@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { executarAutorizado, moduloLicenciado, modulosLicenciados, temFuso, type Licenca, type Sessao } from './acesso';
 import { ErroApi } from './erros';
+import { PERFIS } from './modulo';
+import { pode } from './permissoes';
 import { BancoMemoria, tenantDaTx } from './testes';
 
 const INSTANTE = new Date('2026-11-21T15:00:00Z');
@@ -43,6 +45,21 @@ describe('ordem de checagem (RN-CORE-02)', () => {
     const r = await codigo(executarAutorizado({ sessao: sessao('leitura'), acao: 'cadastros.preco.editar', agora: INSTANTE, banco: c.banco, licencas: c.fonte, executar: async () => 1 }));
     expect(r).toBe('403 PERFIL_SEM_PERMISSAO');
     expect(c.banco.aberturas).toEqual([]);
+  });
+
+  it('RN-CORE-02 (T-0129): o 403 de perfil leva a mensagem do módulo; sem ela, a genérica', async () => {
+    const c = cenario(ativa);
+    const semPermissao = 'Seu perfil só consulta clientes.';
+    const pedido = (perfil: Sessao['perfil'], msg?: string) =>
+      executarAutorizado({ sessao: sessao(perfil), acao: 'cadastros.cliente.editar', semPermissao: msg, agora: INSTANTE, banco: c.banco, licencas: c.fonte, executar: async () => 'ok' });
+    await expect(pedido('leitura', semPermissao)).rejects.toMatchObject({ status: 403, codigo: 'PERFIL_SEM_PERMISSAO', message: semPermissao });
+    await expect(pedido('leitura')).rejects.toMatchObject({ status: 403, codigo: 'PERFIL_SEM_PERMISSAO', message: 'Seu perfil não permite esta ação' });
+    expect(c.banco.aberturas).toEqual([]);
+    // Perfis: só quem não tem a ação recebe o 403; os de cadastro executam com a mensagem declarada.
+    for (const perfil of PERFIS) {
+      const r = await codigo(pedido(perfil, semPermissao));
+      expect(r, perfil).toBe(pode(perfil, 'cadastros.cliente.editar') ? 'ok' : '403 PERFIL_SEM_PERMISSAO');
+    }
   });
 
   it('RN-CORE-02: sem licença do módulo é 403 MODULO_INATIVO, lida dentro da transação do tenant', async () => {

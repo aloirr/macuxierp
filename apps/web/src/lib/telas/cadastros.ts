@@ -116,7 +116,7 @@ export const LISTA_CLIENTES: TelaLista = listaDe(paginaClientes, {
 });
 
 const CLIENTE = formularios({
-  api: API_CLIENTES, voltar: ROTA_CLIENTES, salvar: 'Salvar cliente', campos: camposDoCliente, validar: validarCliente, criar: corpoCriarCliente,
+  api: API_CLIENTES, voltar: ROTA_CLIENTES, salvar: 'Salvar', campos: camposDoCliente, validar: validarCliente, criar: corpoCriarCliente,
   abrir: (c) => { const r = ClienteResumo.parse(c); return { valores: valoresDoCliente(r), original: r }; },
   patch: corpoAlterarCliente,
 });
@@ -139,17 +139,17 @@ export const LISTA_TABELAS_PRECO = listaDe(paginaTabelasPreco, {
 });
 
 const PRODUTO = formularios({
-  api: API_PRODUTOS, voltar: ROTA_PRODUTOS, salvar: 'Salvar produto', campos: camposDoProduto, validar: validarProduto, criar: corpoCriarProduto,
+  api: API_PRODUTOS, voltar: ROTA_PRODUTOS, salvar: 'Salvar', campos: camposDoProduto, validar: validarProduto, criar: corpoCriarProduto,
   abrir: (c) => { const p = paginaProdutos.item.parse(c); return { valores: valoresDoProduto(p), original: p }; },
   patch: corpoAlterarProduto,
 });
 const FILIAL = formularios({
-  api: API_FILIAIS, voltar: ROTA_FILIAIS, salvar: 'Salvar filial', campos: camposDaFilial, validar: validarFilialTela, criar: (v) => corpoCriarFilial(v),
+  api: API_FILIAIS, voltar: ROTA_FILIAIS, salvar: 'Salvar', campos: camposDaFilial, validar: validarFilialTela, criar: (v) => corpoCriarFilial(v),
   abrir: (c) => { const f = paginaFiliais.item.parse(c); return { valores: valoresDaFilial(f), original: f }; },
   patch: (v, o) => corpoAlterarFilial(v, o),
 });
 const TABELA = formularios({
-  api: API_TABELAS_PRECO, voltar: ROTA_TABELAS_PRECO, salvar: 'Salvar tabela de preço', campos: camposDaTabelaPreco, validar: validarTabelaPreco, criar: (v) => corpoCriarTabelaPreco(v),
+  api: API_TABELAS_PRECO, voltar: ROTA_TABELAS_PRECO, salvar: 'Salvar', campos: camposDaTabelaPreco, validar: validarTabelaPreco, criar: (v) => corpoCriarTabelaPreco(v),
   abrir: (c) => { const t = paginaTabelasPreco.item.parse(c); return { valores: valoresDaTabelaPreco(t), original: t }; },
   patch: (v, o) => corpoAlterarTabelaPreco(v, o),
 });

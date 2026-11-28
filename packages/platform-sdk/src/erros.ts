@@ -61,7 +61,8 @@ export const RECUPERAR_CONTA_BLOQUEADA =
 
 export const erros = {
   naoAutenticado: (mensagem = 'Sessão ausente ou vencida') => new ErroApi(401, 'NAO_AUTENTICADO', mensagem),
-  perfilSemPermissao: () => new ErroApi(403, 'PERFIL_SEM_PERMISSAO', 'Seu perfil não permite esta ação'),
+  /** 403 do perfil; a mensagem vem do módulo quando a rota declara `semPermissao` (T-0129). */
+  perfilSemPermissao: (mensagem = 'Seu perfil não permite esta ação') => new ErroApi(403, 'PERFIL_SEM_PERMISSAO', mensagem),
   moduloInativo: (modulo: string) => new ErroApi(403, 'MODULO_INATIVO', `O módulo ${modulo} não está licenciado para a empresa`),
   /** 404 do recurso do tenant (`erros.naoEncontrado('Cliente')`). O objeto é o nome da entidade, nunca o valor buscado. */
   naoEncontrado: (objeto: string) => new ErroApi(404, 'NAO_ENCONTRADO', `${objeto} não encontrado`),

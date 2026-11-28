@@ -219,7 +219,7 @@ function FormularioUsuario({ empresaId, formulario, primeiro, chaves, aoFechar, 
       aoFechar={aoFechar}
       rodape={
         <div className="barra-acoes">
-          <button className="mx-botao" type="submit" form="form-usuario" disabled={pendente}>{pendente ? 'Salvando…' : edicao ? 'Salvar' : 'Criar usuário'}</button>
+          <button className="mx-botao" type="submit" form="form-usuario" disabled={pendente}>{pendente ? 'Salvando…' : edicao ? 'Salvar' : 'Criar'}</button>
           <button className="mx-botao-secundario" type="button" onClick={aoFechar}>Cancelar</button>
         </div>
       }

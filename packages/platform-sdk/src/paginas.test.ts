@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { PERFIS } from './modulo';
-import { paginaVisivel, type PaginaBase } from './paginas';
+import { paginaEditavel, paginaVisivel, type PaginaBase } from './paginas';
 import { pode, type Acao } from './permissoes';
 
 // Formatos atuais das páginas (RD-0178): os módulos passam a estender `PaginaBase` e continuam atribuíveis a ela.
@@ -57,6 +57,7 @@ describe('PaginaBase (RD-0178): um tipo de página para os módulos e o shell', 
     expectTypeOf<PaginaBase['aviso']>().toEqualTypeOf<string | undefined>();
     expectTypeOf<PaginaBase['ver']>().toEqualTypeOf<Acao | undefined>();
     expectTypeOf<PaginaBase['ocultaNoMenu']>().toEqualTypeOf<boolean | undefined>();
+    expectTypeOf<PaginaBase['editar']>().toEqualTypeOf<Acao | undefined>();
     // @ts-expect-error: `ver` fora da matriz de permissões não compila.
     const errada: PaginaBase = { menu: 'X', titulo: 'X', rota: '/core/x', ver: 'core.nao.existe' };
     expect(errada.menu).toBe('X');
@@ -79,5 +80,19 @@ describe('paginaVisivel (esconde, não protege: a API checa de novo, RN-CORE-02)
   it('com `ver`, só quem `pode` a ação', () => {
     const pagina: PaginaBase = { menu: 'Empresa', titulo: 'Certificado A1', rota: '/core/empresa/certificado', ver: 'core.certificado.gerir' };
     for (const perfil of PERFIS) expect(paginaVisivel(pagina, perfil)).toBe(pode(perfil, 'core.certificado.gerir'));
+  });
+});
+
+describe('paginaEditavel (T-0129): formulário só leitura sem a permissão de editar', () => {
+  const cliente: PaginaBase = { menu: 'Clientes', titulo: 'Cliente', rota: '/cadastros/clientes/:id', ver: 'cadastros.ver', editar: 'cadastros.cliente.editar', ocultaNoMenu: true };
+
+  it('RN-CORE-02: com `editar`, edita só quem `pode` a ação; quem só vê abre só leitura', () => {
+    for (const perfil of PERFIS) expect(paginaEditavel(cliente, perfil), perfil).toBe(pode(perfil, 'cadastros.cliente.editar'));
+    expect(paginaVisivel(cliente, 'leitura')).toBe(true);
+    expect(paginaEditavel(cliente, 'leitura')).toBe(false);
+  });
+
+  it('sem `editar`, a página não restringe a edição', () => {
+    for (const perfil of PERFIS) expect(paginaEditavel({ ...cliente, editar: undefined }, perfil)).toBe(true);
   });
 });

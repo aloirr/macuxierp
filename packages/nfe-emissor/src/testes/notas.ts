@@ -86,6 +86,27 @@ export const vendaInterestadual = nota([{ ...itemTributado(1, '3', '33.3', '12')
   dest: { ...BASE.dest, enderDest: { ...BASE.dest.enderDest, cMun: '1501402', xMun: 'Belem', UF: 'PA', CEP: '66010000' }, IE: '151234566' },
 });
 
+/**
+ * Venda interestadual (AM → PA) a consumidor final não contribuinte (idDest 2, indFinal 1, indIEDest 9) com o
+ * ICMSUFDest pronto, como viria do modulo-fiscal: base 99,90; 19% − 12% = 7% → 6,99; FCP 2% → 2,00.
+ */
+export const ICMS_UF_DEST_DE_TESTE = {
+  vBCUFDest: 9990,
+  vBCFCPUFDest: 9990,
+  pFCPUFDest: '2',
+  pICMSUFDest: '19',
+  pICMSInter: '12',
+  vFCPUFDest: 200,
+  vICMSUFDest: 699,
+  vICMSUFRemet: 0,
+} as const satisfies NonNullable<Item['imposto']['ICMSUFDest']>;
+
+const itemDifal = itemTributado(1, '3', '33.3', '12');
+export const vendaInterestadualConsumidorFinal = nota([{ ...itemDifal, CFOP: '6108', imposto: { ...itemDifal.imposto, ICMSUFDest: ICMS_UF_DEST_DE_TESTE } }], {
+  ide: { ...BASE.ide, idDest: 2, indFinal: 1 },
+  dest: { CNPJ: BASE.dest.CNPJ, xNome: BASE.dest.xNome, enderDest: { ...BASE.dest.enderDest, cMun: '1501402', xMun: 'Belem', UF: 'PA', CEP: '66010000' }, indIEDest: 9 },
+});
+
 /** Nota com Imposto Seletivo (bebida açucarada, NCM 2202): grupo IS e ISTot. */
 export const notaComIs = nota([
   {

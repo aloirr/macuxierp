@@ -6,7 +6,7 @@
  * opção MIT, com atribuição: Copyright (c) NFePHP — https://github.com/nfephp-org/sped-nfe.
  * Diferenças deliberadas do original: entrada em centavos (regra 4); totais sempre calculados aqui e nunca
  * aceitos de fora; só os grupos que a v1 do ERP usa (ICMS 00/40/41/50; Simples ICMSSN101, 102 [102/103/300/400],
- * 201, 202 [202/203], 500 e 900; PIS/COFINS Aliq, NT e Outr; IS e IBS/CBS integral).
+ * 201, 202 [202/203], 500 e 900; PIS/COFINS Aliq, NT e Outr; ICMSUFDest; IS e IBS/CBS integral).
  */
 import type { z } from 'zod';
 import { NS_NFE, XNOME_HOMOLOGACAO, aammSefaz, dataHoraSefaz, montarChaveNFe } from '@macuxierp/nfe-sefaz';
@@ -14,7 +14,7 @@ import type { ModoArredondamento } from '@macuxierp/platform-sdk';
 import { gerarCNF } from './chave';
 import { aplicarAliquotaCentavos, centavosParaXml, decimalParaEscala, formatarEscala, multiplicarParaCentavos } from './decimal';
 import { NotaParaEmissao } from './entrada';
-import type { IcmsSimples, IcmsStSimples, ItemNota, NotaParaEmissaoEntrada } from './entrada';
+import type { IcmsSimples, IcmsStSimples, IcmsUfDest, ItemNota, NotaParaEmissaoEntrada } from './entrada';
 import { el, grupo, opt, serializar } from './xml';
 import type { Elemento } from './xml';
 
@@ -212,6 +212,21 @@ function pisCofinsXml(tributo: 'PIS' | 'COFINS', g: ItemNota['imposto']['PIS']):
   return grupo(tributo, [grupo(nome, [el('CST', g.CST), ...base, el(`v${tributo}`, v(g.valor))])]);
 }
 
+/** ICMSUFDest (NA01) na ordem do XSD do PL_010g (leiauteNFe_v4.00.xsd:5145); o pICMSInter vai com 2 casas (enumeração). */
+function icmsUfDestXml(g: IcmsUfDest): Elemento {
+  return grupo('ICMSUFDest', [
+    el('vBCUFDest', v(g.vBCUFDest)),
+    g.vBCFCPUFDest !== undefined ? el('vBCFCPUFDest', v(g.vBCFCPUFDest)) : undefined,
+    opt('pFCPUFDest', g.pFCPUFDest && pct(g.pFCPUFDest)),
+    el('pICMSUFDest', pct(g.pICMSUFDest)),
+    el('pICMSInter', formatarEscala(decimalParaEscala(g.pICMSInter, 2), 2)),
+    el('pICMSInterPart', pct(g.pICMSInterPart)),
+    g.vFCPUFDest !== undefined ? el('vFCPUFDest', v(g.vFCPUFDest)) : undefined,
+    el('vICMSUFDest', v(g.vICMSUFDest)),
+    el('vICMSUFRemet', v(g.vICMSUFRemet)),
+  ]);
+}
+
 function isXml(is: NonNullable<ItemNota['imposto']['IS']>): Elemento {
   return grupo('IS', [el('CSTIS', is.CSTIS), el('cClassTribIS', is.cClassTribIS), el('vBCIS', v(is.vBCIS)), el('pIS', pct(is.pIS)), el('vIS', v(is.vIS))]);
 }
@@ -276,6 +291,7 @@ function detXml(it: ItemNota, nItem: number, comTributosRtc: boolean): Elemento 
         icmsXml(im.ICMS),
         pisCofinsXml('PIS', im.PIS),
         pisCofinsXml('COFINS', im.COFINS),
+        im.ICMSUFDest && icmsUfDestXml(im.ICMSUFDest),
         im.IS && isXml(im.IS),
         im.IBSCBS && ibsCbsXml(im.IBSCBS),
       ]),
@@ -304,6 +320,8 @@ interface Totais {
   /** vNFTot (W60): soma dos vItem. */
   vNFTot: number;
   vTotTrib: number | undefined;
+  /** Totais do ICMSUFDest (W04c, W04e e W04g), só quando algum item traz o grupo. */
+  icmsUfDest: { vFCPUFDest: number; vICMSUFDest: number; vICMSUFRemet: number } | undefined;
   vIS: number | undefined;
   ibsCbs: { vBC: number; vIBSUF: number; vIBSMun: number; vCBS: number } | undefined;
 }
@@ -311,7 +329,8 @@ interface Totais {
 /**
  * Totais (grupo W): sempre calculados a partir dos itens (sem IPI, II e desoneração no spike). Simples (sped-nfe,
  * `tagICMSSN`): vBC e vICMS só do ICMS próprio (CST 00 e CSOSN 900 com o sub-grupo), 0 nos demais CSOSN; vBCST, vST e
- * vFCPST do 201, 202/203 e 900; vFCPSTRet do 500. vST e vFCPST entram no vNF.
+ * vFCPST do 201, 202/203 e 900; vFCPSTRet do 500. vST e vFCPST entram no vNF. Os totais do ICMSUFDest (DIFAL) ficam
+ * fora do vNF e do vItem: se entram é decisão pendente do modulo-fiscal e do faturamento (T-0128).
  */
 function calcularTotais(itens: readonly ItemNota[], comTributosRtc = false): Totais {
   const soma = (f: (it: ItemNota) => number | undefined) => itens.reduce((s, it) => s + (f(it) ?? 0), 0);
@@ -334,12 +353,20 @@ function calcularTotais(itens: readonly ItemNota[], comTributosRtc = false): Tot
   const vNF = t.vProd - t.vDesc + t.vST + t.vFCPST + t.vFrete + t.vSeg + t.vOutro;
   const comTotTrib = itens.some((it) => it.imposto.vTotTrib !== undefined);
   const comIs = itens.some((it) => it.imposto.IS);
+  const comIcmsUfDest = itens.some((it) => it.imposto.ICMSUFDest);
   const comIbsCbs = itens.some((it) => it.imposto.IBSCBS);
   return {
     ...t,
     vNF,
     vNFTot: soma(noTotal((it) => valorDoItem(it, comTributosRtc))),
     vTotTrib: comTotTrib ? soma((it) => it.imposto.vTotTrib) : undefined,
+    icmsUfDest: comIcmsUfDest
+      ? {
+          vFCPUFDest: soma((it) => it.imposto.ICMSUFDest?.vFCPUFDest),
+          vICMSUFDest: soma((it) => it.imposto.ICMSUFDest?.vICMSUFDest),
+          vICMSUFRemet: soma((it) => it.imposto.ICMSUFDest?.vICMSUFRemet),
+        }
+      : undefined,
     vIS: comIs ? soma((it) => it.imposto.IS?.vIS) : undefined,
     ibsCbs: comIbsCbs
       ? {
@@ -355,11 +382,13 @@ function calcularTotais(itens: readonly ItemNota[], comTributosRtc = false): Tot
 function totalXml(t: Totais): Elemento {
   const zero = v(0);
   const ib = t.ibsCbs;
+  const difal = t.icmsUfDest;
   return grupo('total', [
     grupo('ICMSTot', [
       el('vBC', v(t.vBC)),
       el('vICMS', v(t.vICMS)),
       el('vICMSDeson', zero),
+      ...(difal ? [el('vFCPUFDest', v(difal.vFCPUFDest)), el('vICMSUFDest', v(difal.vICMSUFDest)), el('vICMSUFRemet', v(difal.vICMSUFRemet))] : []),
       el('vFCP', zero),
       el('vBCST', v(t.vBCST)),
       el('vST', v(t.vST)),
