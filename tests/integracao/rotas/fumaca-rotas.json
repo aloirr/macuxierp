@@ -641,6 +641,15 @@
         "tipo": "contexto",
         "nome": "empresa"
       }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/usuarios",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
     }
   ]
 }

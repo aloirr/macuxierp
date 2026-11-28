@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * T-0101, R-2 do plano da v0.3.13 (e2e da tela): /config › empresa › aba Empresa › "Atualizar pela Receita", com a fonte
+ * T-0101, R-2 do plano da v0.3.13 (e2e da tela): /config › empresa › aba Empresa › "Atualizar" (pela Receita), com a fonte
  * dublada (`tests/e2e/api-ficha-receita.ts`). Em 1280 e 390 (dsf 2), para cada falha da fonte (tempo esgotado, 404, 503,
  * 200 fora do formato): a tela mostra a mensagem do catálogo no lugar (role=alert), nunca "Algo deu errado", o CNPJ nem o
  * corpo da fonte, e a ficha na tela não muda depois de recarregar. O caso ok (fluxo da v0.3.24, #853): a consulta é uma prévia
@@ -44,7 +44,7 @@ for (const { nome: larg, viewport } of LARGURAS_PRINT) {
     await p.goto(`${BASE}/config/empresas/${dados.empresas[caso]}`);
     await titulo.waitFor();
     const antes = await ficha().innerText();
-    await p.getByRole('button', { name: 'Atualizar pela Receita' }).click();
+    await p.getByRole('button', { name: 'Atualizar', exact: true }).click();
     const aviso = p.locator('[role="alert"], [role="status"]').filter({ hasText: /Receita|Ficha|Consulta/ }).first();
     await aviso.waitFor();
     await aviso.scrollIntoViewIfNeeded();
