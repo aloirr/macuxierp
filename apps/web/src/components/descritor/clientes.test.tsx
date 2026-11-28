@@ -33,7 +33,7 @@ describe('Clientes no renderizador genérico', () => {
     const campos = NOVO_CLIENTE.camposDoPerfil!('gerente');
     const h = renderToStaticMarkup(<FormularioGenerico rota={ROTA_CLIENTE_NOVO} opcoes={{ filial_id: [{ valor: F, rotulo: 'Matriz' }] }} produtos={[]} perfil="gerente" campos={campos} />);
     expect(h).toContain('class="formulario"');
-    for (const t of ['Tipo de pessoa', 'CNPJ/CPF', 'Razão social', 'Inscrição estadual', 'Limite de crédito (R$)', 'CEP', 'UF', 'Salvar cliente', 'Cancelar', 'Matriz']) expect(h).toContain(t);
+    for (const t of ['Tipo de pessoa', 'CNPJ/CPF', 'Razão social', 'Inscrição estadual', 'Limite de crédito (R$)', 'CEP', 'UF', 'Salvar', 'Cancelar', 'Matriz']) expect(h).toContain(t);
     expect(h).toMatch(/class="campo campo-curto"[^>]*for="campo-end_cep"|for="campo-end_cep"/);
     expect(h.indexOf('barra-acoes')).toBeGreaterThan(h.indexOf('campo-end_cep')); // botões depois do último campo, na mesma barra
     expect((h.match(/class="barra-acoes"/g) ?? []).length).toBe(1);

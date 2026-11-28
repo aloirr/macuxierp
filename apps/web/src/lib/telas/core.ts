@@ -70,7 +70,7 @@ export const NOVO_USUARIO: TelaFormulario = {
   avisoSegredo: AVISO_SENHA_PROVISORIA,
   depois: () => ROTA_USUARIOS,
   voltar: ROTA_USUARIOS,
-  enviar: 'Criar usuário',
+  enviar: 'Criar',
   novaChave,
 };
 
