@@ -40,6 +40,13 @@ a { color: var(--mx-cor-azul-noite); }
 .lateral li > [data-resultado-acao] { padding: 0 20px; }
 .lateral a:hover, .lateral button.item-menu:hover:not(:disabled) { background: var(--mx-cor-grafite-menu); }
 .lateral a[aria-current='page'] { background: var(--mx-cor-grafite-menu); border-left: 4px solid var(--mx-cor-sol-claro); padding-left: 16px; }
+/* T-0138: grupos em acordeão; seta › fechado, ⌄ aberto. O botão ocupa o cabeçalho inteiro (alvo de 44 px). */
+.lateral .grupo-menu > h2 { margin: 0; }
+.lateral .grupo-menu > h2 > button { display: flex; width: 100%; align-items: center; justify-content: space-between; min-height: 44px; padding: 4px 20px; background: none; border: 0; font: inherit; text-transform: inherit; letter-spacing: inherit; color: inherit; cursor: pointer; text-align: left; }
+.lateral .grupo-menu > h2 > button:hover { background: var(--mx-cor-grafite-menu); }
+.lateral .grupo-menu > h2 > button:focus-visible { outline: 2px solid var(--mx-cor-sol-claro); outline-offset: -2px; }
+.lateral .grupo-menu .seta { font-size: 1.25em; line-height: 1; }
+@media (scripting: none) { .lateral .grupo-menu > ul[hidden] { display: block; } }
 /* Divisória única: toda seção após o Início tem 1px, 8px de margem acima e 8px de respiro abaixo da linha. */
 .lateral > * + * { border-top: 1px solid var(--mx-cor-grafite-menu); margin-top: 8px; padding-top: 8px; }
 .conteudo { padding: 24px 32px; min-width: 0; } /* sem teto: a página preenche a largura (regra 11, T-0121); só o texto corrido tem 72ch */
