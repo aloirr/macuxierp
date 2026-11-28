@@ -91,11 +91,12 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config: isolamento das credenciais de t
       monitor: 'GET',
       reprocessar: 'POST',
       log: 'GET',
+      ligacoes: 'GET', // T-0131 (RN-INF-13): a ligação ERP → Macuxi FDV no /config
     };
     const chaves = Object.keys(C) as (keyof typeof C)[];
     const esperadas = chaves.map((k) => `${METODO[k]} ${C[k]}`).sort();
     expect(esperadas).toHaveLength(Object.values(C).length);
-    expect(chaves).toEqual(expect.arrayContaining(['monitor', 'reprocessar', 'log']));
+    expect(chaves).toEqual(expect.arrayContaining(['monitor', 'reprocessar', 'log', 'ligacoes']));
     const declaradas = pluginsPlataforma(modulos).flatMap((pl) => pl.rotas.map((r) => `${r.metodo} ${r.caminho}`));
     expect(declaradas.filter((d) => d.includes('/integracao-fdv')).sort()).toEqual(esperadas);
     // cada uma está na matriz (rotasPortal), que alimenta os casos de JWT do tenant, CSRF e troca pendente abaixo
