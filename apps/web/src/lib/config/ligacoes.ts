@@ -11,15 +11,16 @@ import { situacaoDoConector, type Tom } from './operacao-fdv';
  */
 export const ROTULO_SISTEMA_CLIENTE = 'Sistema do cliente';
 export const ROTULO_ERP = 'ERP';
-export const ROTULO_FORCA_VENDAS = 'Força de vendas';
+/** Marca (v0.3.31): o destino da saída leva o nome do produto, igual ao "Ligado a" da ficha. */
+export const ROTULO_FORCA_VENDAS = 'Macuxi FDV';
 export const ROTULO_DESTINO_FDV = 'Macuxi FDV';
 
-/** Ponta de uma ligação: o nome e o artigo do texto lido ("para o ERP", "para a Força de vendas"). */
+/** Ponta de uma ligação: o nome e o artigo do texto lido ("para o ERP", "para o Macuxi FDV"). */
 export interface Ponta { nome: string; artigo: 'o' | 'a' }
 export interface Ligacao { id: 'entrada' | 'saida'; de: Ponta; para: Ponta }
 
 export const LIGACAO_ENTRADA: Ligacao = { id: 'entrada', de: { nome: ROTULO_SISTEMA_CLIENTE, artigo: 'o' }, para: { nome: ROTULO_ERP, artigo: 'o' } };
-export const LIGACAO_SAIDA: Ligacao = { id: 'saida', de: { nome: ROTULO_ERP, artigo: 'o' }, para: { nome: ROTULO_FORCA_VENDAS, artigo: 'a' } };
+export const LIGACAO_SAIDA: Ligacao = { id: 'saida', de: { nome: ROTULO_ERP, artigo: 'o' }, para: { nome: ROTULO_FORCA_VENDAS, artigo: 'o' } };
 
 
 /** Ficha de uma ligação (sem chave, não há ficha: só o formulário). */
@@ -59,7 +60,7 @@ export function fichaEntrada(l: PortalEntradaLeitura | null, fuso: string, agora
   return { situacao: recebendo ? SITUACAO_RECEBENDO : SITUACAO_SEM_ENVIO, ultimoContato: dataHora(contato, fuso), codigo: c.conector_id, chave: `${c.prefixo}…`, apoio: [] };
 }
 
-/** ERP → Força de vendas: o Monitor vira a Situação (Em dia / Atrasado / Desativado; Indisponível quando a leitura falha). */
+/** ERP → Macuxi FDV: o Monitor vira a Situação (Em dia / Atrasado / Desativado; Indisponível quando a leitura falha). */
 export function fichaSaida(d: IntegracaoFdvPlataforma, monitor: MonitorConectorFdv | null, fuso: string): FichaLigacao | null {
   if (d.credencial_id === null) return null;
   const apoio: string[] = [];

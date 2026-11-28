@@ -82,12 +82,12 @@ export interface AcoesDaLinha {
   menu: ItemAcaoLinha[];
 }
 
-/** Liga cada `chave` da linha ao clique em `fazer` e devolve as props do `MenuAcoes` (principal à vista e itens do menu). */
-export function menuDaLinha(a: AcoesDaLinha, fazer: Readonly<Record<string, () => void>>): Pick<MenuAcoesProps, 'principal' | 'acoes'> {
-  return {
-    principal: { rotulo: a.principal.rotulo, ...(a.principal.desabilitado !== undefined ? { desabilitado: a.principal.desabilitado } : {}), aoAcionar: fazer[a.principal.chave]! },
-    acoes: a.menu.map((x) => ({ ...x, aoAcionar: fazer[x.chave]! })),
-  };
+/**
+ * Liga cada `chave` da linha ao clique em `fazer` e devolve as props do `MenuAcoes`. Um botão só por linha (regra 12): a principal
+ * (Importar, Log, Reprocessar) vai para dentro do "Ações ▾", como primeiro item; o perigo continua por último.
+ */
+export function menuDaLinha(a: AcoesDaLinha, fazer: Readonly<Record<string, () => void>>): Pick<MenuAcoesProps, 'acoes'> {
+  return { acoes: [a.principal, ...a.menu].map((x) => ({ ...x, aoAcionar: fazer[x.chave]! })) };
 }
 
 /**

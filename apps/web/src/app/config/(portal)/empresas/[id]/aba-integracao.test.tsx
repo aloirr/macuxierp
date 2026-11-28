@@ -29,12 +29,12 @@ const entrada = PortalEntradaLeitura.parse({ credenciais: [{ conector_id: 'erp-c
 const render = (d = dados(), m: MonitorConectorFdv | null = null) => renderToStaticMarkup(<AbaIntegracao empresaId={ID} dados={d} fuso="America/Manaus" monitor={m} entrada={entrada} cargas={situacoes({ filial: { situacao: 'carregado', quantidade: 1 } })} />);
 
 describe('Config v4: aba Integrações como a simulação aprovada 445e459', () => {
-  it('duas ligações na grade, na ordem "Sistema do cliente → ERP" e "ERP → Força de vendas", cada uma com a ficha, a tabela e o selo no título', () => {
+  it('duas ligações na grade, na ordem "Sistema do cliente → ERP" e "ERP → Macuxi FDV", cada uma com a ficha, a tabela e o selo no título', () => {
     const h = render(dados(), monitor());
     expect(h.match(/<section class="bloco ligacao"/g)).toHaveLength(2);
     expect(h).toMatch(/<div class="ligacoes"><section class="bloco ligacao" aria-labelledby="h-ligacao-entrada">/);
     expect(h.indexOf('id="h-ligacao-entrada"')).toBeLessThan(h.indexOf('id="h-ligacao-saida"'));
-    expect(h).toMatch(new RegExp(`<h2 id="h-ligacao-saida">ERP <span class="seta" aria-hidden="true">→</span><span class="sr-only"> para a </span> ${ROTULO_FORCA_VENDAS}</h2>`));
+    expect(h).toMatch(new RegExp(`<h2 id="h-ligacao-saida">ERP <span class="seta" aria-hidden="true">→</span><span class="sr-only"> para o </span> ${ROTULO_FORCA_VENDAS}</h2>`));
     expect(h.match(/class="cabeca-ligacao"/g)).toHaveLength(2); // título e selo na mesma linha
     // as tabelas por ligação moram nos cartões: recebidos, enviados e Envios recentes
     for (const legenda of ['Cadastros recebidos', 'Cadastros enviados', 'Envios recentes']) expect(h).toMatch(new RegExp(`<caption[^>]*>${legenda}</caption>`));
@@ -61,7 +61,7 @@ describe('Config v4: aba Integrações como a simulação aprovada 445e459', () 
   });
 });
 
-describe('ligação "ERP → Força de vendas" (o Monitor vira a Situação)', () => {
+describe('ligação "ERP → Macuxi FDV" (o Monitor vira a Situação)', () => {
   it('com chave: selo da Situação no título e ficha com Código, Ambiente, Ligado a Macuxi FDV, Último contato e Chave', () => {
     const h = render(dados(), monitor());
     const saida = h.slice(h.indexOf('id="h-ligacao-saida"'));

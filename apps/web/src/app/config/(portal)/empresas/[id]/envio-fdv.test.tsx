@@ -6,7 +6,7 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }), red
 vi.mock('next/headers', () => ({ cookies: vi.fn() }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
-import { acoesDaLinhaFdv, habilitadasApos, linhasCadastros, type LinhaCadastroFdv } from '@/lib/config/integracao-fdv';
+import { menuDaLinha, acoesDaLinhaFdv, habilitadasApos, linhasCadastros, type LinhaCadastroFdv } from '@/lib/config/integracao-fdv';
 import { SecaoEnvioFdv } from './envio-fdv';
 
 const ID = '11111111-1111-4111-8111-111111111111';
@@ -31,7 +31,7 @@ describe('T-0135: um botão por bloco', () => {
   });
 });
 
-describe('v0.3.24: aba Dados, seção "ERP → Força de vendas" (a tabela saiu da aba Integração)', () => {
+describe('v0.3.24: aba Dados, seção "ERP → Macuxi FDV" (a tabela saiu da aba Integração)', () => {
   it('título com a direção, Registros por lote com o Salvar na mesma linha, "Cadastros enviados" e Zerar pedidos', () => {
     const h = render();
     expect(h).not.toContain('<h2'); // o título da ligação é do cartão (ligacao.tsx)
@@ -73,10 +73,10 @@ describe('v0.3.24: aba Dados, seção "ERP → Força de vendas" (a tabela saiu 
     expect(h).not.toContain('Reenviar tudo');
     expect(h).toContain('Use &quot;Trocar chave&quot;.');
     expect(h).not.toContain('credencial do conector');
-    expect(h).toMatch(/>Log<\/button>/); // Produtos está em dia
+    expect(h).not.toMatch(/>(Log|Tentar de novo|Reprocessar)<\/button>/); // regra 12: a principal vai para dentro do "Ações ▾", nada solto na linha
     const clientes = linhasCadastros(dados(), 'America/Manaus').find((l) => l.entidade === 'cliente')!;
     expect(clientes.pausada).toBe(true); // credencial é motivo de pausa: Tentar de novo na frente
-    expect(h).toMatch(/>Tentar de novo<\/button>/);
+    expect(menuDaLinha(acoesDaLinhaFdv(clientes, opcoes), {}).acoes?.[0]).toMatchObject({ rotulo: 'Tentar de novo' }); // a principal vira o primeiro item do menu
   });
   it('principal por situação: pausada → Tentar de novo; falha → Reprocessar; senão Log; nunca repetida no menu', () => {
     const emDia = acoesDaLinhaFdv(linha('produto'), opcoes);

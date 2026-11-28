@@ -14,9 +14,9 @@ const cred = (conector_id: string, criada_em: string, revogada_em: string | null
   ({ conector_id, prefixo: 'mxe_ab12', criada_em, revogada_em }) as PortalEntradaLeitura['credenciais'][number];
 
 describe('v0.3.24: nomes das ligações dizem a direção (49 A)', () => {
-  it('"Sistema do cliente → ERP" e "ERP → Força de vendas"; o leitor ouve "para o/para a"', () => {
+  it('"Sistema do cliente → ERP" e "ERP → Macuxi FDV"; o leitor ouve "para o"', () => {
     expect([LIGACAO_ENTRADA.de.nome, LIGACAO_ENTRADA.para.nome, LIGACAO_ENTRADA.para.artigo]).toEqual(['Sistema do cliente', 'ERP', 'o']);
-    expect([LIGACAO_SAIDA.de.nome, LIGACAO_SAIDA.para.artigo]).toEqual(['ERP', 'a']);
+    expect([LIGACAO_SAIDA.de.nome, LIGACAO_SAIDA.para.artigo]).toEqual(['ERP', 'o']);
     expect(LIGACAO_SAIDA.para.nome).toBe(ROTULO_FORCA_VENDAS);
     expect(ROTULO_DESTINO_FDV).toBe('Macuxi FDV');
   });
@@ -40,7 +40,7 @@ describe('ficha da ligação Sistema do cliente → ERP', () => {
   });
 });
 
-describe('ficha da ligação ERP → Força de vendas (o Monitor vira a Situação)', () => {
+describe('ficha da ligação ERP → Macuxi FDV (o Monitor vira a Situação)', () => {
   const d = { credencial_id: ID, conector_id: 'fdv-1', ambiente: 'producao', chave_prefixo: 'mxf_cd34', ultimo_sinal: { ultimo_envio_em: '2026-11-27T13:30:00.000Z', ultimo_aceito_em: null, ultimo_http: 200, parado_por_versao: false, ultimo_codigo: null } } as unknown as IntegracaoFdvPlataforma;
   const m = (situacao: string, lotes = 0) => ({ situacao, fila: { lotes, linhas: lotes * 10 }, ultimo_sinal_em: '2026-11-27T13:45:00.000Z' }) as unknown as MonitorConectorFdv;
   it('sem chave não há ficha', () => {

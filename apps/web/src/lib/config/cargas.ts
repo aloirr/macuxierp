@@ -32,6 +32,8 @@ export function linhasCargas(dados: SituacaoCargasPlataforma | null, fuso: strin
     const chip: LinhaCarga['chip'] =
       situacao === 'carregado' && l?.ultima_carga ? { tom: 'sucesso', texto: 'Carregado' }
       : situacao === 'com_erro' ? { tom: 'aviso', texto: `${l?.erros ?? 0} com erro` }
+      // "Cadastro manual": há registro ativo sem carga (feito no BKO ou vindo do FDV). Informação, não alerta: tom neutro.
+      : situacao === 'manual' ? { tom: 'neutro', texto: 'Cadastro manual' }
       : { tom: 'neutro', texto: 'Não carregado' };
     const u = l?.ultima_carga;
     const ultima = u ? `${formatarDataHora(u.em, fuso)} · ${plural(u.quantidade, 'registro', 'registros')}` : null;

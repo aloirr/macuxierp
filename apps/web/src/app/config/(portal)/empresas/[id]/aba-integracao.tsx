@@ -16,7 +16,7 @@ const ERRO_ATUALIZAR = 'Não foi possível atualizar. Tente de novo.';
 
 /**
  * Aba "Integração" da ficha da empresa (v0.3.24, R-20261127-101915, docs/design/integracao-duas-ligacoes). Só duas ligações, lado a
- * lado no computador e uma embaixo da outra abaixo de 900 px: "Sistema do cliente → ERP" e "ERP → Força de vendas". As tabelas
+ * lado no computador e uma embaixo da outra abaixo de 900 px: "Sistema do cliente → ERP" e "ERP → Macuxi FDV". As tabelas
  * (cadastros recebidos e enviados) ficam dentro do cartão de cada ligação, como na simulação aprovada (445e459); "Envios recentes" embaixo, com o único
  * "Atualizar" (relê as duas ligações: o Monitor e a ficha) na barra do bloco.
  */
