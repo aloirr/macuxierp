@@ -47,7 +47,7 @@ export const CAMPOS_FILIAL: readonly CampoEdicao[] = [
   { nome: 'crt', rotulo: 'Regime tributário (CRT)', tipo: 'selecao', obrigatorio: true, opcoes: opcoes(ROTULO_CRT), colunas: 3 },
   { nome: 'regime_pis_cofins', rotulo: 'Regime de PIS/COFINS', tipo: 'selecao', obrigatorio: true, opcoes: opcoes(ROTULO_REGIME_PIS_COFINS), mostrarSe: (v) => v.crt === '3', colunas: 3 },
   { nome: 'industrial_ipi', rotulo: 'Estabelecimento industrial (IPI)', tipo: 'booleano', colunas: 3 },
-  { nome: 'padrao', rotulo: 'Filial padrão', tipo: 'booleano', colunas: 3 },
+  { nome: 'padrao', rotulo: 'Filial padrão', tipo: 'booleano', colunas: 3, inicioLinha: true },
   { nome: 'emissora', rotulo: 'Emite NF-e', tipo: 'booleano', colunas: 3 },
   { nome: 'nfe_serie', rotulo: 'Série da NF-e', tipo: 'texto', colunas: 2 },
   { nome: 'nfe_numero_inicial', rotulo: 'Número inicial da NF-e', tipo: 'texto', colunas: 4 },

@@ -25,6 +25,8 @@ export interface CampoEdicao {
   ajuda?: string;
   /** Largura na grade de 12 colunas; ausente = a heurística do shell. */
   colunas?: ColunasEdicao;
+  /** Abre linha nova na grade (útil depois de campo condicional, que muda o reflow); o shell repassa. */
+  inicioLinha?: boolean;
   /** Só aparece (e só vai no corpo) para quem tem a ação; a API devolve 403 sem ela. */
   exige?: Acao;
   /** Só na criação (o endereço principal do cliente; depois, a tela de endereços cuida deles). */
@@ -108,7 +110,7 @@ export const colunaSituacao = <L extends { inativo: unknown }>(): ColunaDeLista<
 
 /** Endereço do formulário (cliente na criação e filial): campos `end_*`. */
 export const CAMPOS_ENDERECO: readonly CampoEdicao[] = [
-  { nome: 'end_cep', rotulo: 'CEP', tipo: 'texto', obrigatorio: true, colunas: 2 },
+  { nome: 'end_cep', rotulo: 'CEP', tipo: 'texto', obrigatorio: true, colunas: 2, inicioLinha: true },
   { nome: 'end_logradouro', rotulo: 'Logradouro', tipo: 'texto', obrigatorio: true, colunas: 6 },
   { nome: 'end_numero', rotulo: 'Número', tipo: 'texto', obrigatorio: true, colunas: 2 },
   { nome: 'end_complemento', rotulo: 'Complemento', tipo: 'texto', colunas: 2 },
