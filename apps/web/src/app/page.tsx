@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Casca } from './(shell)/casca';
+import { Inicio } from './(shell)/inicio';
 import { TelaLogin } from './login/tela';
 import { temSessaoBko } from '@/lib/sessao';
 
@@ -12,8 +13,7 @@ export default async function Raiz() {
   if (!(await temSessaoBko())) return <TelaLogin />;
   return (
     <Casca>
-      <h1>Boas-vindas ao Macuxi ERP</h1>
-      <p className="apoio">Comece pelo menu ao lado.</p>
+      <Inicio />
     </Casca>
   );
 }
