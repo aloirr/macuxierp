@@ -2,7 +2,6 @@ Sua senha temporária
 
 Recebemos um pedido de senha temporária para entrar no Macuxi ERP. Se não foi você, ignore este e-mail.
 
-Código da empresa: {{codigo_empresa}}
 E-mail: {{email}}
 Senha temporária: {{senha_temporaria}}
 
