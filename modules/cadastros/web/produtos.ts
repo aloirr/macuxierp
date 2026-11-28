@@ -38,7 +38,7 @@ const ORIGENS = ['0', '1', '2', '3', '4', '5', '6', '7', '8'] as const;
 export const CAMPOS_PRODUTO: readonly CampoEdicao[] = [
   { nome: 'codigo', rotulo: 'Código', tipo: 'texto', obrigatorio: true },
   { nome: 'descricao', rotulo: 'Descrição', tipo: 'texto', obrigatorio: true },
-  { nome: 'ncm', rotulo: 'NCM', tipo: 'texto', obrigatorio: true, ajuda: 'Código fiscal do produto; precisa existir e estar vigente.' },
+  { nome: 'ncm', rotulo: 'NCM', tipo: 'texto', obrigatorio: true, ajuda: '8 números, vigente na tabela NCM.' },
   { nome: 'cest', rotulo: 'CEST', tipo: 'texto', ajuda: 'Obrigatório quando o produto tem substituição tributária.' },
   { nome: 'unidade_comercial', rotulo: 'Unidade comercial', tipo: 'texto', obrigatorio: true },
   { nome: 'ean', rotulo: 'EAN/GTIN', tipo: 'texto', ajuda: '8, 12, 13 ou 14 números, ou "SEM GTIN".' },
