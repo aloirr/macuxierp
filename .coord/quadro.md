@@ -118,7 +118,7 @@
 | T-0124 | Exportar meus dados (LGPD) com a chave S3 própria do ERP (decisão 90 B) | v0.3.32 | modulo-core | aberta | ~3h11; sem os secrets S3 a publicação segue e o item fica oculto; o XML autorizado continua no banco |
 | T-0125 | Página Empresa no BKO (o item abre o Ambiente fiscal até lá) | v0.3.32 | modulo-core | aberta | |
 | T-0126 | Editar pedido no BKO | v0.3.32 | modulo-pedido | aberta | nenhuma tela linka o Editar até lá |
-| T-0127 | Regras fiscais no BKO e catálogo regra_base | v0.3.32 | modulo-fiscal | aberta | banco ~3h17, fiscal ~7h; desenho aprovado |
+| T-0127 | Regras fiscais no BKO e catálogo regra_base | v0.3.32 | modulo-fiscal | aberta | banco ~3h17, fiscal ~7h; desenho aprovado; **engenheiro (28/11 04h32, revisão do #942):** ajustar_mva sem default (Zod e SQL); interestadual com ajustar_mva nulo = CODIGO_NAO_SUPORTADO; nenhuma carga de regra de ST interestadual antes disso |
 | T-0128 | DIFAL e acabamento do cálculo (RN-FIS-06) | v0.3.32 | modulo-fiscal | aberta | hoje bloqueado fail-closed (icms.ts:109), sem reservar número |
 | T-0129 | Formulário só leitura sem a permissão de editar (campo `editar` no descritor; 403 com mensagem do cadastros) | v0.3.32 | engenheiro-software | aberta | 🟡 do shell de Clientes (27/11 20h38) |
 | T-0130 | Filiais no cadastro de usuário do /config (GET de filiais por empresa na plataforma) | v0.3.32 | modulo-core | aberta | campo oculto até lá |
