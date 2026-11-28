@@ -102,8 +102,11 @@ export type ContaBloqueadaResposta = z.infer<typeof ContaBloqueadaResposta>;
 export const URL_MACUXI_ERP = 'https://erp.macuxifdv.com.br';
 export const RODAPE_EMAIL_MACUXI_ERP = `Equipe Macuxi ERP · Boa Vista, RR · ${URL_MACUXI_ERP.replace('https://', '')}`;
 
-/** Rota da tela de login do BKO (a tela única, ADR 0018; o `CAMINHO_LOGIN` de `login.ts` é a rota da API). */
-export const ROTA_TELA_LOGIN = '/login';
+/**
+ * Rota da tela de login do BKO (a tela única, ADR 0018; o `CAMINHO_LOGIN` de `login.ts` é a rota da API). Login único
+ * na raiz (v0.3.27, R-20261127-174120): a tela é "/" sem sessão; o `/login` segue no web só como 308 para "/".
+ */
+export const ROTA_TELA_LOGIN = '/';
 
 /**
  * Link do botão "Abrir o Macuxi ERP" (44 B): a tela de login com o código da empresa e o e-mail preenchidos, no
