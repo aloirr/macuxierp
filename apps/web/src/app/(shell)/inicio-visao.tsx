@@ -6,11 +6,11 @@ export function InicioVisao({ atalhos, nome }: { atalhos: readonly AtalhoInicio[
   return (
     <>
       <h1>Início</h1>
-      <p className="apoio">Olá, {primeiroNome}. Por onde quer começar?</p>
       {atalhos.length === 0 ? (
-        <p className="apoio">Nenhuma tela liberada para o seu perfil. Fale com o administrador.</p>
+        <p className="apoio">Nenhum atalho disponível para o seu perfil. Use o menu para acessar as telas liberadas.</p>
       ) : (
         <>
+          <p className="apoio">Olá, {primeiroNome}. Por onde quer começar?</p>
           <ul className={`atalhos atalhos-${atalhos.length}`}>
             {atalhos.map((a) => (
               <li key={a.href}>

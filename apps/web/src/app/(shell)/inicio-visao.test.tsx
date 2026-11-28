@@ -41,12 +41,13 @@ describe('Início do BKO (decisões 58 e 59)', () => {
     expect(rotulos).toContain('Pedidos');
     expect(cartoes(renderToStaticMarkup(<InicioVisao nome="Ana Exemplo" atalhos={atalhosDoInicio(menu)} />))).toBe(rotulos.length);
   });
-  it('nenhum atalho: só título, saudação e a frase do vazio, sem Atalhos nem botão', () => {
+  it('nenhum atalho: só título e a frase do vazio, sem saudação, sem Atalhos nem botão', () => {
     const h = renderToStaticMarkup(<InicioVisao nome="Ana Exemplo" atalhos={[]} />);
     expect(cartoes(h)).toBe(0);
     expect(h).toContain('<h1>Início</h1>');
-    expect(h).toContain('Olá, Ana. Por onde quer começar?');
-    expect(h).toContain('Nenhuma tela liberada para o seu perfil. Fale com o administrador.');
+    expect(h).not.toContain('Olá');
+    expect(h).not.toContain('Por onde quer começar');
+    expect(h).toContain('Nenhum atalho disponível para o seu perfil. Use o menu para acessar as telas liberadas.');
     expect(h).not.toContain('Atalhos');
     expect(h).not.toContain('<button');
   });
