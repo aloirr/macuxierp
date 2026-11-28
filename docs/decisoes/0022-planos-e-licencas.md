@@ -66,16 +66,21 @@ Os contratos ficam em `packages/platform-sdk/src/planos.ts` (`PlanoSchema`, `Lis
 2. Não contam:
    - o usuário inativo (desativado) ou excluído;
    - a equipe Macuxi do `/config` (superadmin, suporte, implantação e financeiro);
-   - o analista de implantação nos primeiros 60 dias, contados do `created_at` da conta (RN-CORE-09). A partir do 61º dia, ele conta como os outros;
+   - o analista de implantação nos primeiros 60 dias, contados do `created_at` da conta (RN-CORE-09), pela isenção `implantacao`. A partir do 61º dia, ele conta como os outros, sem ninguém desmarcar;
    - o usuário de serviço da integração com o FDV.
 3. **O bloqueado por senha conta** (RN-CORE-15; decisão 138 A).
 
 Como a 0083 marca quem não conta:
 - O superadmin é identidade de plataforma e não mora em `plataforma.usuario` (ADR 0012 §1), então nunca entra na conta.
-- A conta do tenant usada pela equipe Macuxi e o usuário de serviço da integração ganham a coluna `plataforma.usuario.isencao_licenca`:
-  - os valores são `equipe_macuxi` e `servico_integracao`, e `null` = conta;
-  - a coluna só é gravada pela `sa_marcar_isencao_licenca` (§8), pelo superadmin e com auditoria;
-  - o tenant não tem `UPDATE` nessa coluna e não a vê na tela de usuários.
+- As contas do tenant que não contam ganham a coluna `plataforma.usuario.isencao_licenca` (aprovada pelo PO em 28/11, às 07h26). `null` = conta. Os valores são três:
+  - `equipe_macuxi`: a conta do tenant usada pela equipe Macuxi;
+  - `servico_integracao`: o usuário de serviço da integração com o FDV;
+  - `implantacao`: o analista de implantação. A isenção vale **só nos 60 dias a partir do `created_at` da conta**. Depois, a conta passa a contar sozinha, sem ninguém desmarcar: a `licencas_do_tenant()` decide pela data (`now() < created_at + interval '60 days'`), e nenhuma rotina apaga a marca. Um `CHECK` aceita `implantacao` só no perfil `analista_implantacao`.
+- **Só o superadmin grava a isenção**, pela `sa_marcar_isencao_licenca` (§8):
+  - o tenant não tem `UPDATE` nessa coluna e não a vê na tela de usuários;
+  - **toda mudança vai para a auditoria** na mesma transação (`plataforma.usuario.isencao_licenca`), com quem mudou (`superadmin_id`), quando (`created_at` da auditoria) e o `antes` e o `depois` do valor, sem e-mail nem nome (regra 8);
+  - marcar de novo o mesmo valor não grava nem audita.
+- O analista sem a marca `implantacao` conta desde o primeiro dia. O fluxo de criar usuário do `/config` já propõe a marca quando o perfil é `analista_implantacao`, e quem grava é o superadmin.
 - Hoje o Conector do Hub entra com credencial própria, cifrada, e não com uma conta de `plataforma.usuario`. A isenção `servico_integracao` vale para quando existir essa conta.
 
 **Filial emissora:** conta a filial viva com "Emite NF-e" ligado (`cadastros.filial.emissora = true`).
@@ -103,7 +108,7 @@ O tenant lê a própria assinatura e o histórico só sob RLS (`SELECT` para o `
   - tirar a isenção de um usuário ativo;
   - ligar "Emite NF-e" numa filial além do contratado.
   Mudar o perfil não muda a contagem, porque todo perfil conta igual. A trava vale no BKO (core) e no `/config` (`empresa_usuario_criar` e as demais funções de usuário da 0078).
-- **Integração FDV:** ligar o módulo `integracao-fdv` num plano que não a inclui, sem o adicional contratado, é recusado com 422 `ADICIONAL_NAO_CONTRATADO`. É regra de módulo, não de contagem.
+- **Integração FDV:** ligar o módulo `integracao-fdv` num plano que não a inclui, sem o adicional contratado, é recusado com 422 `ADICIONAL_NAO_CONTRATADO`. É regra de módulo, não de contagem. O texto da tela é "A integração com o Macuxi FDV não está no plano desta empresa." (aprovado pelo PO em 28/11, às 07h26).
 - **Na mesma transação** do insert ou update, quem grava chama `plataforma.licencas_do_tenant()`:
   - a função é `SECURITY INVOKER`, roda sob RLS e faz `FOR UPDATE` na linha da assinatura;
   - ela devolve, por item, o contratado (plano + adicionais) e o em uso;
@@ -153,7 +158,7 @@ O tenant lê a própria assinatura e o histórico só sob RLS (`SELECT` para o `
 | `POST /v1/plataforma/empresas-com-plano` | superadmin | o mesmo fluxo do `POST /v1/plataforma/empresas`, com os módulos tirados do plano e a assinatura gravada pela `sa_gravar_assinatura`, idempotente. Com `simular`, não grava |
 | `GET /v1/plataforma/empresas/:tenant_id/assinatura` | superadmin | a ficha: plano, versão, ciclo, adicionais, teste, usuários e filiais emissoras contratados e em uso, e o valor mensal e o anual |
 | `PUT /v1/plataforma/empresas/:tenant_id/assinatura` | superadmin | a troca de plano (§5) |
-| `PUT /v1/plataforma/empresas/:tenant_id/usuarios/:usuario_id/isencao-licenca` | superadmin | marca ou tira `equipe_macuxi` ou `servico_integracao` (§2); tirar a isenção passa pela trava |
+| `PUT /v1/plataforma/empresas/:tenant_id/usuarios/:usuario_id/isencao-licenca` | superadmin | marca ou tira `equipe_macuxi`, `servico_integracao` ou `implantacao` (§2); tirar a isenção passa pela trava; toda mudança é auditada |
 | `GET /v1/core/assinatura` | administrador do tenant | a mesma ficha, só da própria empresa, sob `comTenant` e RLS. Fica em `/v1/core` porque o JWT do tenant nunca vale em `/v1/plataforma` (ADR 0012 §2) |
 
 **Funções novas da lista fechada da ADR 0012 §4.** Todas são da 0083, no schema `plataforma`, `SECURITY DEFINER`, com `SET search_path = pg_catalog, pg_temp`, `REVOKE ALL ... FROM PUBLIC` e EXECUTE só do `macuxierp_config`. Todas pedem a sessão "sim", começam por `exigir_superadmin()` e auditam na mesma transação.
@@ -164,7 +169,7 @@ O tenant lê a própria assinatura e o histórico só sob RLS (`SELECT` para o `
 | `sa_ler_assinatura(tenant_id)` | a ficha, com a mesma contagem da `licencas_do_tenant()` para o tenant pedido |
 | `sa_gravar_assinatura(tenant_id, plano_id, ciclo, adicionais, teste, pedido_id)` | cria a assinatura; repetir o mesmo `pedido_id` devolve a mesma, sem gravar |
 | `sa_trocar_plano(tenant_id, plano_id, ciclo, adicionais, vendedores_fdv, pedido_id)` | a troca, com a conferência abaixo do uso, o histórico e a ligação dos módulos |
-| `sa_marcar_isencao_licenca(tenant_id, usuario_id, isencao)` | grava ou tira a isenção (§2); tirar confere a trava |
+| `sa_marcar_isencao_licenca(tenant_id, usuario_id, isencao)` | grava ou tira a isenção (§2), com a auditoria de quem mudou e quando; tirar confere a trava; repetir o mesmo valor não grava |
 
 Fora da lista fechada fica a `licencas_do_tenant()`: `SECURITY INVOKER`, com EXECUTE do `macuxierp_app` e do `macuxierp_config`. Ela lê o tenant de `app.tenant_id` e devolve vazio quando não há assinatura.
 
@@ -180,7 +185,7 @@ Ordem: E1 → E2 (banco e SDK em paralelo) → E3 (core, cadastros, integração
 | Etapa | Dono | Entrega | Pronto quando |
 |---|---|---|---|
 | E1 | engenheiro-software | esta ADR | merge no `main` |
-| E2 | banco-dados | migração **0083**: `plataforma.plano`, `plataforma.assinatura` e `plataforma.assinatura_historico` (regra 5, RLS, colunas da §1 e da §3); a coluna `plataforma.usuario.isencao_licenca` (sem `UPDATE` do `macuxierp_app`); a `licencas_do_tenant()` (§2 e §4, com o `FOR UPDATE`, a carência de 60 dias e as isenções); as cinco `sa_*` da §8; a conferência da trava dentro de `empresa_usuario_criar` e das demais funções de usuário da 0078 (só quando há assinatura); o **seed do catálogo da §1.1**, com os valores em centavos. O teste `db/testes/planos-0083.db.test.ts` prova: a RLS (o tenant lê só a própria assinatura e não escreve); o EXECUTE só do `macuxierp_config` nas `sa_*`; duas criações simultâneas sem passar do teto; o inativo e o excluído fora da conta, e o bloqueado dentro; a carência de 60 dias; as isenções; a troca abaixo do uso recusada; a idempotência por `pedido_id`; a empresa sem assinatura sem trava; e o seed igual à §1.1 | testes de banco verdes com `MACUXI_PG_EXIGIR=1` |
+| E2 | banco-dados | migração **0083**: `plataforma.plano`, `plataforma.assinatura` e `plataforma.assinatura_historico` (regra 5, RLS, colunas da §1 e da §3); a coluna `plataforma.usuario.isencao_licenca` (`equipe_macuxi`, `servico_integracao` ou `implantacao`, com o `CHECK` do perfil, sem `UPDATE` do `macuxierp_app` e com a auditoria de toda mudança); a `licencas_do_tenant()` (§2 e §4, com o `FOR UPDATE`, a carência de 60 dias e as isenções); as cinco `sa_*` da §8; a conferência da trava dentro de `empresa_usuario_criar` e das demais funções de usuário da 0078 (só quando há assinatura); o **seed do catálogo da §1.1**, com os valores em centavos. O teste `db/testes/planos-0083.db.test.ts` prova: a RLS (o tenant lê só a própria assinatura e não escreve); o EXECUTE só do `macuxierp_config` nas `sa_*`; duas criações simultâneas sem passar do teto; o inativo e o excluído fora da conta, e o bloqueado dentro; a isenção `implantacao` que deixa de valer sozinha no 61º dia; as outras isenções e a auditoria de toda mudança; a troca abaixo do uso recusada; a idempotência por `pedido_id`; a empresa sem assinatura sem trava; e o seed igual à §1.1 | testes de banco verdes com `MACUXI_PG_EXIGIR=1` |
 | E2 | engenheiro-software | `packages/platform-sdk/src/planos.ts`: os schemas Zod da §1; as funções puras `conferirNovoUsuario`, `conferirTrocaDePlano`, `valorMensal`, `valorAnual`, `fimDoTeste` e `modulosDaAssinatura`, com teste antes citando RN-PLA-01, 02, 04, 05 e 06; os códigos de erro; a bandeira `planosLigados(env)`. **Nenhum preço como constante:** os testes usam planos de exemplo. Só depois do PR do SDK em andamento (T-0129) | unitários do SDK verdes |
 | E3 | modulo-core | a trava no BKO: criar e reativar usuário (`alterar-usuario.ts` e o repositório), na mesma transação, com a `licencas_do_tenant()` e a `conferirNovoUsuario`; a rota `GET /v1/core/assinatura` (só o administrador); a tradução dos SQLSTATE no `erro-pg.ts`; no plugin de plataforma, as rotas da §8 chamando só as `sa_*`; e o `ADICIONAL_NAO_CONTRATADO` ao ligar a integração. Testes citando RN-PLA-02, RN-PLA-04 e RN-PLA-05 | unitários e de banco do core verdes |
 | E3 | modulo-cadastros | **conta a filial emissora:** ligar "Emite NF-e" (`emissora = true`) numa filial, ao criar ou ao editar, chama a `licencas_do_tenant()` e a `conferirNovoUsuario` na mesma transação e recusa com 422 `LICENCAS_ESGOTADAS` (item `filiais_emissoras`). Vale também na carga (RF-CAD-11). Testes citando RN-PLA-02 e RN-PLA-04 | unitários e de banco do cadastros verdes |
@@ -217,7 +222,7 @@ O número RN-PLA-03 fica vago: no FDV ele trata do "por usuário" da Pesquisa e 
 - **(b) REGRA, carência do analista:** 60 dias, contados da criação da conta (`created_at`). É a leitura literal do "primeiros 60 dias" do Alexandre em 23/11 (decisão do PO, 28/11, 07h25).
 - **(c) Decisão 139 A** (28/11, 07h19): o teste vencido sem pagamento trava só os cadastros novos. Nota, pedido e consulta continuam.
 - **(d) REGRA, decisão 130 A:** o TOTP do superadmin fica obrigatório no momento em que a senha do `macuxierp_config` for criada (ADR 0012, emenda §7-A).
-- **(e) REGRA, filial no D:** o R-20261123-112038 dá teto de filial só aos planos do A. O D não tem teto de filial, e o seed grava `null`. É a leitura literal do recado; um teto futuro entra como versão nova do plano.
+- **(e) REGRA, filial no D:** o R-20261123-112038 dá teto de filial só aos planos do A. O D não tem teto de filial, e o seed grava `null`. É a leitura literal do recado, aprovada pelo PO em 28/11, às 07h26; um teto futuro entra como versão nova do plano.
 - **Bandeira:** a `MACUXIERP_PLANOS` só liga depois de o Alexandre ver a tela (decisão do PO, 28/11, 07h25).
 - O administrador do tenant só vê a ficha. Quem troca de plano é só o superadmin.
 
