@@ -163,8 +163,8 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
       });
       expect(criar('faturista.ficticia@empresa.teste', 'faturista', 'req-criar-1')).toEqual(c);
       recusa(criarSql('FATURISTA.ficticia@empresa.teste', 'gerente', 'req-criar-2'), '23505', /email_em_uso/);
-      // O mesmo e-mail em outra empresa pode.
-      expect(json<Item>(criarSql('faturista.ficticia@empresa.teste', 'gerente', null, B.id))).toMatchObject({
+      // Outra empresa cria normalmente (o e-mail repetido entre empresas é da 0079: usuarios-email-global-0079).
+      expect(json<Item>(criarSql('gerente.ficticio@empresa-b.teste', 'gerente', null, B.id))).toMatchObject({
         perfil: 'gerente',
       });
       recusa(criarSql('x@empresa.teste', 'dono', null), '23514', /usuario_perfil_check/);
