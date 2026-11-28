@@ -1,13 +1,11 @@
 import type { MatrizDePerfis } from '@/lib/telas/core';
-import type { quadroEmpresaFiscal } from '@macuxierp/core/web';
+import { rotuloDaAcao, type quadroEmpresaFiscal } from '@macuxierp/core/web';
 import { Selo } from '@/components/descritor/ui-cliente';
 
 /**
  * Quadros só de leitura do core: perfis e permissões (T-0087) e empresa e ambiente fiscal (T-0088). Servidor, sem estado: recebem o que
  * o adaptador montou (`lib/telas/core.ts`). O ambiente fiscal NÃO tem botão de troca: produção só pela rota da T-0030 (RN-CORE-08).
  */
-/** O grupo já diz o módulo: a linha mostra o código sem o prefixo (o completo vai no title) até o SDK trazer o rótulo em português da ação. */
-const semPrefixo = (acao: string): string => acao.split('.').slice(1).join('.') || acao;
 
 export function VistaPerfis({ matriz }: { matriz: MatrizDePerfis }) {
   return (
@@ -25,7 +23,7 @@ export function VistaPerfis({ matriz }: { matriz: MatrizDePerfis }) {
               <tr className="matriz-grupo"><th scope="colgroup" colSpan={matriz.perfis.length + 1}>{g.rotulo}</th></tr>
               {g.linhas.map((l) => (
                 <tr key={l.acao}>
-                  <th scope="row" title={l.acao}>{semPrefixo(l.acao)}</th>
+                  <th scope="row" title={l.acao}>{rotuloDaAcao(l.acao)}</th>
                   {l.por_perfil.map((pode, i) => (
                     <td key={matriz.perfis[i]?.perfil ?? i}>{pode ? <span>Sim</span> : <span aria-label="Não">—</span>}</td>
                   ))}

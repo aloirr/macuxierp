@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PerfilComAcoes } from '@macuxierp/core/contracts';
+import { ROTULO_MODULO } from '@macuxierp/core/web';
 import type { Perfil } from '@macuxierp/platform-sdk';
 import { PERFIS, PERMISSOES } from '@macuxierp/platform-sdk';
 import { montarMenu, resolverPagina } from '../menu';
@@ -183,7 +184,7 @@ describe('perfis e permissões (RF-CORE-02)', () => {
     const m = matrizDePerfis(itens);
     expect(m.perfis.map((p) => p.rotulo)).toContain('Administrador');
     expect(m.grupos[0]?.modulo).toBe('cadastros'); // ordem alfabética
-    expect(m.grupos.find((g) => g.modulo === 'core')?.rotulo).toBe('Plataforma');
+    expect(m.grupos.find((g) => g.modulo === 'core')?.rotulo).toBe(ROTULO_MODULO.core);
     const gerir = m.grupos.flatMap((g) => g.linhas).find((l) => l.acao === 'core.usuario.gerir');
     expect(gerir?.por_perfil).toEqual(m.perfis.map((p) => p.perfil === 'administrador'));
     for (const g of m.grupos) for (const l of g.linhas) expect(l.por_perfil).toHaveLength(m.perfis.length);
