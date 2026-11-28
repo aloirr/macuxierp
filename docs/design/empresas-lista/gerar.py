@@ -20,7 +20,7 @@ td{padding:0 12px;height:var(--mx-medida-altura-linha-tabela);border-bottom:1px 
 .btn{height:var(--campo);padding:0 14px;border:1px solid var(--borda);background:#fff;border-radius:6px;font:600 var(--f) var(--mx-fonte-texto);color:var(--texto)}.btn.p{background:var(--azul);color:#fff;border-color:var(--azul)}.btn.menu{height:28px;padding:0 10px;font-weight:500}
 .ac{text-align:right;white-space:nowrap!important}.btn{white-space:nowrap}
 .rodape{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
-@media (max-width:767px){.pg{padding:16px}.topo{padding:0 16px}.sim,.nome{display:none}.tit input{width:100%;margin-left:0}.tit{flex-wrap:wrap}.card{overflow-x:auto}td{white-space:normal;height:auto;padding:8px 10px}tr>*:nth-child(n+5):not(:last-child),tr>*:nth-child(3){display:none}.rodape .btn{flex:1}}
+@media (max-width:767px){.pg{padding:16px}.topo{padding:0 16px}.sim,.nome{display:none}.tit input{width:100%;margin-left:0}.tit{flex-wrap:wrap}.card{overflow-x:auto}td{white-space:normal;height:auto;padding:8px 10px}tr>*:nth-child(n+3):not(:last-child){display:none}.card{overflow:hidden}td.ac,th:last-child{width:44px;padding:0 6px}.btn.menu{padding:0 8px;font-size:0}.btn.menu::before{content:"▾";font-size:var(--f)}.rodape .btn{flex:1}}
 """
 EM=[('EMPRESA EXEMPLO COMÉRCIO LTDA','AM0000','00.000.000/0001-00','Ativa','Cadastros · Pedidos · Faturamento · Fiscal · Integração FDV','<span class="selo al">Com recusas</span>','22/11/2026'),
 ('DISTRIBUIDORA FICTÍCIA DO NORTE LTDA','AM0001','00.000.000/0002-80','Ativa','Cadastros · Pedidos · Integração FDV','<span class="selo">Ligada</span>','12/11/2026'),
