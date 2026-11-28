@@ -1,5 +1,5 @@
 'use client';
-import { type AcaoUsuario, type UsuarioConfig } from '@macuxierp/core/contracts';
+import { type AcaoUsuario, type FilialConfig, type UsuarioConfig } from '@macuxierp/core/contracts';
 import { AVISO_USUARIO } from '@/lib/usuarios-textos';
 import { PERFIS } from '@macuxierp/platform-sdk';
 import { Chip, Dialogo, DialogoMotivo, MenuAcoes, ResultadoAcao, TabelaDensa, useResultado, type ColunaTabela } from '@macuxierp/ui';
@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useRef, useState, useTransition } from 'react';
 import { criarUsuarioAcao, editarUsuarioAcao, excluirUsuarioAcao, inativarUsuarioAcao, reativarUsuarioAcao, redefinirSenhaUsuarioAcao } from '@/lib/acoes-cliente';
 import { ChavesIdempotencia } from '@/lib/config/chaves';
-import { etiquetaUltimoAdmin, filtrarUsuarios, itensDoMenuUsuario, rotuloPerfil, seloDoUsuario, textoUltimoAcesso } from '@/lib/config/usuarios';
+import { alternarFilial, etiquetaUltimoAdmin, filiaisIniciais, filtrarUsuarios, itensDoMenuUsuario, montarEnvioUsuario, rotuloPerfil, seloDoUsuario, textoUltimoAcesso } from '@/lib/config/usuarios';
 import { resultadoErro, resultadoSucesso } from '@/lib/resultado-acao';
 
 /**
@@ -27,7 +27,7 @@ const TEXTOS_CONFIRMACAO: Readonly<Record<Confirmacao['acao'], { titulo: (n: str
   excluir: { titulo: (n) => `Excluir ${n}?`, aviso: AVISO_USUARIO.excluir, botao: 'Excluir', fechar: 'Manter usuário', sucesso: 'Usuário excluído.', destrutivo: true },
 };
 
-export function BlocoUsuarios({ empresaId, itens, fuso, editavel = true }: { empresaId: string; itens: UsuarioConfig[] | null; fuso: string; editavel?: boolean }) {
+export function BlocoUsuarios({ empresaId, itens, filiais = null, fuso, editavel = true }: { empresaId: string; itens: UsuarioConfig[] | null; filiais?: FilialConfig[] | null; fuso: string; editavel?: boolean }) {
   const router = useRouter();
   const [busca, setBusca] = useState('');
   const [formulario, setFormulario] = useState<Formulario | null>(null);
@@ -114,6 +114,7 @@ export function BlocoUsuarios({ empresaId, itens, fuso, editavel = true }: { emp
       {formulario && (
         <FormularioUsuario
           empresaId={empresaId}
+          filiais={filiais}
           formulario={formulario}
           primeiro={semAdmin && formulario.tipo === 'criar'}
           chaves={chaves.current}
@@ -178,8 +179,9 @@ export function DialogoSenha({ nome, senha, aoFechar }: { nome: string; senha: s
   );
 }
 
-function FormularioUsuario({ empresaId, formulario, primeiro, chaves, aoFechar, aoSalvar }: {
+export function FormularioUsuario({ empresaId, filiais, formulario, primeiro, chaves, aoFechar, aoSalvar }: {
   empresaId: string;
+  filiais: FilialConfig[] | null;
   formulario: Formulario;
   primeiro: boolean;
   chaves: ChavesIdempotencia;
@@ -190,6 +192,7 @@ function FormularioUsuario({ empresaId, formulario, primeiro, chaves, aoFechar, 
   const [nome, setNome] = useState(edicao?.nome ?? '');
   const [email, setEmail] = useState('');
   const [perfil, setPerfil] = useState<string>(edicao?.perfil ?? (primeiro ? 'administrador' : 'leitura'));
+  const [marcadas, setMarcadas] = useState<string[]>(() => filiaisIniciais(filiais ?? [], edicao ? edicao.filial_ids : null));
   const [campos, setCampos] = useState<Record<string, string>>({});
   const [erro, setErro] = useState('');
   const [pendente, iniciar] = useTransition();
@@ -198,15 +201,17 @@ function FormularioUsuario({ empresaId, formulario, primeiro, chaves, aoFechar, 
     iniciar(async () => {
       setErro('');
       setCampos({});
-      if (edicao) {
-        const mudou = { ...(nome.trim() !== edicao.nome ? { nome } : {}), ...(perfil !== edicao.perfil ? { perfil } : {}) };
-        if (Object.keys(mudou).length === 0) return setErro('Nada foi alterado.');
-        const r = await editarUsuarioAcao(empresaId, edicao.id, mudou);
+      const envio = montarEnvioUsuario({ nome, email, perfil, marcadas }, filiais, edicao);
+      if (envio.tipo === 'recusado') return setCampos(envio.campos);
+      if (envio.tipo === 'editar' && edicao) {
+        if (Object.keys(envio.corpo).length === 0) return setErro('Nada foi alterado.');
+        const r = await editarUsuarioAcao(empresaId, edicao.id, envio.corpo);
         if (r.ok) return aoSalvar('Usuário salvo.');
         setCampos(r.campos);
         return setErro(r.erro);
       }
-      const r = await criarUsuarioAcao(empresaId, { nome, email, perfil }, chaves.de('criar'));
+      if (envio.tipo !== 'criar') return;
+      const r = await criarUsuarioAcao(empresaId, envio.corpo, chaves.de('criar'));
       chaves.aposResposta('criar', r);
       if (r.ok) return aoSalvar('Usuário criado.', { nome: r.valor.usuario.nome, senha: r.valor.senha_provisoria });
       setCampos(r.campos);
@@ -225,25 +230,45 @@ function FormularioUsuario({ empresaId, formulario, primeiro, chaves, aoFechar, 
       }
     >
       <form id="form-usuario" className="formulario" noValidate onSubmit={(e) => { e.preventDefault(); enviar(); }}>
-        <label className="campo">
+        <label className={`campo ${edicao ? 'campo-col-12' : 'campo-col-6'}`}>
           <span>Nome</span>
           <input value={nome} onChange={(e) => setNome(e.target.value)} maxLength={80} autoComplete="off" aria-invalid={campos.nome ? true : undefined} />
           {campos.nome && <span className="erro-campo">{campos.nome}</span>}
         </label>
         {!edicao && (
-          <label className="campo">
+          <label className="campo campo-col-6">
             <span>E-mail</span>
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off" aria-invalid={campos.email ? true : undefined} />
             {campos.email && <span className="erro-campo">{campos.email}</span>}
           </label>
         )}
-        <label className="campo">
+        <label className="campo campo-col-4 campo-inicio-linha">
           <span>Perfil</span>
           <select value={perfil} onChange={(e) => setPerfil(e.target.value)} aria-invalid={campos.perfil ? true : undefined}>
             {PERFIS.map((p) => <option key={p} value={p}>{rotuloPerfil(p)}</option>)}
           </select>
           {campos.perfil && <span className="erro-campo">{campos.perfil}</span>}
         </label>
+        <fieldset className="campo campo-filiais campo-col-8" aria-invalid={campos.filial_ids ? true : undefined}>
+          <legend>Filiais</legend>
+          {filiais === null ? (
+            <p className="apoio">Não foi possível carregar as filiais.</p>
+          ) : filiais.length === 0 ? (
+            <p className="apoio">Nenhuma filial cadastrada.</p>
+          ) : (
+            <ul className="lista-filiais">
+              {filiais.map((f) => (
+                <li key={f.id}>
+                  <label>
+                    <input type="checkbox" className="mx-checkbox" checked={marcadas.includes(f.id)} onChange={(e) => setMarcadas(alternarFilial(filiais, marcadas, f.id, e.target.checked))} />
+                    <span>{f.nome}{f.padrao ? ' (principal)' : ''}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
+          {campos.filial_ids && <span className="erro-campo">{campos.filial_ids}</span>}
+        </fieldset>
         {/* o texto que já está sob o campo (ex.: e-mail em uso, ADR 0021) não se repete na caixa */}
         {erro && !Object.values(campos).includes(erro) && <p className="erro" role="alert">{erro}</p>}
       </form>

@@ -2,14 +2,15 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import type { UsuarioConfig } from '@macuxierp/core/contracts';
+import type { FilialConfig, UsuarioConfig } from '@macuxierp/core/contracts';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }), redirect: vi.fn() }));
 vi.mock('@/lib/acoes-cliente', () => ({
   criarUsuarioAcao: vi.fn(), editarUsuarioAcao: vi.fn(), excluirUsuarioAcao: vi.fn(), inativarUsuarioAcao: vi.fn(), reativarUsuarioAcao: vi.fn(), redefinirSenhaUsuarioAcao: vi.fn(),
 }));
 
-import { BlocoUsuarios, DialogoSenha, MenuDoUsuario } from './usuarios';
+import { ChavesIdempotencia } from '@/lib/config/chaves';
+import { BlocoUsuarios, DialogoSenha, FormularioUsuario, MenuDoUsuario } from './usuarios';
 
 const EMP = '11111111-1111-4111-8111-111111111111';
 const u = (id: string, extra: Partial<UsuarioConfig> = {}): UsuarioConfig => ({
@@ -79,5 +80,33 @@ describe('Senha provisória: mostrada uma vez e nunca guardada (regra 9, LGPD)',
     const fonte = readFileSync(join(__dirname, 'usuarios.tsx'), 'utf8');
     expect(fonte).not.toMatch(/localStorage|sessionStorage|console\.|document\.cookie|history\.|router\.(push|replace)/);
     expect(fonte).toContain('setSenha(null)');
+  });
+});
+
+describe('Campo Filiais do formulário de usuário (T-0130)', () => {
+  const MATRIZ = '44444444-4444-4444-8444-444444444444';
+  const NORTE = '55555555-5555-4555-8555-555555555555';
+  const filiais: FilialConfig[] = [{ id: MATRIZ, nome: 'Matriz', padrao: true }, { id: NORTE, nome: 'Filial Norte', padrao: false }];
+  const form = (f: FilialConfig[] | null, formulario: Parameters<typeof FormularioUsuario>[0]['formulario'] = { tipo: 'criar' }) =>
+    renderToStaticMarkup(<FormularioUsuario empresaId={EMP} filiais={f} formulario={formulario} primeiro={false} chaves={new ChavesIdempotencia()} aoFechar={() => undefined} aoSalvar={() => undefined} />);
+  const marcada = (h: string, nome: string) => new RegExp(`<input type="checkbox"[^>]*checked=""[^>]*/><span>${nome}`).test(h);
+  it('usuário novo: campo Filiais com a padrão já marcada e a outra livre; campos curtos na grade de 12 colunas', () => {
+    const h = form(filiais);
+    expect(h).toContain('<legend>Filiais</legend>');
+    expect(h).toContain('Matriz (principal)');
+    expect(h).not.toContain('(padrão)');
+    expect(marcada(h, 'Matriz')).toBe(true);
+    expect(marcada(h, 'Filial Norte')).toBe(false);
+    expect(h).toContain('campo-col-4');
+    expect(h).toContain('campo-col-8');
+  });
+  it('edição: vêm marcadas as filiais do usuário, não a padrão', () => {
+    const h = form(filiais, { tipo: 'editar', usuario: u('3f1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c70', { filial_ids: [NORTE] }) });
+    expect(marcada(h, 'Filial Norte')).toBe(true);
+    expect(marcada(h, 'Matriz')).toBe(false);
+  });
+  it('sem a lista da API ou sem filial: aviso no campo, sem texto técnico', () => {
+    expect(form(null)).toContain('Não foi possível carregar as filiais.');
+    expect(form([])).toContain('Nenhuma filial cadastrada.');
   });
 });

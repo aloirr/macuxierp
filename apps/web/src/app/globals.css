@@ -175,6 +175,14 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 .lista-modulos label { display: inline-flex; gap: 8px; align-items: center; white-space: nowrap; font-size: var(--mx-tamanho-texto); }
 /* MC-1: o .formulario input (largura 100%, padding e canto) não alcança o checkbox dos Módulos, que fica no tamanho do packages/ui. */
 .formulario .lista-modulos input.mx-checkbox { flex: none; width: 16px; height: 16px; padding: 0; border-radius: 3px; }
+/* T-0130: campo Filiais do usuário (fieldset da grade do .formulario): rótulo como os demais campos, opções lado a lado antes de descer. */
+fieldset.campo-filiais { border: 0; padding: 0; margin: 0; min-width: 0; }
+.campo-filiais legend { padding: 0; font-weight: var(--mx-peso-rotulo-campo); font-size: var(--mx-tamanho-micro); margin-bottom: 4px; }
+.lista-filiais { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; }
+#form-usuario { margin-bottom: 0; } /* o diálogo já separa o rodapé pelo espaçamento padrão */
+.campo-filiais .lista-filiais label { display: inline-flex; gap: 8px; align-items: center; font-size: var(--mx-tamanho-texto); }
+.campo-filiais .lista-filiais label span { display: inline; margin: 0; font-weight: normal; font-size: var(--mx-tamanho-texto); }
+.formulario .lista-filiais input.mx-checkbox { flex: none; width: 16px; height: 16px; padding: 0; border-radius: 3px; }
 /* Formulários na grade de 12 colunas, a dos filtros (regra 11, T-0121): campo curto 2, médio 4, longo 6, largo 12; até 1100 px 3/6/12; até 640 px tudo em coluna. */
 .formulario { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; align-items: start; margin: 0 0 16px; }
 .formulario > * { grid-column: 1 / -1; min-width: 0; margin-top: 0; margin-bottom: 0; }
