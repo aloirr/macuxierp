@@ -4,7 +4,7 @@ import type { EmpresaPlataforma } from '@macuxierp/platform-sdk';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }), redirect: vi.fn() }));
+vi.mock('next/navigation', () => ({ usePathname: () => '/config', useRouter: () => ({ push: vi.fn() }), redirect: vi.fn() }));
 vi.mock('next/headers', () => ({ cookies: vi.fn() }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 

@@ -48,6 +48,7 @@ a { color: var(--mx-cor-azul-noite); }
 @media (scripting: none) { .lateral .grupo-menu > ul[hidden] { display: block; } }
 /* Divisória única: toda seção após o Início tem 1px, 8px de margem acima e 8px de respiro abaixo da linha. */
 .lateral > * + * { border-top: 1px solid var(--mx-cor-grafite-menu); margin-top: 8px; padding-top: 8px; }
+@media (min-width: 801px) { .lateral > ul:first-of-type { border-top: 0; } } /* sem linha acima de Início: o topo do menu já separa */
 .conteudo { padding: 24px 32px; min-width: 0; } /* sem teto: a página preenche a largura (regra 11, T-0121); só o texto corrido tem 72ch */
 .conteudo h1 { font-size: var(--mx-tamanho-h1); font-weight: var(--mx-peso-titulo); color: var(--mx-cor-azul-noite); margin: 0 0 4px; } /* MC-0216: azul-noite (não herda o grafite do body) e 4 px sob o título, nunca os 13,4 px do navegador */
 .conteudo h1 + :not(p) { margin-top: 16px; }
@@ -497,3 +498,20 @@ button.link { background: none; border: 0; padding: 0; color: inherit; font: inh
 .cartao-consulta > .apoio { margin: 8px 0 12px; }
 .cartao-consulta .formulario { margin: 0; }
 .cartao-consulta > .tabela-rolavel { margin-top: 8px; }
+
+/* T-0139: botão do usuário no topo, à direita; o menu abre para baixo, alinhado à direita (cores do topo, tokens do ui). */
+.menu-usuario { position: relative; }
+.menu-usuario-botao { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 4px 10px 4px 4px; font: inherit; color: var(--mx-cor-branco); background: none; border: 1px solid var(--mx-cor-borda-cinza); border-radius: 12px; cursor: pointer; text-align: left; max-width: min(320px, 60vw); }
+.menu-usuario-botao:hover, .menu-usuario-botao[aria-expanded='true'] { background: var(--mx-cor-grafite-menu); }
+.menu-usuario-botao:focus-visible { outline: 2px solid var(--mx-cor-sol-claro); outline-offset: 2px; }
+.menu-usuario .avatar { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; flex: none; border-radius: 50%; background: var(--mx-cor-nevoa); color: var(--mx-cor-azul-noite); font-size: var(--mx-tamanho-pequeno); font-weight: var(--mx-peso-titulo); }
+.menu-usuario .identidade { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.menu-usuario .identidade > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-usuario .detalhe { font-size: var(--mx-tamanho-pequeno); color: var(--mx-cor-borda-cinza); }
+.menu-usuario .seta { flex: none; }
+.menu-usuario-lista { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; min-width: 100%; width: max-content; padding: 6px; background: var(--mx-cor-branco); border: 1px solid var(--mx-cor-borda-tabela); border-radius: 8px; box-shadow: 0 8px 24px rgb(0 0 0 / 18%); }
+.menu-usuario-lista[hidden] { display: none; }
+.menu-usuario-lista form { margin: 4px 0 0; border-top: 1px solid var(--mx-cor-borda-tabela); padding-top: 4px; }
+.menu-usuario-lista [role='menuitem'], .topo .menu-usuario-lista [role='menuitem'] { display: block; width: 100%; box-sizing: border-box; min-height: 44px; padding: 10px 12px; font: inherit; color: var(--mx-cor-grafite); text-decoration: none; text-align: left; background: none; border: 0; border-radius: 6px; cursor: pointer; }
+.menu-usuario-lista .mx-acoes-perigo, .topo .menu-usuario-lista .mx-acoes-perigo { color: var(--mx-cor-erro-texto); }
+@media (max-width: 800px) { .menu-usuario .identidade, .menu-usuario .seta { display: none; } .menu-usuario-botao { padding: 3px; border-radius: 50%; } .casca > .topo .menu-usuario { margin-left: auto; } }

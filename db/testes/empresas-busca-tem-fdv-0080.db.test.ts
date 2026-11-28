@@ -1,6 +1,6 @@
 /**
  * v0.3.31, migração 0080 (T-0134): a busca de plataforma.empresas_listar casa também o nome da empresa (além do
- * slug; a razão social fica fora, ADR 0012 §4), e plataforma.empresa_json devolve tem_fdv (integracao-fdv licenciado e
+ * slug; a razão social entrou depois, na 0085), e plataforma.empresa_json devolve tem_fdv (integracao-fdv licenciado e
  * ativo). Dados fictícios.
  */
 import { randomUUID } from 'node:crypto';
@@ -106,8 +106,8 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
       expect(b).toHaveLength(1);
     });
 
-    it('a razão social do core.empresa fica fora da busca (só a empresa_json lê schema de módulo, ADR 0012 §4)', () => {
-      expect(achadas('jaraqui')).toEqual([]);
+    it('a razão social do core.empresa sai no json; a busca por ela entrou na 0085 (empresas-busca-razao-social-0085)', () => {
+      expect(achadas('jaraqui')).toEqual([A.id]);
       expect(listar('tucuma').find((e) => e.id === A.id)?.razao_social).toBe('Distribuidora Jaraqui Eireli');
     });
 

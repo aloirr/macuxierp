@@ -29,6 +29,8 @@ const vazio = (t: string | null | undefined): string => t ?? '';
 /** Tipo da coluna para o shell (o `ColunaLista` do sdk ainda não tem `tipo`). */
 export type ColunaFiscal<L> = ColunaLista<L> & { tipo?: 'texto' | 'numero' | 'dinheiro' | 'data' | 'status'; selos?: (l: L) => readonly { texto: string; tom: 'ok' | 'aviso' | 'erro' | 'neutro' }[] };
 
+const ROTULO_FONTE: Readonly<Record<string, string>> = { NT: 'NT', convenio: 'Convênio', anexo: 'Anexo', lei: 'Lei', ajuste_sinief: 'Ajuste SINIEF', resolucao: 'Resolução', outro: 'Outro' };
+
 const colunasRegras: readonly ColunaFiscal<RegraLinha>[] = [
   { id: 'tributo', titulo: 'Tributo', valor: (r) => ROTULO_TRIBUTO[r.tributo] },
   { id: 'ncm_prefixo', titulo: 'NCM', valor: (r) => ou(r.ncm_prefixo) },
@@ -40,7 +42,8 @@ const colunasRegras: readonly ColunaFiscal<RegraLinha>[] = [
   { id: 'codigo', titulo: 'CST/CSOSN', tipo: 'numero', valor: (r) => vazio(r.codigo) },
   { id: 'aliquota_icms', titulo: 'ICMS', tipo: 'numero', valor: (r) => textoPercentual(r.aliquota_icms) },
   { id: 'mva_original', titulo: 'MVA', tipo: 'numero', valor: (r) => textoPercentual(r.mva_original) },
-  { id: 'fonte', titulo: 'Fonte', valor: (r) => (r.fonte ? `${r.fonte.tipo} ${r.fonte.referencia}` : '') },
+  { id: 'fonte_tipo', titulo: 'Tipo da fonte', valor: (r) => (r.fonte ? (ROTULO_FONTE[r.fonte.tipo] ?? r.fonte.tipo) : '') },
+  { id: 'fonte', titulo: 'Fonte', valor: (r) => r.fonte?.referencia ?? '' },
   { id: 'versao', titulo: 'Versão', valor: (r) => r.versao },
   { id: 'vigencia_inicio', titulo: 'Início', tipo: 'data', valor: (r) => formatarDataCivil(r.vigencia_inicio) },
   { id: 'vigencia_fim', titulo: 'Fim', tipo: 'data', valor: (r) => (r.vigencia_fim ? formatarDataCivil(r.vigencia_fim) : '') },
@@ -75,7 +78,8 @@ const colunasCatalogo: readonly ColunaFiscal<CatalogoLinha>[] = [
   { id: 'uf_destino', titulo: 'UF destino', valor: (c) => ou(c.uf_destino) },
   { id: 'crt', titulo: 'CRT', tipo: 'numero', valor: (c) => (c.crt === null ? 'Todos' : String(c.crt)) },
   { id: 'codigo', titulo: 'CST/CSOSN', tipo: 'numero', valor: (c) => vazio(c.codigo) },
-  { id: 'fonte', titulo: 'Fonte', valor: (c) => (c.fonte ? `${c.fonte.tipo} ${c.fonte.referencia}` : '') },
+  { id: 'fonte_tipo', titulo: 'Tipo da fonte', valor: (c) => (c.fonte ? (ROTULO_FONTE[c.fonte.tipo] ?? c.fonte.tipo) : '') },
+  { id: 'fonte', titulo: 'Fonte', valor: (c) => c.fonte?.referencia ?? '' },
   { id: 'versao', titulo: 'Versão', valor: (c) => c.versao },
   { id: 'vigencia_inicio', titulo: 'Início', tipo: 'data', valor: (c) => formatarDataCivil(c.vigencia_inicio) },
   { id: 'vigencia_fim', titulo: 'Fim', tipo: 'data', valor: (c) => (c.vigencia_fim ? formatarDataCivil(c.vigencia_fim) : '') },
