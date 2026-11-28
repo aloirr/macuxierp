@@ -121,4 +121,25 @@ describe('formulário da regra (grade de 12 colunas, regra 11)', () => {
     expect(opcoesDoCampo(cod, '61')).toBe(cod.opcoes);
     expect(opcoesDoCampo(cod, '77').at(-1)).toEqual({ valor: '77', rotulo: '77 – código não listado' });
   });
+  it('RN-FIS-04: CRT e CST de IPI, PIS, COFINS, IBS/CBS e IS são listas "código – nome" e toda dica termina com ponto', () => {
+    const c = (n: string) => CAMPOS_REGRA.find((x) => x.nome === n)!;
+    expect(c('crt').opcoes!.map((o) => o.rotulo)).toEqual(['Todos', '1 – Simples Nacional', '2 – Simples Nacional, excesso de sublimite', '3 – Regime normal', '4 – MEI']);
+    for (const n of ['cst_ipi', 'cst_pis', 'cst_cofins', 'cst_ibs_cbs', 'cst_is']) {
+      expect(c(n).tipo, n).toBe('selecao');
+      expect(c(n).opcoes!.slice(1).every((o) => o.rotulo.startsWith(`${o.valor} – `)), n).toBe(true);
+    }
+    expect(c('cst_ibs_cbs').opcoes!.map((o) => o.valor)).toEqual(expect.arrayContaining(['000', '010']));
+    expect(c('cst_pis').opcoes!.map((o) => o.valor)).toEqual(expect.arrayContaining(['01', '99']));
+    expect(opcoesDoCampo(c('cst_pis'), '77').at(-1)!.rotulo).toBe('77 – código não listado');
+    for (const campo of CAMPOS_REGRA) if (campo.ajuda) expect(campo.ajuda, campo.nome).toMatch(/\.$/);
+    expect(CAMPOS_REGRA.find((x) => x.nome === 'p_ibs_mun')!.rotulo).toBe('IBS do município (%)');
+  });
+  it('RN-FIS-04: as colunas Regime e Situação tributária da lista e do catálogo mostram "código – nome"', () => {
+    const linha = RegraLinha.parse({ ...regra({ crt: 3, codigo: '20' }), updated_at: '2026-01-01T00:00:00.000Z', situacao: 'vigente' });
+    const v = (id: string) => paginaRegras.colunas.find((c) => c.id === id)!.valor(linha);
+    expect(v('crt')).toBe('3 – Regime normal');
+    expect(v('codigo')).toBe('20 – Com redução de base de cálculo');
+    expect(paginaCatalogo.colunas.find((c) => c.id === 'crt')!.titulo).toBe('Regime (CRT)');
+    expect(paginaCatalogo.colunas.find((c) => c.id === 'codigo')!.titulo).toBe('Situação tributária');
+  });
 });
