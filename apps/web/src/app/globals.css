@@ -175,8 +175,17 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 .formulario > .campo.campo-8 { grid-column: span 8; }
 .formulario > .campo.campo-3 { grid-column: span 3; }
 .formulario > .campo.campo-curto.campo-inicio-linha { grid-column: 1 / span 2; }
+.formulario > .campo.campo-col-1 { grid-column: span 1; }
+.formulario > .campo.campo-col-2 { grid-column: span 2; }
+.formulario > .campo.campo-col-3 { grid-column: span 3; }
+.formulario > .campo.campo-col-4 { grid-column: span 4; }
+.formulario > .campo.campo-col-6 { grid-column: span 6; }
+.formulario > .campo.campo-col-8 { grid-column: span 8; }
+.formulario > .campo.campo-col-12 { grid-column: span 12; }
 @media (max-width: 1100px) { .formulario > .campo { grid-column: 1 / -1; } .formulario > .campo.campo-curto, .formulario > .campo.campo-curto.campo-inicio-linha { grid-column: span 3; } .formulario > .campo.campo-medio, .formulario > .campo.campo-3 { grid-column: span 6; } .formulario > .campo.campo-8 { grid-column: 1 / -1; } }
 @media (max-width: 640px) { .formulario > .campo, .formulario > .campo.campo-curto.campo-inicio-linha, .formulario > .campo.campo-curto, .formulario > .campo.campo-medio, .formulario > .campo.campo-3, .formulario > .campo.campo-8 { grid-column: 1 / -1; } }
+@media (max-width: 1100px) { .formulario > .campo.campo-col-1, .formulario > .campo.campo-col-2, .formulario > .campo.campo-col-3 { grid-column: span 3; } .formulario > .campo.campo-col-4, .formulario > .campo.campo-col-6 { grid-column: span 6; } .formulario > .campo.campo-col-8, .formulario > .campo.campo-col-12 { grid-column: 1 / -1; } }
+@media (max-width: 640px) { .formulario > .campo[class*='campo-col-'] { grid-column: 1 / -1; } }
 /* Texto corrido: no máximo 72 caracteres por linha, só nos blocos de texto (nunca no contêiner). */
 .apoio, p.erro, .aviso-sucesso, .faixa-aviso { max-width: 72ch; }
 .senha-provisoria { display: block; font-size: var(--mx-tamanho-grande); font-weight: 600; padding: 8px 0; word-break: break-all; user-select: all; }
