@@ -86,9 +86,19 @@ export type UsuarioConfigComSenha = z.infer<typeof UsuarioConfigComSenha>;
 export const UsuarioExcluido = z.object({ id: Uuid, situacao: z.literal('excluido') });
 export type UsuarioExcluido = z.infer<typeof UsuarioExcluido>;
 
+/**
+ * T-0130: filiais da empresa para o campo "Filiais" do cadastro de usuário no /config. Só o necessário para escolher
+ * (id, nome, se é a padrão): o CNPJ e o endereço da filial não saem do portal. A leitura exige função própria do banco.
+ */
+export const FilialConfig = z.object({ id: Uuid, nome: z.string(), padrao: z.boolean() });
+export type FilialConfig = z.infer<typeof FilialConfig>;
+export const ListaFiliaisConfig = z.object({ itens: z.array(FilialConfig) });
+export type ListaFiliaisConfig = z.infer<typeof ListaFiliaisConfig>;
+
 /** Rotas do portal (com o prefixo `/v1/plataforma`). Criar e Redefinir senha exigem Idempotency-Key. */
 export const ROTAS_USUARIOS_CONFIG = {
   listar: { metodo: 'GET', caminho: '/v1/plataforma/empresas/:id/usuarios' },
+  filiais: { metodo: 'GET', caminho: '/v1/plataforma/empresas/:id/filiais' },
   criar: { metodo: 'POST', caminho: '/v1/plataforma/empresas/:id/usuarios' },
   editar: { metodo: 'PATCH', caminho: '/v1/plataforma/empresas/:id/usuarios/:usuario' },
   redefinirSenha: { metodo: 'POST', caminho: '/v1/plataforma/empresas/:id/usuarios/:usuario/senha' },
