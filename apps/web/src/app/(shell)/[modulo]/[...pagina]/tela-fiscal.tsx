@@ -88,7 +88,7 @@ export async function QualRegraVale({ acesso, rota, busca }: { acesso: string; r
     }
   }
   const campo = (nome: (typeof CAMPOS_VALE)[number], rotulo: string, colunas: number, opcoes?: readonly { valor: string; rotulo: string }[]) => (
-    <label className={`campo campo-col-${colunas}`}>
+    <label className={`campo campo-alinhado campo-col-${colunas}`}>
       <span>{rotulo}</span>
       {opcoes ? (
         <select name={`vale_${nome}`} defaultValue={q[nome]}><option value="">Selecione</option>{opcoes.map((o) => <option key={o.valor} value={o.valor}>{o.rotulo}</option>)}</select>
@@ -98,7 +98,7 @@ export async function QualRegraVale({ acesso, rota, busca }: { acesso: string; r
     </label>
   );
   return (
-    <section className="cartao-ficha" aria-labelledby="h-vale">
+    <section className="cartao-ficha cartao-consulta" aria-labelledby="h-vale">
       <h2 id="h-vale" className="titulo-cartao">Qual regra vale</h2>
       <p className="apoio">Informe a operação com os 8 dígitos do NCM, o CFOP de 4 e as UFs de 2 letras; a resposta é a regra que o cálculo usaria hoje.</p>
       <form method="get" action={rota} className="formulario">

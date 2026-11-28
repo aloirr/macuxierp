@@ -119,7 +119,7 @@ function CampoDaRegra({ campo: c, valor, erro, desligado, aoMudar }: { campo: Ca
   const ajuda = texto?.ajuda ?? c.ajuda;
   const comum = { id, disabled: desligado, 'aria-invalid': erro ? true : undefined, 'aria-describedby': erro ? `${id}-erro` : ajuda ? `${id}-ajuda` : undefined } as const;
   return (
-    <label className={`campo campo-col-${c.colunas}`} htmlFor={id}>
+    <label className={`campo campo-alinhado campo-col-${c.colunas}`} htmlFor={id}>
       <span>{rotulo}{c.obrigatorio ? ' *' : ''}</span>
       {c.opcoes ? (
         <select {...comum} value={valor} onChange={(e) => aoMudar(e.target.value)}>
