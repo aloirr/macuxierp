@@ -241,3 +241,30 @@ test('caminhos: todo scripts/deploy/... citado no conferir e na trava existe no 
   }
   assert.deepEqual(faltando, []);
 });
+
+test('chave do host: publicar e diagnóstico põem no resumo a chave e a impressão digital, nunca o host (v0.3.29)', () => {
+  const blocos = [];
+  for (const wf of ['producao-publicar', 'producao-diagnostico']) {
+    const txt = ler(`.github/workflows/${wf}.yml`);
+    const ini = txt.indexOf('# Resumo da chave do host SEM o host');
+    assert.ok(ini > 0, wf);
+    const bloco = txt.slice(ini, txt.indexOf('>> "$GITHUB_STEP_SUMMARY"', ini));
+    assert.match(bloco, /awk '\$2=="ssh-ed25519"\{print \$2" "\$3; exit\}' ~\/\.ssh\/known_hosts/, wf);
+    assert.match(bloco, /printf 'macuxierp-prod %s\\n' "\$chave_host"/, wf);
+    assert.match(bloco, /ssh-keygen -lf "\$tmp_kh"/, wf);
+    assert.match(bloco, /SHA256:wRktlR17SPnfY7hK7u1\/4XhMJ1qeON3xyFzF\+b9Gy0s/, wf);
+    assert.match(bloco, /Chave pública: \\`\$chave_host\\`/, wf);
+    assert.match(bloco, /Impressão digital: \\`\$digital_host\\`/, wf);
+    assert.doesNotMatch(txt, /^\s*set\s+(-\w*x|-o\s+xtrace)/m, wf);
+    // nenhuma linha que escreve no resumo (nem o grupo { ... } >> resumo) cita o host
+    const linhas = txt.split('\n');
+    linhas.forEach((l, i) => {
+      if (!l.includes('GITHUB_STEP_SUMMARY')) return;
+      let j = i;
+      if (/^\s*\}/.test(l)) while (j > 0 && !/^\s*\{\s*$/.test(linhas[j])) j--;
+      assert.doesNotMatch(linhas.slice(j, i + 1).join('\n'), /PROD_HOST|\$\{?HOST\b/, `${wf}:${i + 1}`);
+    });
+    blocos.push(bloco);
+  }
+  assert.equal(blocos[0], blocos[1], 'o bloco é idêntico nos dois workflows');
+});
