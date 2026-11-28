@@ -16,7 +16,7 @@ export const API_TABELAS_PRECO = '/v1/cadastros/tabelas-preco';
 
 export type TabelaPrecoResumo = TabelaPreco;
 
-const MSG_DATA = 'Use a data no formato AAAA-MM-DD';
+const MSG_DATA = 'Informe uma data válida.';
 
 export const paginaTabelasPreco = definirPaginaLista({
   id: 'tabelas-preco', api: API_TABELAS_PRECO, item: TabelaPreco, busca: true, inativos: true,
@@ -33,8 +33,8 @@ export const paginaTabelasPreco = definirPaginaLista({
 
 export const CAMPOS_TABELA_PRECO: readonly CampoEdicao[] = [
   { nome: 'nome', rotulo: 'Nome', tipo: 'texto', obrigatorio: true },
-  { nome: 'vigencia_inicio', rotulo: 'Início da vigência', tipo: 'data', obrigatorio: true, ajuda: 'AAAA-MM-DD.' },
-  { nome: 'vigencia_fim', rotulo: 'Fim da vigência', tipo: 'data', ajuda: 'AAAA-MM-DD; vazio = sem fim.' },
+  { nome: 'vigencia_inicio', rotulo: 'Início da vigência', tipo: 'data', obrigatorio: true },
+  { nome: 'vigencia_fim', rotulo: 'Fim da vigência', tipo: 'data', ajuda: 'Vazio = sem fim.' },
   { nome: 'padrao', rotulo: 'Tabela padrão', tipo: 'booleano', ajuda: 'A padrão vale para o cliente sem tabela.' },
 ];
 
