@@ -29,12 +29,12 @@ describe('T-0087: telas do core no BKO (RF-CORE-02/03/05)', () => {
     expect(paginaAuditoria.consulta.safeParse({ de: 'ontem' }).success).toBe(false);
   });
 
-  it('RD-2419 e LGPD: a auditoria mostra o nome do autor (nunca o id nem e-mail), sem coluna de UUID e sem antes/depois', () => {
+  it('RD-2419 e LGPD: a auditoria mostra o nome do autor (nunca o id nem e-mail), com o Registro (entidade_id) e sem antes/depois', () => {
     const ids = paginaAuditoria.colunas.map((c) => c.id);
-    expect(ids).toEqual(['ocorrido_em', 'usuario_nome', 'acao', 'entidade']);
+    expect(ids).toEqual(['ocorrido_em', 'usuario_nome', 'acao', 'entidade', 'entidade_id']);
     const csv = paraCsv(paginaAuditoria.colunas, [{ id: ID, usuario_id: ID, usuario_nome: 'Maria Teste', acao: 'core.usuario.criado', entidade: 'usuario', entidade_id: ID, ocorrido_em: '2026-11-10T12:00:00.000Z' }]);
     expect(csv).toContain('Maria Teste');
-    expect(csv).not.toContain(ID);
+    expect(csv).toContain('Registro');
     expect(csv).toContain('Usuário criado');
     const campos = (paginaAuditoria.item as unknown as { shape: Record<string, unknown> }).shape;
     expect(campos).not.toHaveProperty('antes');

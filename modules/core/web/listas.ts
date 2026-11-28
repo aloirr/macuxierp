@@ -146,6 +146,7 @@ export const COLUNAS_AUDITORIA: readonly ColunaCore<AuditoriaItemLista>[] = [
   { id: 'usuario_nome', titulo: 'Usuário', valor: (a) => a.usuario_nome ?? 'Sistema' },
   { id: 'acao', titulo: 'Ação', valor: (a) => rotuloAcaoAuditoria(a.acao) },
   { id: 'entidade', titulo: 'Entidade', valor: (a) => rotuloEntidadeAuditoria(a.entidade) },
+  { id: 'entidade_id', titulo: 'Registro', valor: (a) => a.entidade_id ?? '' },
 ];
 
 /** Tom do selo da coluna Situação (RN-CORE-17) na `TabelaDensa`; o texto é o de `ROTULOS_SITUACAO_USUARIO`. */
