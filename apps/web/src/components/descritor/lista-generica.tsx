@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { pode, type Perfil } from '@macuxierp/platform-sdk';
 import { buscarPagina } from '@/lib/listas';
 import { RespostaFonte, opcoesDaResposta, caminhoDaFonte, type Opcao } from '@/lib/descritor/fontes';
-import { NaoAutenticado, SemPermissao, ehFalhaDeSessao, getValidado } from '@/lib/api';
+import { NaoAutenticado, SemPermissao, ehFalhaDeSessao, getValidado, textoSemPermissao } from '@/lib/api';
 import { ROTA_SENHA } from '@/lib/troca-pendente';
 import { filtrosDaUrl } from '@macuxierp/platform-sdk/listas';
 import { colunasDosFiltros, filtrosParaApi, rotuloDaCelula, textoTodos } from '@/lib/descritor/lista';
@@ -38,7 +38,7 @@ export async function ListaGenerica({ tela, rota, rotaDaPagina, busca, perfil, a
     // A lista renderiza fora do try da TelaGenerica: sessão vencida ou senha provisória resolvem aqui, como lá.
     if (ehFalhaDeSessao(e)) redirect(e instanceof NaoAutenticado ? '/sessao/renovar' : ROTA_SENHA);
     // 403 da API (ex.: usuários e auditoria só do administrador, RN-CORE-09): mensagem fixa em vez da tela de erro.
-    if (e instanceof SemPermissao) return <p className="erro" role="alert">{TEXTO_SEM_PERMISSAO}</p>;
+    if (e instanceof SemPermissao) return <p className="erro" role="alert">{textoSemPermissao(e, TEXTO_SEM_PERMISSAO)}</p>;
     throw e;
   }
   const [pagina, opcoes] = resultado;

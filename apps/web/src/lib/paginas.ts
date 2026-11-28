@@ -18,7 +18,7 @@ export interface PaginaRegistrada extends PaginaBase {
 /** Fonte única de rota e menu: o menu e a rota `[modulo]/[...pagina]` leem daqui. Módulo novo registra as páginas aqui. */
 /** Só o que o menu e a rota precisam do descritor do módulo (a lista, colunas e API ficam no módulo). */
 function registrar(modulo: ModuloId, p: PaginaBase, extra: { ocultaNoMenu?: boolean } = {}): PaginaRegistrada {
-  return { modulo, menu: p.menu, titulo: p.titulo, rota: p.rota, ...(p.ver ? { ver: p.ver } : {}), ...(p.aviso ? { aviso: p.aviso } : {}), ...(p.ocultaNoMenu !== undefined ? { ocultaNoMenu: p.ocultaNoMenu } : {}), ...extra };
+  return { modulo, menu: p.menu, titulo: p.titulo, rota: p.rota, ...(p.ver ? { ver: p.ver } : {}), ...(p.editar ? { editar: p.editar } : {}), ...(p.aviso ? { aviso: p.aviso } : {}), ...(p.ocultaNoMenu !== undefined ? { ocultaNoMenu: p.ocultaNoMenu } : {}), ...extra };
 }
 
 /**
@@ -28,13 +28,17 @@ function registrar(modulo: ModuloId, p: PaginaBase, extra: { ocultaNoMenu?: bool
  */
 export const ROTAS_SEM_TELA: ReadonlySet<string> = new Set([
   // cadastros: Estoque, Tabelas oficiais, Condições e Equipe entraram na T-0123 (lotes A e B); nenhuma rota do cadastros fica sem tela
-  '/core/empresa', '/core/empresa/certificado', '/core/empresa/exportacao', // core: o "Ambiente fiscal" fica
+  '/core/empresa/certificado', '/core/empresa/exportacao', // core: a Empresa (com o Ambiente fiscal) fica; certificado e exportação ainda sem tela
   '/fiscal/regras-fiscais', // fiscal: o módulo ainda não declara páginas
 ]);
 const semTela = (p: PaginaBase) => ROTAS_SEM_TELA.has(p.rota);
 
+/** Fora do menu, mas com tela: o Ambiente fiscal é bloco da página Empresa (T-0125) e só abre pela URL. */
+const OCULTAS_COM_TELA: ReadonlySet<string> = new Set(['/core/empresa/ambiente-fiscal']);
+const oculta = (p: PaginaBase) => ROTAS_SEM_TELA.has(p.rota) || OCULTAS_COM_TELA.has(p.rota);
+
 export const PAGINAS_REGISTRADAS: readonly PaginaRegistrada[] = [
-  ...PAGINAS_CORE.map((p) => registrar('core', p, semTela(p) ? { ocultaNoMenu: true } : {})),
+  ...PAGINAS_CORE.map((p) => registrar('core', p, oculta(p) ? { ocultaNoMenu: true } : {})),
   // Usuário novo (T-0087): formulário fora do menu, aberto pelo botão "Novo usuário" da lista (só quem gerencia usuários).
   registrar('core', { menu: 'Usuários e perfis', titulo: 'Novo usuário', rota: ROTA_USUARIO_NOVO, ver: 'core.usuario.gerir' }, { ocultaNoMenu: true }),
   ...PAGINAS.filter((p) => !ROTAS_DO_ADAPTADOR.has(p.rota)).map((p) => registrar('cadastros', p, semTela(p) ? { ocultaNoMenu: true } : {})),

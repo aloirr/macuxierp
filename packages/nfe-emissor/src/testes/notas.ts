@@ -107,6 +107,21 @@ export const vendaInterestadualConsumidorFinal = nota([{ ...itemDifal, CFOP: '61
   dest: { CNPJ: BASE.dest.CNPJ, xNome: BASE.dest.xNome, enderDest: { ...BASE.dest.enderDest, cMun: '1501402', xMun: 'Belem', UF: 'PA', CEP: '66010000' }, indIEDest: 9 },
 });
 
+/**
+ * IPI pronto, como viria do modulo-fiscal (calc_ipi): saída tributada (CST 50), enquadramento 999, base 99,90 a 5%
+ * = 4,995 → 5,00 (meio para cima, adendo da ADR 0002).
+ */
+export const IPI_DE_TESTE = {
+  cEnq: '999',
+  IPITrib: { CST: '50', vBC: 9990, pIPI: '5', vIPI: 500 },
+} as const satisfies NonNullable<Item['imposto']['IPI']>;
+
+const itemIpi = itemTributado(1, '3', '33.3', '20');
+/** Venda de indústria dentro do AM com IPI no item; o pagamento cobre o vNF (vProd + vIPI). */
+export const vendaComIpi = nota([{ ...itemIpi, imposto: { ...itemIpi.imposto, IPI: IPI_DE_TESTE } }], {
+  pag: { detPag: [{ indPag: 0, tPag: '01', vPag: itemIpi.vProd + IPI_DE_TESTE.IPITrib.vIPI }] },
+});
+
 /** Nota com Imposto Seletivo (bebida açucarada, NCM 2202): grupo IS e ISTot. */
 export const notaComIs = nota([
   {

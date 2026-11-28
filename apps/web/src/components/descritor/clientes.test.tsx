@@ -47,4 +47,15 @@ describe('Clientes no renderizador genérico', () => {
     expect(h).toContain('Salvar alterações');
     expect(h).not.toContain('campo-end_cep');
   });
+
+  it('só leitura (T-0129): perfil sem a ação editar vê os dados como texto, sem campo, sem Salvar e só com Voltar', () => {
+    const { valores, original } = EDITAR_CLIENTE.edicao!.abrir(cliente(0));
+    const h = renderToStaticMarkup(<FormularioGenerico rota={ROTA_CLIENTE} opcoes={{ filial_id: [{ valor: F, rotulo: 'Matriz' }] }} produtos={[]} perfil="leitura" campos={EDITAR_CLIENTE.camposDoPerfil!('leitura')} aberto={{ valores, original, id: 'x' }} somenteLeitura />);
+    expect(h).toContain('Bar do Zé Ltda');
+    expect(h).toContain('Matriz');
+    expect(h).not.toMatch(/<(input|select|textarea)\b/);
+    expect(h).not.toContain('Salvar alterações');
+    expect(h).not.toContain('type="submit"');
+    expect(h).toContain('>Voltar<');
+  });
 });

@@ -313,7 +313,13 @@ export type ListaConsulta = z.infer<typeof ListaConsulta>;
 export const EstoqueConsulta = ConsultaPaginada.extend({ busca: ConsultaLista.shape.busca, filial_id: Uuid.optional(), produto_id: Uuid.optional() });
 export type EstoqueConsulta = z.infer<typeof EstoqueConsulta>;
 /** Linha da lista do estoque: o `id` da linha do saldo é o cursor (ordem estável por `id`). O evento segue com `SaldoEstoque`, sem `id`. */
-export const SaldoEstoqueItem = SaldoEstoque.extend({ id: Uuid });
+export const SaldoEstoqueItem = SaldoEstoque.extend({
+  id: Uuid,
+  /** Aditivo: o que a tela mostra no lugar dos ids (a filial cai na razão social quando não há fantasia). */
+  produto_codigo: z.string().optional(),
+  produto_descricao: z.string().optional(),
+  filial_nome: z.string().optional(),
+});
 export type SaldoEstoqueItem = z.infer<typeof SaldoEstoqueItem>;
 
 // ---- Consultas externas (RF-CAD-02/03, RN-CAD-05): só sugestão ----
@@ -404,6 +410,16 @@ export const OficialLinha = z.object({
   vigencia_fim: z.string().nullable(),
 });
 export type OficialLinha = z.infer<typeof OficialLinha>;
+const OficialBase = { id: Uuid, vigencia_inicio: z.string().nullable(), vigencia_fim: z.string().nullable() };
+/** Itens de cada tabela oficial (aditivo): o que `GET /oficiais/:tabela` devolve. Descrição já sem tag HTML (RN-CAD-10). */
+export const NcmItem = z.object({ ...OficialBase, codigo: z.string(), descricao: z.string().nullish() });
+export type NcmItem = z.infer<typeof NcmItem>;
+export const CestItem = z.object({ ...OficialBase, codigo: z.string(), descricao: z.string().nullish(), segmento: z.string().nullish() });
+export type CestItem = z.infer<typeof CestItem>;
+export const CfopItem = z.object({ ...OficialBase, codigo: z.string(), descricao: z.string().nullish() });
+export type CfopItem = z.infer<typeof CfopItem>;
+export const MunicipioItem = z.object({ ...OficialBase, codigo: z.string(), nome: z.string(), uf: z.string() });
+export type MunicipioItem = z.infer<typeof MunicipioItem>;
 
 // ---- Carga inicial por CSV (T-0026; docs/desenho/T-0026.md, seções 3 e 6) ----
 /** Ordem de dependência da carga (D13). */
