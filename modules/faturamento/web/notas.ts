@@ -29,7 +29,7 @@ export interface Selo {
 export const ROTULO_STATUS_NOTA: Readonly<Record<StatusNota, Selo>> = {
   rascunho: { texto: 'Rascunho', tom: 'neutro' },
   em_autorizacao: { texto: 'Em autorização', tom: 'alerta', dica: 'Aguardando a SEFAZ' },
-  autorizada_guarda_pendente: { texto: 'Autorizada', tom: 'alerta', dica: 'Autorizada. Salvando o arquivo da nota' },
+  autorizada_guarda_pendente: { texto: 'Autorizada, salvando o arquivo', tom: 'alerta', dica: 'Autorizada. Salvando o arquivo da nota' },
   autorizada: { texto: 'Autorizada', tom: 'ok' },
   rejeitada: { texto: 'Rejeitada', tom: 'erro' },
   denegada: { texto: 'Denegada', tom: 'erro', dica: 'A SEFAZ recusou em definitivo. Fale com o fiscal' },
