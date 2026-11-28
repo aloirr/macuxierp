@@ -48,6 +48,14 @@ describe('TabelaDensa carregar mais', () => {
     expect(h).toContain('aria-live="polite"');
     expect(h).toContain('2 registros carregados.');
   });
+  it('anúncio: 0 vazio, 1 no singular, 2 no plural', () => {
+    const anuncio = (linhas: typeof base.linhas) =>
+      renderToStaticMarkup(<TabelaDensa {...base} linhas={linhas} aoCarregarMais={nada} />);
+    expect(anuncio([])).not.toContain('carregado');
+    expect(anuncio(base.linhas.slice(0, 1))).toContain('1 registro carregado.');
+    expect(anuncio(base.linhas.slice(0, 1))).not.toContain('registros carregados');
+    expect(anuncio(base.linhas)).toContain('2 registros carregados.');
+  });
   it('sem aoCarregarMais não há role="status"', () => {
     expect(renderToStaticMarkup(<TabelaDensa {...base} />)).not.toContain('role="status"');
   });
