@@ -14,7 +14,7 @@ import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CODIGO_EMAIL_EM_USO, MENSAGEM_EMAIL_EM_USO } from '../../../packages/platform-sdk/src/erros.ts';
+import { CODIGO_EMAIL_EM_USO, MENSAGEM_EMAIL_EM_USO } from '@macuxierp/platform-sdk/erros';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
