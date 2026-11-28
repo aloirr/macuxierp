@@ -1,8 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import { quadroEmpresaFiscal, ROTULO_MODULO, rotuloDaAcao, TEXTO_AMBIENTE_HOMOLOGACAO } from '@macuxierp/core/web';
+import { fichaEmpresa, quadroEmpresaFiscal, ROTULO_MODULO, rotuloDaAcao, TEXTO_AMBIENTE_HOMOLOGACAO } from '@macuxierp/core/web';
 import { AmbienteFiscal, Empresa } from '@macuxierp/core/contracts';
-import { VistaAmbienteFiscal, VistaPerfis } from './vistas';
+import { VistaAmbienteFiscal, VistaEmpresa, VistaPerfis } from './vistas';
 import { matrizDePerfis } from '@/lib/telas/core';
 import { PERFIS, PERMISSOES } from '@macuxierp/platform-sdk';
 import { PerfilComAcoes } from '@macuxierp/core/contracts';
@@ -43,5 +43,20 @@ describe('perfis e permissões no BKO (T-0087)', () => {
     expect(h).not.toMatch(/<button|<form|<input|<select/);
     expect(h).toContain('scope="col"');
     expect(h).toContain('scope="row"');
+  });
+});
+
+describe('Empresa no BKO (T-0125, RF-CORE-01): a ficha do core com o Ambiente fiscal como bloco', () => {
+  const h = renderToStaticMarkup(<VistaEmpresa ficha={fichaEmpresa(empresa, [amb(F1, 'homologacao')], { [F1]: 'Matriz Manaus' })} />);
+  it('dados só de leitura como texto, na grade de 12 (IE curta) e o CNPJ formatado', () => {
+    expect(h).toContain('Dados da empresa');
+    expect(h).toContain('11.222.333/0001-81');
+    expect(h).toContain('campo-col-1');
+    expect(h).not.toMatch(/<input|<button|<select/);
+  });
+  it('o Ambiente fiscal é bloco da mesma página, com a filial e sem troca para produção (RN-CORE-08)', () => {
+    expect(h).toContain('Ambiente fiscal');
+    expect(h).toContain('Matriz Manaus');
+    expect(h).toContain(TEXTO_AMBIENTE_HOMOLOGACAO);
   });
 });

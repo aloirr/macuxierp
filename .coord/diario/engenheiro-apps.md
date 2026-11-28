@@ -65,3 +65,4 @@
 2026-11-28 — T-0135 — selos de Integrações (4 situações), selo da licença com o vocabulário do core, temFdv sem cast, um botão por linha, coluna Cadastro, marca ERP → Macuxi FDV, Nova empresa à esquerda
 2026-11-28 — T-0126 — Editar pedido no shell: PUT com If-Match, itens preenchidos, 412/409/422 com Recarregar, Editar no detalhe e na linha da lista; 3 testes de rota ajustados
 2026-11-28 — v0.3.32 itens web — e2e config-usuarios com o texto do contrato e sem corpo no log; Salvar/Criar sem repetir o h1 (RD-2429); CNAE principal uma vez (RD-2425); frase única sem chave no ERP→FDV (RD-2423)
+2026-11-28 — v0.3.32 apps-3 core telas — T-0125: Empresa renderiza a fichaEmpresa() do core com o Ambiente fiscal como bloco (oculto no menu); colunasSe do cadastros lido de forma tolerante; exportação segue sem tela
