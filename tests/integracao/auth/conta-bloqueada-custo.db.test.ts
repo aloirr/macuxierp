@@ -34,7 +34,7 @@ describe.skipIf(!PG_DISPONIVEL)('T-0111 (RD-2288, RD-2301): o mesmo custo argon2
   let app: AppPortal;
   let ip = 1;
   const entrar = (email: string, s = SENHA_ERRADA) =>
-    app.inject({ method: 'POST', url: '/v1/auth/login', remoteAddress: `10.111.9.${ip++}`, payload: { empresa: SLUG.toUpperCase(), email, senha: s } });
+    app.inject({ method: 'POST', url: '/v1/auth/login', remoteAddress: `10.111.9.${ip++}`, payload: { email, senha: s } });
   /** Conferências argon2 de um login. */
   const custo = async (email: string) => {
     const antes = conferencias();

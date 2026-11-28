@@ -131,7 +131,7 @@ INSERT INTO faturamento.pedido_a_faturar (tenant_id, pedido_id, filial_id, clien
     expect(corpoFrase).toMatchObject({ codigo: 'RN-CAD-10', detalhes: { codigo: 'frase_nao_confere' } });
     // o 422 do zerar não aponta campo (diferente do Substituir tudo, que traz campos.frase: carga-config.db.test.ts)
     expect(corpoFrase.campos?.frase).toBeUndefined();
-    const login = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa: (await adm<{ slug: string }>('SELECT slug FROM plataforma.tenant WHERE id = $1', [A]))[0]!.slug, email: 'adm-zp@exemplo.invalid', senha: SENHA_DE_TESTE } });
+    const login = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { email: 'adm-zp@exemplo.invalid', senha: SENHA_DE_TESTE } });
     expect(login.statusCode, login.body).toBe(200);
     const jwt = login.json<{ token_acesso: string }>().token_acesso;
     expect((await p.pedir('POST', url('zerar', A), { cabecalhos: { authorization: `Bearer ${jwt}` }, chave: randomUUID(), corpo: { frase: FRASE_ZERAR_DADOS } })).statusCode).toBe(401);
