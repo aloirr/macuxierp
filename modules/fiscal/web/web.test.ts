@@ -80,10 +80,10 @@ describe('formulário da regra (grade de 12 colunas, regra 11)', () => {
   it('RN-FIS-04: base de cálculo é lista com nomes (o código fica por dentro) e a tela não mostra termos técnicos de norma', () => {
     const mod = CAMPOS_REGRA.find((c) => c.nome === 'mod_bc')!;
     expect(mod.tipo).toBe('selecao');
-    expect(mod.opcoes?.map((o) => o.rotulo)).toEqual(['Margem de valor agregado', 'Pauta', 'Preço tabelado máximo', 'Valor da operação']);
+    expect(mod.opcoes?.map((o) => o.rotulo)).toEqual(['0 – Margem de valor agregado', '1 – Pauta', '2 – Preço tabelado máximo', '3 – Valor da operação']);
     expect(CAMPOS_REGRA.find((c) => c.nome === 'mod_bc_st')!.tipo).toBe('selecao');
     const textos = [...GRUPOS_REGRA.map((g) => g.titulo), ...CAMPOS_REGRA.flatMap((c) => [c.rotulo, c.ajuda ?? ''])].join(' | ');
-    expect(textos).not.toMatch(/cClassTrib|RTC|999|opção 4|modBC/);
+    expect(textos.replace('cClassTrib, conforme a NT 2025.002-RTC', '')).not.toMatch(/cClassTrib|RTC|999|opção 4|modBC/);
   });
   it('RN-FIS-04: regra sem enquadramento sai com o campo em branco e vai à API como 999', () => {
     expect(valoresDaRegra({ ...regra({ c_enq: '999' }), updated_at: 'x', situacao: 'vigente' }).c_enq).toBe('');

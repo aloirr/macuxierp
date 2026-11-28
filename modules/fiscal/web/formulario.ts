@@ -31,20 +31,30 @@ const UF_OPCOES = [TODAS, ...UFS.map((u) => ({ valor: u, rotulo: u }))];
 const SIM_NAO = [{ valor: '', rotulo: 'Não informado' }, { valor: 'sim', rotulo: 'Sim' }, { valor: 'nao', rotulo: 'Não' }] as const;
 
 const MOD_BC = [
-  { valor: '0', rotulo: 'Margem de valor agregado' },
-  { valor: '1', rotulo: 'Pauta' },
-  { valor: '2', rotulo: 'Preço tabelado máximo' },
-  { valor: '3', rotulo: 'Valor da operação' },
+  { valor: '0', rotulo: '0 – Margem de valor agregado' },
+  { valor: '1', rotulo: '1 – Pauta' },
+  { valor: '2', rotulo: '2 – Preço tabelado máximo' },
+  { valor: '3', rotulo: '3 – Valor da operação' },
 ] as const;
 /** modBCST do Manual da NF-e: o motor só calcula a margem de valor agregado; a API recusa as demais com mensagem em português. */
 const MOD_BC_ST = [
   { valor: '', rotulo: 'Não se aplica' },
-  { valor: '4', rotulo: 'Margem de valor agregado' },
-  { valor: '5', rotulo: 'Pauta' },
-  { valor: '0', rotulo: 'Preço tabelado ou máximo sugerido' },
-  { valor: '1', rotulo: 'Lista negativa' },
-  { valor: '2', rotulo: 'Lista positiva' },
-  { valor: '3', rotulo: 'Lista neutra' },
+  { valor: '4', rotulo: '4 – Margem de valor agregado' },
+  { valor: '5', rotulo: '5 – Pauta' },
+  { valor: '0', rotulo: '0 – Preço tabelado ou máximo sugerido' },
+  { valor: '1', rotulo: '1 – Lista negativa' },
+  { valor: '2', rotulo: '2 – Lista positiva' },
+  { valor: '3', rotulo: '3 – Lista neutra' },
+] as const;
+const CST_ICMS = [
+  { valor: '', rotulo: 'Não informado' },
+  { valor: '00', rotulo: '00 – Tributada integralmente' }, { valor: '10', rotulo: '10 – Tributada com ST' }, { valor: '20', rotulo: '20 – Com redução de base' },
+  { valor: '30', rotulo: '30 – Isenta ou não tributada, com ST' }, { valor: '40', rotulo: '40 – Isenta' }, { valor: '41', rotulo: '41 – Não tributada' },
+  { valor: '50', rotulo: '50 – Suspensão' }, { valor: '51', rotulo: '51 – Diferimento' }, { valor: '60', rotulo: '60 – Cobrada antes por ST' },
+  { valor: '70', rotulo: '70 – Redução de base, com ST' }, { valor: '90', rotulo: '90 – Outras' },
+  { valor: '101', rotulo: '101 – Simples, com crédito' }, { valor: '102', rotulo: '102 – Simples, sem crédito' }, { valor: '103', rotulo: '103 – Simples, faixa isenta' },
+  { valor: '201', rotulo: '201 – Simples, com crédito e ST' }, { valor: '202', rotulo: '202 – Simples, sem crédito e com ST' }, { valor: '203', rotulo: '203 – Simples, faixa isenta e com ST' },
+  { valor: '300', rotulo: '300 – Simples, imune' }, { valor: '400', rotulo: '400 – Simples, não tributada' }, { valor: '500', rotulo: '500 – Simples, ST cobrada antes' }, { valor: '900', rotulo: '900 – Simples, outros' },
 ] as const;
 const CRT_OPCOES = [TODAS, { valor: '1', rotulo: '1 Simples' }, { valor: '2', rotulo: '2 Sublimite' }, { valor: '3', rotulo: '3 Normal' }, { valor: '4', rotulo: '4 MEI' }] as const;
 
@@ -69,7 +79,7 @@ export const GRUPOS_REGRA: readonly GrupoRegra[] = [
   {
     id: 'icms', titulo: 'ICMS e FCP',
     campos: [
-      t('codigo', 'CST/CSOSN', 2, { ajuda: 'CST (2 dígitos) ou CSOSN (3)' }),
+      sel('codigo', 'CST/CSOSN', 2, CST_ICMS, { ajuda: 'CST (2 dígitos) ou CSOSN (3)' }),
       sel('mod_bc', 'Base de cálculo do ICMS', 4, MOD_BC),
       p('aliquota_icms', 'ICMS (%)', 1),
       p('reducao_bc', 'Redução (%)', 1),
@@ -101,7 +111,7 @@ export const GRUPOS_REGRA: readonly GrupoRegra[] = [
   {
     id: 'ibs-cbs-is', titulo: 'Reforma tributária (IBS, CBS e IS)',
     campos: [
-      t('cst_ibs_cbs', 'CST IBS/CBS', 2), t('c_class_trib', 'Classificação tributária', 2), p('p_ibs_uf', 'IBS UF (%)'), p('p_ibs_mun', 'IBS Mun. (%)'), p('p_cbs', 'CBS (%)'), t('versao_nt_rtc', 'Versão da NT', 2),
+      t('cst_ibs_cbs', 'CST IBS/CBS', 2), t('c_class_trib', 'Classificação tributária', 2, { ajuda: 'cClassTrib, conforme a NT 2025.002-RTC' }), p('p_ibs_uf', 'IBS UF (%)'), p('p_ibs_mun', 'IBS Mun. (%)'), p('p_cbs', 'CBS (%)'), t('versao_nt_rtc', 'Versão da NT', 2),
       p('p_red_ibs', 'Redução IBS (%)'), p('p_red_cbs', 'Redução CBS (%)'), t('cst_is', 'CST IS', 2), t('c_class_trib_is', 'Classificação do IS', 2), p('p_is', 'IS (%)'), d4('valor_unidade_is', 'IS por unidade (R$)'),
     ],
   },
