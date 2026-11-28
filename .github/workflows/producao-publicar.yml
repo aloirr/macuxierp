@@ -313,7 +313,6 @@ jobs:
               echo "### Chave do host de produção por TOFU"
               echo
               echo "Sem PROD_SSH_KNOWN_HOSTS, sem .github/producao/known_hosts e sem cache: a chave veio do ssh-keyscan."
-              echo "Impressão digital: \`$digital\`. Confira com \`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub\` na VM."
             } >> "$GITHUB_STEP_SUMMARY"
             echo "tofu=1" >> "$GITHUB_OUTPUT"
             fonte="TOFU"

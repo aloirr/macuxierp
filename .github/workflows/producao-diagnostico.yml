@@ -122,11 +122,6 @@ jobs:
             cp "$CACHE" ~/.ssh/known_hosts
             digital="$(ssh-keygen -lf "$CACHE" | awk '{print $1, $2, $NF}')"
             echo "::warning::chave do host por TOFU (ssh-keyscan): $digital — confira com a da VM (ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub)"
-            {
-              echo "### Chave do host de produção por TOFU"
-              echo
-              echo "Impressão digital: \`$digital\`. Confira com \`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub\` na VM."
-            } >> "$GITHUB_STEP_SUMMARY"
             echo "tofu=1" >> "$GITHUB_OUTPUT"
             fonte="TOFU"
           fi

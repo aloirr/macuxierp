@@ -249,12 +249,6 @@ test('chave do host: publicar e diagnóstico põem no resumo a chave e a impress
     const ini = txt.indexOf('# Resumo da chave do host SEM o host');
     assert.ok(ini > 0, wf);
     const bloco = txt.slice(ini, txt.indexOf('>> "$GITHUB_STEP_SUMMARY"', ini));
-    assert.match(bloco, /awk '\$2=="ssh-ed25519"\{print \$2" "\$3; exit\}' ~\/\.ssh\/known_hosts/, wf);
-    assert.match(bloco, /printf 'macuxierp-prod %s\\n' "\$chave_host"/, wf);
-    assert.match(bloco, /ssh-keygen -lf "\$tmp_kh"/, wf);
-    assert.match(bloco, /SHA256:wRktlR17SPnfY7hK7u1\/4XhMJ1qeON3xyFzF\+b9Gy0s/, wf);
-    assert.match(bloco, /Chave pública: \\`\$chave_host\\`/, wf);
-    assert.match(bloco, /Impressão digital: \\`\$digital_host\\`/, wf);
     assert.doesNotMatch(txt, /^\s*set\s+(-\w*x|-o\s+xtrace)/m, wf);
     // nenhuma linha que escreve no resumo (nem o grupo { ... } >> resumo) cita o host
     const linhas = txt.split('\n');
@@ -267,4 +261,11 @@ test('chave do host: publicar e diagnóstico põem no resumo a chave e a impress
     blocos.push(bloco);
   }
   assert.equal(blocos[0], blocos[1], 'o bloco é idêntico nos dois workflows');
+  const [bloco] = blocos;
+  assert.match(bloco, /awk '\$2=="ssh-ed25519"\{print \$2" "\$3; exit\}' ~\/\.ssh\/known_hosts/);
+  assert.match(bloco, /printf 'macuxierp-prod %s\\n' "\$chave_host"/);
+  assert.match(bloco, /ssh-keygen -lf "\$tmp_kh"/);
+  assert.match(bloco, /SHA256:wRktlR17SPnfY7hK7u1\/4XhMJ1qeON3xyFzF\+b9Gy0s/);
+  assert.match(bloco, /Chave pública: \\`\$chave_host\\`/);
+  assert.match(bloco, /Impressão digital: \\`\$digital_host\\`/);
 });
