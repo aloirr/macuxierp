@@ -39,10 +39,10 @@ describe('redirects atrás do túnel (T-0021)', () => {
     expect(redirecionar('//evil.com').headers.get('location')).toBe('/');
   });
 
-  it('renovar sem refresh: 307 para /login e apaga os dois cookies', async () => {
+  it('renovar sem refresh: 307 para / (tela de login) e apaga os dois cookies', async () => {
     const r = await renovar(req('/sessao/renovar'));
     expect(r.status).toBe(307);
-    expect(r.headers.get('location')).toBe('/login');
+    expect(r.headers.get('location')).toBe('/');
     expect(r.cookies.get('mx_acesso')?.value).toBe('');
     expect(r.cookies.get('mx_refresh')?.value).toBe('');
   });

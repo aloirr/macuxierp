@@ -11,7 +11,8 @@
     "dev": "next dev",
     "start": "next start",
     "e2e:versao": "node e2e/versao-nova.mjs",
-    "e2e:usuarios": "node e2e/config-usuarios.mjs"
+    "e2e:usuarios": "node e2e/config-usuarios.mjs",
+    "e2e:login-raiz": "node e2e/login-raiz.mjs"
   },
   "dependencies": {
     "@macuxierp/cadastros": "workspace:*",
