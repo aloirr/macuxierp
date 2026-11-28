@@ -25,7 +25,7 @@ async function opcoesDoFiltro(f: FiltroTela, acesso: string, perfil: Perfil): Pr
 }
 
 /** Lista genérica a partir do descritor: filtros na URL (formulário GET que funciona sem JS; com JS se aplica ao mudar, RD-2382), tabela densa, paginação por cursor e CSV. */
-export async function ListaGenerica({ tela, rota, rotaDaPagina, busca, perfil, acesso, fuso }: { tela: TelaLista; rota: string; rotaDaPagina: string; busca: URLSearchParams; perfil: Perfil; acesso: string; fuso: string }) {
+export async function ListaGenerica({ tela, rota, rotaDaPagina, busca, perfil, acesso, fuso, outrasSecoes = [] }: { outrasSecoes?: readonly { rota: string; titulo: string }[]; tela: TelaLista; rota: string; rotaDaPagina: string; busca: URLSearchParams; perfil: Perfil; acesso: string; fuso: string }) {
   const filtros = filtrosDaUrl(tela.pagina, busca);
   const todasColunas = tela.colunas(perfil, fuso);
   let resultado;
@@ -102,10 +102,11 @@ export async function ListaGenerica({ tela, rota, rotaDaPagina, busca, perfil, a
       />
       </div>
       {/* RD-2381: uma barra só, no rodapé da página, com as ações da lista e a paginação juntas. */}
-      {(novo || csv || barra || proxima) && (
+      {(novo || csv || barra || proxima || outrasSecoes.length > 0) && (
         <div className="barra-acoes barra-rodape-lista">
           {novo && <Link className="mx-botao" href={novo.rota}>{novo.rotulo}</Link>}
           {csv && <a className="mx-botao-secundario" href={csv}>Exportar CSV</a>}
+          {outrasSecoes.map((o) => <Link key={o.rota} className="mx-botao-secundario" href={o.rota}>{o.titulo}</Link>)}
           {barra && <AcoesDetalhe acoes={[barra]} rota={rota} rotaDaPagina={rotaDaPagina} origem="barra" compacta />}
           {proxima && <nav className="paginacao" aria-label="Paginação"><Link className="mx-botao-secundario" href={proxima}>Próxima página</Link></nav>}
         </div>

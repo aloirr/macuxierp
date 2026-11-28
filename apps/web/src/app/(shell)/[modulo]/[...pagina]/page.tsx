@@ -62,13 +62,13 @@ export default async function PaginaDoModulo({ params, searchParams }: { params:
       {declarada?.aviso && <p className="faixa-aviso" role="status">{declarada.aviso}</p>}
       {monitor && declarada?.rota === monitor.rota && <TelaIntegracaoFdv acesso={acesso} fuso={eu.empresa.fuso} perfil={perfil} />}
       {tela && declarada && (
-        <TelaGenerica titulo={titulo} tela={tela} rotaDaPagina={declarada.rota} rota={rota} params={resolvida.params ?? {}} busca={busca} perfil={perfil} acesso={acesso} fuso={eu.empresa.fuso} />
+        <TelaGenerica outrasSecoes={outrasSecoes} titulo={titulo} tela={tela} rotaDaPagina={declarada.rota} rota={rota} params={resolvida.params ?? {}} busca={busca} perfil={perfil} acesso={acesso} fuso={eu.empresa.fuso} />
       )}
       {/* Quadros com componente próprio (T-0087, T-0088): só leitura, exceto a bandeira (Ligar/Desligar do administrador, pelo executor do quadro). */}
       {declarada?.rota === ROTA_PERFIS && <TelaPerfis acesso={acesso} />}
       {declarada?.rota === ROTA_AMBIENTE_FISCAL && <TelaAmbienteFiscal acesso={acesso} perfil={perfil} />}
       {declarada?.rota === ROTA_BANDEIRA && <TelaBandeira acesso={acesso} perfil={perfil} rota={rota} rotaDaPagina={declarada.rota} />}
-      {outrasSecoes.length > 0 && <div className="barra-acoes">{outrasSecoes.map((p) => <Link key={p.rota} className="mx-botao-secundario" href={p.rota}>{p.titulo}</Link>)}</div>}
+      {outrasSecoes.length > 0 && tela?.tipo !== 'lista' && <div className="barra-acoes">{outrasSecoes.map((p) => <Link key={p.rota} className="mx-botao-secundario" href={p.rota}>{p.titulo}</Link>)}</div>}
       {!tela && !declarada?.aviso && declarada?.rota !== monitor?.rota && !QUADROS.has(declarada?.rota ?? '') && <p className="apoio">Disponível em breve.</p>}
     </>
   );
