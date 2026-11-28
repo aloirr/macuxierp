@@ -245,13 +245,9 @@ export async function lerMonitorFdv(token: string, id: string): Promise<MonitorC
   return validado(await chamar('GET', rotaFdv(CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.monitor, id), { token }), MonitorConectorFdv);
 }
 
-/**
- * Ligações (T-0131, C-6): contadores Enviados e Aceitos, histórico de envios (até 50) e cabeçalho do Contato da ERP → Macuxi FDV, só leitura.
- * O caminho vem de `CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.ligacoes` (SDK, #989); até lá, o modelo fixo abaixo.
- */
-const CAMINHO_LIGACOES = (CAMINHOS_INTEGRACAO_FDV_PLATAFORMA as Readonly<Record<string, string>>).ligacoes ?? '/empresas/:id/integracao-fdv/ligacoes';
+/** Ligações (T-0131, C-6): contadores Enviados e Aceitos, histórico de envios (até 50) e cabeçalho do Contato da ERP → Macuxi FDV, só leitura. */
 export async function lerLigacoesFdv(token: string, id: string): Promise<LigacoesResposta> {
-  return validado(await chamar('GET', rotaFdv(CAMINHO_LIGACOES, id), { token }), LigacoesResposta);
+  return validado(await chamar('GET', rotaFdv(CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.ligacoes, id), { token }), LigacoesResposta);
 }
 
 /** Reprocessar só falhas e pendentes (T-0086): `Idempotency-Key` obrigatória; com lote em voo a API responde 409 `CONFLITO`. */
