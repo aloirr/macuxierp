@@ -42,8 +42,9 @@ a { color: var(--mx-cor-azul-noite); }
 .lateral a[aria-current='page'] { background: var(--mx-cor-grafite-menu); border-left: 4px solid var(--mx-cor-sol-claro); padding-left: 16px; }
 /* Divisória única: toda seção após o Início tem 1px, 8px de margem acima e 8px de respiro abaixo da linha. */
 .lateral > * + * { border-top: 1px solid var(--mx-cor-grafite-menu); margin-top: 8px; padding-top: 8px; }
-.conteudo { padding: 24px 32px; max-width: 1100px; min-width: 0; }
-.conteudo h1 { font-size: var(--mx-tamanho-h1); font-weight: var(--mx-peso-titulo); margin-top: 0; }
+.conteudo { padding: 24px 32px; min-width: 0; } /* sem teto: a página preenche a largura (regra 11, T-0121); só o texto corrido tem 72ch */
+.conteudo h1 { font-size: var(--mx-tamanho-h1); font-weight: var(--mx-peso-titulo); color: var(--mx-cor-azul-noite); margin: 0 0 4px; } /* MC-0216: azul-noite (não herda o grafite do body) e 4 px sob o título, nunca os 13,4 px do navegador */
+.conteudo h1 + :not(p) { margin-top: 16px; }
 table { border-collapse: collapse; width: 100%; background: var(--mx-cor-branco); }
 th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--mx-cor-linha-suave); }
 /* Decisões 40 e 44 A (MC-0201/0202): cabeçalho na névoa, 12/700 em caixa-alta azul-noite com linha de 2 px; linha par na linhaAlternada. */
@@ -90,7 +91,7 @@ tbody tr:nth-child(even) { background: var(--mx-cor-linha-alternada); }
 .barra-acoes { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
 .selo-aviso { background: var(--mx-cor-aviso-fundo); color: var(--mx-cor-aviso-texto); }
 .selo-erro { background: var(--mx-cor-erro-fundo); color: var(--mx-cor-erro-texto); }
-.dados { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 24px; margin: 0 0 16px; }
+.dados { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px 24px; margin: 0 0 16px; }
 .dados dt { font-size: var(--mx-tamanho-rotulo-dado); font-weight: var(--mx-peso-rotulo-dado); color: var(--mx-cor-rotulo-destaque); text-transform: uppercase; letter-spacing: .04em; }
 .dados dd { margin: 0; font-weight: var(--mx-peso-medio); }
 .erro-campo { color: var(--mx-cor-erro-texto); display: block; margin-top: 4px; }
@@ -138,8 +139,6 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 
 /* Portal /config (T-0050): topo em grafite (identidade de plataforma), só tokens. */
 .casca-plataforma { min-height: 100vh; }
-/* O /config não tem menu lateral e usa a largura toda da janela (telas horizontais, R-20261127-110345). */
-.casca-plataforma .conteudo { max-width: none; }
 .topo-plataforma { background: var(--mx-cor-grafite); }
 .topo-plataforma a { color: var(--mx-cor-branco); }
 .topo-plataforma form { margin: 0; }
@@ -160,7 +159,17 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 @media (max-width: 640px) { .cabecalho-ficha .mx-botao-secundario { min-height: 44px } }
 .lista-modulos, .lista-cnae { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }
 .lista-modulos label { display: inline-flex; gap: 8px; align-items: center; }
-.formulario-estreito { max-width: 420px; }
+/* Formulários na grade de 12 colunas, a dos filtros (regra 11, T-0121): campo curto 2, médio 4, longo 6, largo 12; até 1100 px 3/6/12; até 640 px tudo em coluna. */
+.formulario { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; align-items: start; margin: 0 0 16px; }
+.formulario > * { grid-column: 1 / -1; min-width: 0; margin-top: 0; margin-bottom: 0; }
+.formulario > .campo { grid-column: span 6; }
+.formulario > .campo.campo-curto { grid-column: span 2; }
+.formulario > .campo.campo-medio { grid-column: span 4; }
+.formulario > .campo.campo-largo { grid-column: 1 / -1; }
+@media (max-width: 1100px) { .formulario > .campo { grid-column: 1 / -1; } .formulario > .campo.campo-curto { grid-column: span 3; } .formulario > .campo.campo-medio { grid-column: span 6; } }
+@media (max-width: 640px) { .formulario > .campo, .formulario > .campo.campo-curto, .formulario > .campo.campo-medio { grid-column: 1 / -1; } }
+/* Texto corrido: no máximo 72 caracteres por linha, só nos blocos de texto (nunca no contêiner). */
+.apoio, p.erro, .aviso-sucesso, .faixa-aviso { max-width: 72ch; }
 .painel-senha { margin-top: 16px; padding: 12px 16px; border: 1px solid var(--mx-cor-borda-tabela); border-radius: 6px; background: var(--mx-cor-perola); }
 .senha-provisoria { display: block; font-size: var(--mx-tamanho-grande); font-weight: 600; padding: 8px 0; word-break: break-all; user-select: all; }
 

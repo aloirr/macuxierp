@@ -12,10 +12,19 @@ import type { ErrosFormulario, TelaFormulario, ValoresFormulario } from '@/lib/d
 import { PainelSegredo } from './painel-segredo';
 import { escrever } from '@/lib/acoes-cliente';
 
+/** Largura do campo na grade de 12 colunas do formulário (regra 11): curto (2), médio (4), longo (6, padrão) ou largo (12). */
+export function larguraDoCampo(c: { nome: string; tipo: string }): string {
+  if (c.tipo === 'area') return ' campo-largo';
+  if (c.tipo === 'data' || c.tipo === 'numero' || /^(codigo|uf|cep|telefone|numero|serie|ncm|cfop|quantidade|preco)(_|$)/.test(c.nome)) return ' campo-curto';
+  if (c.tipo === 'cadastro' || c.tipo === 'selecao') return ' campo-medio';
+  if (/(observacao|endereco|logradouro|descricao)/.test(c.nome)) return ' campo-largo';
+  return '';
+}
+
 /** Seletor de opções (cadastro ou lista fixa) com o estilo de campo. */
-function SeletorOpcoes({ id, rotulo, valor, opcoes, onChange, erro, obrigatorio }: { id: string; rotulo: string; valor: string; opcoes: readonly Opcao[]; onChange: (v: string) => void; erro?: string; obrigatorio?: boolean }) {
+function SeletorOpcoes({ id, rotulo, largura = '', valor, opcoes, onChange, erro, obrigatorio }: { id: string; rotulo: string; largura?: string; valor: string; opcoes: readonly Opcao[]; onChange: (v: string) => void; erro?: string; obrigatorio?: boolean }) {
   return (
-    <label className="campo" htmlFor={id}>
+    <label className={`campo${largura}`} htmlFor={id}>
       <span>{rotulo}{obrigatorio ? ' *' : ''}</span>
       <select id={id} value={valor} onChange={(e) => onChange(e.target.value)} aria-invalid={erro ? true : undefined} aria-describedby={erro ? `${id}-erro` : undefined}>
         <option value="">Selecione</option>
@@ -74,10 +83,10 @@ function Formulario({ tela, opcoes, produtos, errosIniciais }: { tela: TelaFormu
         const id = `campo-${c.nome}`;
         if (c.tipo === 'cadastro' || c.tipo === 'selecao') {
           const lista = c.tipo === 'cadastro' ? (opcoes[c.nome] ?? []) : (c.opcoes ?? []).map((o) => ({ valor: o.valor, rotulo: o.rotulo }));
-          return <SeletorOpcoes key={c.nome} id={id} rotulo={c.rotulo} valor={valores[c.nome] ?? ''} opcoes={lista} onChange={(v) => trocar(c.nome, v)} erro={erros[c.nome]} obrigatorio={c.obrigatorio} />;
+          return <SeletorOpcoes key={c.nome} largura={larguraDoCampo(c)} id={id} rotulo={c.rotulo} valor={valores[c.nome] ?? ''} opcoes={lista} onChange={(v) => trocar(c.nome, v)} erro={erros[c.nome]} obrigatorio={c.obrigatorio} />;
         }
         return (
-          <label key={c.nome} className="campo" htmlFor={id}>
+          <label key={c.nome} className={`campo${larguraDoCampo(c)}`} htmlFor={id}>
             <span>{c.rotulo}{c.obrigatorio ? ' *' : ''}</span>
             {c.tipo === 'area' ? <textarea id={id} rows={3} value={valores[c.nome] ?? ''} onChange={(e) => trocar(c.nome, e.target.value)} aria-invalid={erros[c.nome] ? true : undefined} aria-describedby={erros[c.nome] ? `${id}-erro` : undefined} /> : <input id={id} type={c.tipo === 'data' ? 'date' : 'text'} lang="pt-BR" inputMode={c.tipo === 'numero' ? 'decimal' : undefined} value={valores[c.nome] ?? ''} onChange={(e) => trocar(c.nome, e.target.value)} aria-invalid={erros[c.nome] ? true : undefined} aria-describedby={erros[c.nome] ? `${id}-erro` : undefined} />}
             {c.ajuda && <small className="apoio">{c.ajuda}</small>}
