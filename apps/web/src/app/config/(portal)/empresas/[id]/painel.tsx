@@ -1,5 +1,5 @@
 'use client';
-import type { FichaReceitaPlanaMascarada, SituacaoTrocaCnpj, UsuarioConfig } from '@macuxierp/core/contracts';
+import type { FichaReceitaPlanaMascarada, FilialConfig, SituacaoTrocaCnpj, UsuarioConfig } from '@macuxierp/core/contracts';
 import type { EmpresaPlataforma, ModuloId } from '@macuxierp/platform-sdk';
 import { DialogoMotivo, FaixaPendencias, RegiaoErros, ResultadoAcao, useResultado } from '@macuxierp/ui';
 import { useState, useTransition } from 'react';
@@ -25,7 +25,7 @@ interface Comum {
  * e Módulos lado a lado; Na Receita), como a simulação aprovada; os Usuários ocupam a largura toda abaixo; no celular, um embaixo do outro. O rodapé da página é uma
  * barra fixa (RD-2368, RD-2370): à esquerda Salvar, Descartar, Atualizar, Trocar CNPJ e o estado da Ficha; à direita, em vermelho, Suspender (sem bloco "Situação").
  */
-export function PainelEmpresa({ empresa, deps, chaves, ficha = null, cnpj = null, usuarios = null }: { empresa: EmpresaPlataforma; deps: Dependencia[]; chaves: ChavesPainel; ficha?: FichaReceitaPlanaMascarada | null; cnpj?: SituacaoTrocaCnpj | null; usuarios?: UsuarioConfig[] | null }) {
+export function PainelEmpresa({ empresa, deps, chaves, ficha = null, cnpj = null, usuarios = null, filiais = null }: { empresa: EmpresaPlataforma; deps: Dependencia[]; chaves: ChavesPainel; ficha?: FichaReceitaPlanaMascarada | null; cnpj?: SituacaoTrocaCnpj | null; usuarios?: UsuarioConfig[] | null; filiais?: FilialConfig[] | null }) {
   const [temErro, setTemErro] = useState(false);
   const [rodape, setRodape] = useState<HTMLElement | null>(null);
   return (
@@ -44,7 +44,7 @@ export function PainelEmpresa({ empresa, deps, chaves, ficha = null, cnpj = null
           rodapeAlvo={rodape}
           lateral={<div className="cartao-ficha cartao-3"><BlocoModulos empresa={empresa} deps={deps} aoErro={setTemErro} /></div>}
         />
-        <BlocoUsuarios empresaId={empresa.id} itens={usuarios} fuso={empresa.fuso} editavel={empresa.situacao !== 'encerrado'} />
+        <BlocoUsuarios empresaId={empresa.id} itens={usuarios} filiais={filiais} fuso={empresa.fuso} editavel={empresa.situacao !== 'encerrado'} />
       </div>
       <div className="rodape-pagina">
         <div ref={setRodape} className="rodape-alvo" />
