@@ -27,19 +27,23 @@ import {
 } from './apoio.ts';
 import { fixturePlataforma, hashSql, novoTenant } from './fixture.ts';
 
-const MIGRACAO = fileURLToPath(new URL('../migrations/0076_plataforma_superadmin_pelo_bko.sql', import.meta.url));
+const MIGRACAO = fileURLToPath(
+  new URL('../migrations/0076_plataforma_superadmin_pelo_bko.sql', import.meta.url),
+);
 const CONFIG = 'macuxierp_config';
 const REFERENCIA = '00000000-0000-0000-0000-000000000000';
 const HASH = '$argon2id$v=19$m=65536,t=3,p=4$c2FsdGZpY3RpY2lv$aGFzaGZpY3RpY2lv';
 const ACESSO = 'plataforma.superadmin_acesso_pelo_bko(uuid, uuid)';
-const ABRIR = 'plataforma.superadmin_abrir_sessao_pelo_bko(plataforma.sha256_hex, plataforma.sha256_hex, timestamptz)';
+const ABRIR =
+  'plataforma.superadmin_abrir_sessao_pelo_bko(plataforma.sha256_hex, plataforma.sha256_hex, timestamptz)';
 const ACAO = 'plataforma.superadmin.entrar_pelo_bko';
 
 const A = novoTenant('sa-0076-a');
 const B = novoTenant('sa-0076-b');
 const S = novoTenant('sa-0076-s'); // suspenso
 
-// Superadmins: aptos (OK1..OK3) e um por motivo de recusa.
+// Superadmins: aptos (OK1..OK6) e um por motivo de recusa. Desde a 0079 o e-mail de usuário é único no sistema
+// todo, então cada usuário do B e do S tem o seu superadmin apto (ok4..ok6).
 const SA = {
   ok1: '5a000000-0000-4000-8000-000000000761',
   ok2: '5a000000-0000-4000-8000-000000000762',
@@ -48,6 +52,9 @@ const SA = {
   inativo: '5a000000-0000-4000-8000-000000000765',
   excluido: '5a000000-0000-4000-8000-000000000766',
   troca: '5a000000-0000-4000-8000-000000000767',
+  ok4: '5a000000-0000-4000-8000-000000000768',
+  ok5: '5a000000-0000-4000-8000-000000000769',
+  ok6: '5a000000-0000-4000-8000-00000000076a',
 } as const;
 const email = (k: string): string => `${k}@sa0076.teste`;
 
@@ -80,7 +87,12 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — /config pelo BKO (0076, 45 
     consultar<{ superadmin_id: string; expira_em: string }>(banco.conexao, abrirSql(refresh, token, expira), {
       papel: CONFIG,
     });
-  const recusa = (refresh: string, codigo: string, mensagem: RegExp, expira = "now() + interval '1 hour'"): void =>
+  const recusa = (
+    refresh: string,
+    codigo: string,
+    mensagem: RegExp,
+    expira = "now() + interval '1 hour'",
+  ): void =>
     recusaCompleta(
       banco.conexao,
       `${abrirSql(refresh, randomUUID(), expira)};`,
@@ -88,20 +100,25 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — /config pelo BKO (0076, 45 
       { papel: CONFIG },
     );
   const acesso = (tenant: string, usuario: string): string[] =>
-    linhas(rodarComo(banco.conexao, `SELECT plataforma.superadmin_acesso_pelo_bko('${tenant}', '${usuario}');`, {
-      papel: CONFIG,
-    }));
+    linhas(
+      rodarComo(banco.conexao, `SELECT plataforma.superadmin_acesso_pelo_bko('${tenant}', '${usuario}');`, {
+        papel: CONFIG,
+      }),
+    );
   const um = <T>(sql: string): T => consultar<T>(banco.conexao, sql)[0] as T;
   const sessaoBko = (refresh: string): string =>
-    um<{ j: string }>(`SELECT to_jsonb(s)::text AS j FROM plataforma.sessao s WHERE refresh_hash = ${hashSql(refresh)}`)
-      .j;
+    um<{ j: string }>(
+      `SELECT to_jsonb(s)::text AS j FROM plataforma.sessao s WHERE refresh_hash = ${hashSql(refresh)}`,
+    ).j;
   const contaSuperadmin = (sa: string): string =>
     um<{ j: string }>(
       `SELECT jsonb_build_object('falhas', falhas_login, 'trava', bloqueado_ate, 'acesso', ultimo_acesso_em,
          'atualizado', updated_at)::text AS j FROM plataforma.superadmin WHERE id = '${sa}'`,
     ).j;
   const sessoesConfig = (sa: string): number =>
-    um<{ n: number }>(`SELECT count(*)::int AS n FROM plataforma.sessao_superadmin WHERE superadmin_id = '${sa}'`).n;
+    um<{ n: number }>(
+      `SELECT count(*)::int AS n FROM plataforma.sessao_superadmin WHERE superadmin_id = '${sa}'`,
+    ).n;
 
   beforeAll(() => {
     banco = criarBancoDeTeste();
@@ -120,7 +137,10 @@ INSERT INTO plataforma.superadmin (id, email, nome, senha_hash, deve_trocar_senh
      now() + interval '15 minutes', NULL),
   ('${SA.inativo}', '${email('inativo')}', 'Superadmin Inativo', '${HASH}', false, false, 0, NULL, NULL),
   ('${SA.excluido}', '${email('excluido')}', 'Superadmin Excluido', '${HASH}', false, true, 0, NULL, now()),
-  ('${SA.troca}', '${email('troca')}', 'Superadmin Troca', '${HASH}', true, true, 0, NULL, NULL);
+  ('${SA.troca}', '${email('troca')}', 'Superadmin Troca', '${HASH}', true, true, 0, NULL, NULL),
+  ('${SA.ok4}', '${email('ok4')}', 'Superadmin Quatro', '${HASH}', false, true, 0, NULL, NULL),
+  ('${SA.ok5}', '${email('ok5')}', 'Superadmin Cinco', '${HASH}', false, true, 0, NULL, NULL),
+  ('${SA.ok6}', '${email('ok6')}', 'Superadmin Seis', '${HASH}', false, true, 0, NULL, NULL);
 INSERT INTO plataforma.usuario (id, tenant_id, email, nome, senha_hash, perfil, ativo, deve_trocar_senha, deleted_at)
 VALUES
   ('${U.ok}', '${A.id}', '${email('ok1')}', 'Usuario Ok', '${HASH}', 'administrador', true, false, NULL),
@@ -132,10 +152,10 @@ VALUES
   ('${U.saTroca}', '${A.id}', '${email('troca')}', 'Usuario Sa Troca', '${HASH}', 'gerente', true, false, NULL),
   ('${U.sem}', '${A.id}', 'sem@sa0076.teste', 'Usuario Sem', '${HASH}', 'gerente', true, false, NULL),
   ('${U.deve}', '${A.id}', '${email('ok2')}', 'Usuario Deve', '${HASH}', 'gerente', true, true, NULL),
-  ('${U.inativo}', '${B.id}', '${email('ok1')}', 'Usuario Inativo', '${HASH}', 'gerente', false, false, NULL),
+  ('${U.inativo}', '${B.id}', '${email('ok4')}', 'Usuario Inativo', '${HASH}', 'gerente', false, false, NULL),
   ('${U.excluido}', '${B.id}', '${email('ok2')}', 'Usuario Excluido', '${HASH}', 'gerente', true, false, now()),
-  ('${U.reuso}', '${B.id}', '${email('ok3')}', 'Usuario Reuso', '${HASH}', 'gerente', true, false, NULL),
-  ('${U.suspenso}', '${S.id}', '${email('ok1')}', 'Usuario Suspenso', '${HASH}', 'gerente', true, false, NULL);
+  ('${U.reuso}', '${B.id}', '${email('ok6')}', 'Usuario Reuso', '${HASH}', 'gerente', true, false, NULL),
+  ('${U.suspenso}', '${S.id}', '${email('ok5')}', 'Usuario Suspenso', '${HASH}', 'gerente', true, false, NULL);
 INSERT INTO plataforma.sessao (tenant_id, usuario_id, familia, refresh_hash, expira_em, revogada_em, deleted_at) VALUES
   ('${A.id}', '${U.ok}', gen_random_uuid(), ${hashSql('r-ok')}, now() + interval '30 days', NULL, NULL),
   ('${A.id}', '${U.ok}', gen_random_uuid(), ${hashSql('r-vencida')}, now() - interval '1 second', NULL, NULL),
@@ -170,7 +190,9 @@ INSERT INTO plataforma.sessao (tenant_id, usuario_id, familia, refresh_hash, exp
     for (const r of ['r-suspenso', 'r-inativo', 'r-excluido']) {
       expect({ r, linhas: abrir(r) }).toEqual({ r, linhas: [] });
     }
-    expect(sessoesConfig(SA.ok1) + sessoesConfig(SA.ok2)).toBe(0);
+    expect(
+      sessoesConfig(SA.ok1) + sessoesConfig(SA.ok2) + sessoesConfig(SA.ok4) + sessoesConfig(SA.ok5),
+    ).toBe(0);
   });
 
   it('(c) usuário com troca de senha pendente: MXS11, mesmo com superadmin apto no e-mail', () => {
@@ -226,7 +248,15 @@ INSERT INTO plataforma.sessao (tenant_id, usuario_id, familia, refresh_hash, exp
        WHERE a.acao = '${ACAO}' AND a.superadmin_id = '${SA.ok3}'`,
     );
     expect(r).toEqual([
-      { tenant: REFERENCIA, usuario_id: null, sa: SA.ok3, entidade: 'superadmin', antes: null, depois: true, limpo: true },
+      {
+        tenant: REFERENCIA,
+        usuario_id: null,
+        sa: SA.ok3,
+        entidade: 'superadmin',
+        antes: null,
+        depois: true,
+        limpo: true,
+      },
     ]);
     expect(
       um<{ n: number }>(
@@ -244,9 +274,9 @@ INSERT INTO plataforma.sessao (tenant_id, usuario_id, familia, refresh_hash, exp
     expect(r).toEqual({ teto: true });
     const max = new Date(Date.now() + 3_600_000).toISOString();
     const [menor] = abrir('r-ok', randomUUID(), `'${max}'::timestamptz`);
-    expect(um<{ ok: boolean }>(`SELECT '${menor?.expira_em}'::timestamptz = '${max}'::timestamptz AS ok`).ok).toBe(
-      true,
-    );
+    expect(
+      um<{ ok: boolean }>(`SELECT '${menor?.expira_em}'::timestamptz = '${max}'::timestamptz AS ok`).ok,
+    ).toBe(true);
     const [curta] = abrir('r-curta', randomUUID(), "now() + interval '8 hours'");
     expect(
       um<{ ok: boolean }>(
@@ -263,7 +293,7 @@ INSERT INTO plataforma.sessao (tenant_id, usuario_id, familia, refresh_hash, exp
       consultar<{ t: string }>(
         banco.conexao,
         `SELECT token_hash AS t FROM plataforma.sessao_superadmin
-         WHERE superadmin_id = '${SA.ok3}' AND origem_sessao_bko IS NOT NULL AND revogada_em IS NULL
+         WHERE superadmin_id = '${SA.ok6}' AND origem_sessao_bko IS NOT NULL AND revogada_em IS NULL
            AND origem_sessao_bko IN (SELECT id FROM plataforma.sessao WHERE familia = '${FAMILIA_REUSO}')`,
       ).map((l) => l.t);
     const hash = (t: string): string => um<{ h: string }>(`SELECT ${hashSql(t)} AS h`).h;

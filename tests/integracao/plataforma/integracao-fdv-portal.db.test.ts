@@ -33,7 +33,9 @@ import { relogioReal } from '../../ponta-a-ponta-fdv/apoio/relogio';
 import { atalhosPortal, inserirSuperadmin, type AppPortal, type MetodoPortal, type RespostaPortal } from '../../apoio/portal-pg';
 
 const EMAIL_SA = 'sa-t0056-ifdv@exemplo.invalid';
-const EMAIL_ADM = 'adm-t0056-ifdv@exemplo.invalid';
+/** Um e-mail por empresa: desde a 0079 (ADR 0021) o e-mail de usuário é único no sistema todo. */
+const EMAIL_ADM_A = 'adm-t0056-ifdv-a@exemplo.invalid';
+const EMAIL_ADM_B = 'adm-t0056-ifdv-b@exemplo.invalid';
 /** Chave mestra e chave do conector geradas a cada execução: nenhum segredo fixo no teste. */
 const MESTRA = randomBytes(32);
 const CHAVE = gerarChaveConector();
@@ -109,8 +111,8 @@ describe.skipIf(!PG_DISPONIVEL)('integração FDV no portal /config: borda das r
     A = await criarTenant(b.admin, 't0056-ifdv-a', ['core', 'integracao-fdv']);
     B = await criarTenant(b.admin, 't0056-ifdv-b', ['core', 'integracao-fdv']);
     SEM_LICENCA = await criarTenant(b.admin, 't0056-ifdv-sem-lic', ['core']);
-    await inserirAdministradorDeTeste(b.admin, A, { id: randomUUID(), email: EMAIL_ADM, nome: 'Pessoa Fictícia A', filialIds: [] });
-    await inserirAdministradorDeTeste(b.admin, B, { id: randomUUID(), email: EMAIL_ADM, nome: 'Pessoa Fictícia B', filialIds: [] });
+    await inserirAdministradorDeTeste(b.admin, A, { id: randomUUID(), email: EMAIL_ADM_A, nome: 'Pessoa Fictícia A', filialIds: [] });
+    await inserirAdministradorDeTeste(b.admin, B, { id: randomUUID(), email: EMAIL_ADM_B, nome: 'Pessoa Fictícia B', filialIds: [] });
     ({ app } = await appPgDeTeste({ b, modulos: 'producao', chaveIntegracao: MESTRA, logger: { level: 'debug', stream: destinoDeLogs(logs) } }));
     worker = b.banco('macuxierp_worker');
     hub = await criarDubleHub({ relogio: relogioReal, consultasAtePronto: 0 });
@@ -186,7 +188,7 @@ describe.skipIf(!PG_DISPONIVEL)('integração FDV no portal /config: borda das r
 
   describe('E2: portal grava → BKO lê → carga completa chega ao Hub pelo worker', () => {
     it('antes da credencial, o BKO do tenant mostra tudo desligado', async () => {
-      const r = await status(await loginTenant('t0056-ifdv-a', EMAIL_ADM));
+      const r = await status(await loginTenant('t0056-ifdv-a', EMAIL_ADM_A));
       expect(r.statusCode).toBe(200);
       const s = r.json<{ conector_id: string | null; cadastros: { ligada: boolean }[] }>();
       expect(s.conector_id).toBeNull();
@@ -216,7 +218,7 @@ describe.skipIf(!PG_DISPONIVEL)('integração FDV no portal /config: borda das r
     });
 
     it('BKO de A: status configurado com o prefixo, só o produto ligado; o tenant B (RLS) continua sem nada', async () => {
-      const r = await status(await loginTenant('t0056-ifdv-a', EMAIL_ADM));
+      const r = await status(await loginTenant('t0056-ifdv-a', EMAIL_ADM_A));
       expect(r.statusCode).toBe(200);
       const s = r.json<{ conector_id: string; ambiente: string; chave_prefixo: string; cadastros: { entidade: string; ligada: boolean }[] }>();
       expect(s).toMatchObject({ conector_id: CONECTOR, ambiente: 'teste' });
@@ -226,7 +228,7 @@ describe.skipIf(!PG_DISPONIVEL)('integração FDV no portal /config: borda das r
       expect(Object.keys(s)).not.toContain('credencial_id');
       expect(Object.keys(s)).not.toContain('entidades_habilitadas');
 
-      const rb = await status(await loginTenant('t0056-ifdv-b', EMAIL_ADM));
+      const rb = await status(await loginTenant('t0056-ifdv-b', EMAIL_ADM_B));
       expect(rb.statusCode).toBe(200);
       expect(rb.json()).toMatchObject({ conector_id: null, ambiente: null, chave_prefixo: null });
       expect(rb.body).not.toContain(CONECTOR);
