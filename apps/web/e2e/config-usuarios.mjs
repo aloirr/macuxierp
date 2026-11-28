@@ -268,7 +268,7 @@ try {
   if (PRINTS) await p.screenshot({ path: join(PRINTS, 'bko-usuarios-1366.png'), fullPage: true });
   await linha(p, 'Bruno Exemplo').getByRole('button', { name: /^Ações/ }).last().click();
   const bko = await p.getByRole('menuitem').allInnerTexts();
-  confere(bko.join('|') === 'Redefinir senha|Inativar|Excluir', `BKO: Inativar e Excluir separados, Editar à vista, Excluir no fim (${bko.join(', ')})`);
+  confere(bko.join('|') === 'Editar|Redefinir senha|Inativar|Excluir', `BKO: um botão só por linha, Editar no menu, Excluir no fim (${bko.join(', ')})`);
   await p.keyboard.press('Escape');
 
   // Prints da v0.3.29 (passo 2): 1366 e 1920, página inteira e por bloco, mais o 390

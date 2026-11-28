@@ -1,0 +1,45 @@
+/** Nome em português de cada ação da matriz de permissões (RN-CORE-09); a tela nunca mostra o código cru (`carga.executar`). */
+import type { Acao } from '@macuxierp/platform-sdk';
+
+export const ROTULO_ACAO: Readonly<Record<Acao, string>> = {
+  'core.empresa.ver': 'Ver a empresa',
+  'core.empresa.editar': 'Editar a empresa',
+  'core.usuario.gerir': 'Gerir usuários',
+  'core.perfil.ver': 'Ver perfis e permissões',
+  'core.licenca.ver': 'Ver licenças',
+  'core.certificado.gerir': 'Gerir o certificado A1',
+  'core.ambiente.ver': 'Ver o ambiente fiscal',
+  'core.ambiente.trocar': 'Trocar o ambiente fiscal',
+  'core.auditoria.ver': 'Ver a auditoria',
+  'core.exportacao.pedir': 'Exportar os dados da empresa',
+  'core.parametro.gerir': 'Gerir parâmetros',
+  'cadastros.ver': 'Ver cadastros',
+  'cadastros.filial.editar': 'Editar filiais',
+  'cadastros.cliente.editar': 'Editar clientes',
+  'cadastros.cliente.credito': 'Alterar crédito do cliente',
+  'cadastros.produto.editar': 'Editar produtos',
+  'cadastros.preco.editar': 'Editar preços',
+  'cadastros.estoque.movimentar': 'Movimentar estoque',
+  'cadastros.estoque.negativo': 'Permitir estoque negativo',
+  'cadastros.condicao_pagamento.editar': 'Editar condições de pagamento',
+  'cadastros.condicao_pagamento.desativar_recusadas': 'Desativar condições recusadas',
+  'cadastros.vendedor.editar': 'Editar vendedores',
+  'cadastros.carteira.transferir': 'Transferir carteira de clientes',
+  'cadastros.consulta.externa': 'Consultar CNPJ e CEP',
+  'cadastros.external_id.trocar': 'Trocar o identificador externo',
+  'cadastros.carga.executar': 'Executar carga de dados',
+  'pedido.ver': 'Ver pedidos',
+  'pedido.pedido.aprovar': 'Aprovar pedidos',
+  'pedido.pedido.lancar': 'Lançar pedidos',
+  'pedido.pedido.cancelar': 'Cancelar pedidos',
+  'fiscal.ver': 'Ver o fiscal',
+  'fiscal.regra.editar': 'Editar regras fiscais',
+  'faturamento.ver': 'Ver faturamento',
+  'faturamento.nota.emitir': 'Emitir e cancelar notas',
+  'faturamento.titulo.baixar': 'Baixar títulos',
+  'faturamento.configurar': 'Configurar o faturamento da filial',
+  'integracao-fdv.ver': 'Ver a integração com o FDV',
+};
+
+/** Nome da ação; a desconhecida (módulo novo ainda sem texto) sai como veio. */
+export const rotuloDaAcao = (acao: string): string => (ROTULO_ACAO as Readonly<Record<string, string>>)[acao] ?? acao;

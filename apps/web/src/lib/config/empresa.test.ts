@@ -1,6 +1,6 @@
 import { CODIGO_TROCAR_SENHA } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
-import { dataCriacao, destinoErroEmpresa, filtrarEmpresas, lerApoio } from './empresa';
+import { dataCriacao, destinoErroEmpresa, filtrarEmpresas, itensAcaoEmpresa, lerApoio, temFdv } from './empresa';
 import { ConfigIndisponivel, ConfigNaoAutenticado, ConfigSemPermissao, ErroPlataforma, SEM_PERMISSAO } from './erros';
 
 describe('destino do erro da ficha da empresa', () => {
@@ -45,5 +45,20 @@ describe('lista de empresas (124 A, RD-2362)', () => {
   });
   it('"Criada em" só com a data, no fuso da empresa', () => {
     expect(dataCriacao({ created_at: '2026-11-23T02:30:00.000Z', fuso: 'America/Manaus' })).toBe('22/11/2026');
+  });
+});
+
+describe('lista de empresas (T-0134)', () => {
+  const adm = { id: 'a', ativo: true, bloqueado: false };
+  it('temFdv: ausente vale falso', () => {
+    expect(temFdv({})).toBe(false);
+    expect(temFdv({ tem_fdv: false })).toBe(false);
+    expect(temFdv({ tem_fdv: true })).toBe(true);
+  });
+  it('itensAcaoEmpresa: Suspender ou Reativar pela situação; senha só com 1º administrador; encerrada sem itens', () => {
+    expect(itensAcaoEmpresa({ situacao: 'ativo', primeiro_admin: adm }).map((i) => i.rotulo)).toEqual(['Suspender', 'Redefinir senha do administrador']);
+    expect(itensAcaoEmpresa({ situacao: 'suspenso', primeiro_admin: adm }).map((i) => i.rotulo)).toEqual(['Reativar', 'Redefinir senha do administrador']);
+    expect(itensAcaoEmpresa({ situacao: 'ativo', primeiro_admin: null }).map((i) => i.chave)).toEqual(['suspender']);
+    expect(itensAcaoEmpresa({ situacao: 'encerrado', primeiro_admin: adm })).toEqual([]);
   });
 });

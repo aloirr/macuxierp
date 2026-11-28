@@ -80,7 +80,7 @@
 | [T-0086](tarefas/T-0086.md) | Integração no /config e no BKO: Monitor, Reprocessar, Zerar por cadastro, Log, Atualizar; Cargas vira Dados | v0.3.12 | modulo-integracao-fdv | concluida | R-20261124-085515, 085816, 090216, 090734; Zerar apaga no ERP e inativa no FDV (R-20261124-170915); entregue na v0.3.12 |
 | [T-0087](tarefas/T-0087.md) | Telas do core no BKO: Usuários, Perfis, Licenças e Auditoria (RF-CORE-02) | v0.3.12 | modulo-core | em_revisao | R-20261124-092600; Usuários saiu para a T-0117 (27/11); fica só Perfis, Licenças e Auditoria |
 | [T-0088](tarefas/T-0088.md) | Telas de cadastro no BKO: clientes, produtos, preços, condições, filiais, empresa/fiscal | v0.3.12 | modulo-cadastros | em_revisao | R-20261124-061533; com o pré-cadastro (T-0059); lote 1 #512 em correção (2 🔴 do corretor no 3e9d984, R-20261124-171118) |
-| [T-0089](tarefas/T-0089.md) | Jornada AM2808, parte do ERP (passos 4 e 5): PDF com recebimento do pedido do FDV, aprovação, faturamento, NF-e em homologação no simulador e retorno do status ao FDV | v0.3.30 | testes | aberta | pedido do PO do FDV (R-20261124-060957 do FDV), via PO do ERP; entrega em recados/anexos/T-0089/; v0.3.30, com o testes; depende da C-5 (decisão do PO, 27/11 19h50) |
+| [T-0089](tarefas/T-0089.md) | Jornada AM2808, parte do ERP (passos 4 e 5): PDF com recebimento do pedido do FDV, aprovação, faturamento, NF-e em homologação no simulador e retorno do status ao FDV | v0.3.32 | testes | aberta | pedido do PO do FDV (R-20261124-060957 do FDV), via PO do ERP; entrega em recados/anexos/T-0089/; v0.3.30, com o testes; depende da C-5 (decisão do PO, 27/11 19h50) |
 | [T-0090](tarefas/T-0090.md) | Superadmin: MFA/TOTP e separação do papel macuxierp_config (ADR 0012 §7) | v0.3.30 | engenheiro-software | aberta | R-20261123-070609; antes da 2ª empresa; volta da v0.4 para a v0.3.30 (decisão do PO, 27/11 19h50: a ida para a v0.4 não teve a palavra do Alexandre) |
 | [T-0091](tarefas/T-0091.md) | Entidades v2, G1: tributação para o pedido (ADR 0017), conferida com o PO do FDV | depois da T-0060 | modulo-fiscal | aberta | R-20261123-163826 |
 | [T-0092](tarefas/T-0092.md) | Limites 200/30 em todo o caminho (ADR 0019, opção A): external_id 200, código da forma 30 | v0.3.12 | modulo-cadastros | em_revisao | contracts ainda em 64/20; migração 0054 |
@@ -90,7 +90,7 @@
 | [T-0096](tarefas/T-0096.md) | Latitude e longitude do pré-cadastro do FDV no endereço do cliente | v0.3.14 | modulo-cadastros | aberta | R-20261124-210726; #572 |
 | [T-0097](tarefas/T-0097.md) | Fração só em KG e M: validação no cadastro, no pedido e na carga; envio fracionário quando o FDV aceitar | v0.3.13 (partes 1 e 2); seguinte (critério 3) | modulo-cadastros | em_andamento | R-20261124-211517; RN-CAD-17; #584; partes 1 e 2 entregues na v0.3.13; critério 3 (envio fracionário, Hub aceita até 4 casas em KG e M) na seguinte, decisão 23 A (R-20261126-184114) |
 | [T-0098](tarefas/T-0098.md) | Expurgo do pré-cadastro recebido sem decisão (180 dias do recebimento) | v0.3.14 | modulo-integracao-fdv | aberta | R-20261124-214227; RN-INF-06; arquivo no #592 |
-| [T-0099](tarefas/T-0099.md) | Botão Ações nas linhas de todas as tabelas e listas do /config e do BKO (padrão do FDV) | v0.3.30 | designer-ux | aberta | R-20261124-224843; v0.3.30, reaproveitando o MenuAcoes da v0.3.28 (decisão do PO, 27/11 19h50) |
+| [T-0099](tarefas/T-0099.md) | Botão Ações nas linhas de todas as tabelas e listas do /config e do BKO (padrão do FDV) | v0.3.32 | designer-ux | aberta | R-20261124-224843; v0.3.30, reaproveitando o MenuAcoes da v0.3.28 (decisão do PO, 27/11 19h50) |
 | [T-0100](tarefas/T-0100.md) | core.empresa a partir da filial padrão: backfill e criação junto com ela (opção B) | v0.3.13 | modulo-core | aberta | R-20261124-225456; conserta a aba Empresa e a T-0088 |
 | [T-0101](tarefas/T-0101.md) | Ficha completa da empresa pela Receita, com "Atualizar pela Receita" e e-mail e telefone mascarados (opção C) | v0.3.14 | modulo-core | aberta | R-20261124-224709; R-20261124-225456; depende da T-0100; emenda de ADR; os branches designer-ux/T-0101-* desta noite são da T-0116 (Config) e da T-0118 (tokens) |
 | [T-0102](tarefas/T-0102.md) | Log do motivo do não envio do "Esqueci a senha" e do aceite do SMTP | v0.3.13 | engenheiro-software | concluida | entregue na v0.3.13 |
@@ -114,15 +114,15 @@
 | [T-0120](tarefas/T-0120.md) | Workflow producao-diagnostico, só leitura, com consultas fixas e sem dado pessoal; C-5 como comando, se couber | v0.3.29 | engenheiro-software | em_teste | #891 → 15cc146 (script e SQL, conferido pelo banco-dados); #892 → a29dbda (workflow, autorizo 104 do Alexandre); primeiro disparo depois de o Alexandre criar o environment DIAGNOSTICO (PROD_HOST, PROD_USER, PROD_SSH_KEY, PROD_SSH_KNOWN_HOSTS) |
 | T-0121 | Conteúdo em largura total (sem max-width de 1100 px; h1 + p sem margem) | v0.3.29 | engenheiro-apps | em_andamento | no shell agente/v0328-web-shell-marca |
 | T-0122 | (resolvida pela T-0116) | v0.3.30 | engenheiro-apps | concluida | absorvida pela Config v4 |
-| T-0123 | Cadastros no BKO: Estoque, Condições, Equipe e carteira, Tabelas oficiais e itens da tabela de preço | v0.3.31 | engenheiro-apps | aberta | ocultas no menu até lá (decisão do PO) |
-| T-0124 | Exportar meus dados (LGPD) com a chave S3 própria do ERP (decisão 90 B) | v0.3.31 | modulo-core | aberta | ~3h11; sem os secrets S3 a publicação segue e o item fica oculto; o XML autorizado continua no banco |
-| T-0125 | Página Empresa no BKO (o item abre o Ambiente fiscal até lá) | v0.3.31 | modulo-core | aberta | |
-| T-0126 | Editar pedido no BKO | v0.3.31 | modulo-pedido | aberta | nenhuma tela linka o Editar até lá |
-| T-0127 | Regras fiscais no BKO e catálogo regra_base | v0.3.31 | modulo-fiscal | aberta | banco ~3h17, fiscal ~7h; desenho aprovado |
-| T-0128 | DIFAL e acabamento do cálculo (RN-FIS-05) | v0.3.31 | modulo-fiscal | aberta | hoje bloqueado fail-closed (icms.ts:109), sem reservar número |
-| T-0129 | Formulário só leitura sem a permissão de editar (campo `editar` no descritor; 403 com mensagem do cadastros) | v0.3.30 | engenheiro-software | aberta | 🟡 do shell de Clientes (27/11 20h38) |
-| T-0130 | Filiais no cadastro de usuário do /config (GET de filiais por empresa na plataforma) | v0.3.31 | modulo-core | aberta | campo oculto até lá |
-| T-0131 | Integrações da Config: contadores Enviados/Aceitos/Gravados, histórico de envios por ligação e cabeçalho do Contato só leitura | v0.3.31 | modulo-integracao-fdv | aberta | divergências de contrato da Config v4 |
+| T-0123 | Cadastros no BKO: Estoque, Condições, Equipe e carteira, Tabelas oficiais e itens da tabela de preço | v0.3.32 | engenheiro-apps | aberta | ocultas no menu até lá (decisão do PO) |
+| T-0124 | Exportar meus dados (LGPD) com a chave S3 própria do ERP (decisão 90 B) | v0.3.32 | modulo-core | aberta | ~3h11; sem os secrets S3 a publicação segue e o item fica oculto; o XML autorizado continua no banco |
+| T-0125 | Página Empresa no BKO (o item abre o Ambiente fiscal até lá) | v0.3.32 | modulo-core | aberta | |
+| T-0126 | Editar pedido no BKO | v0.3.32 | modulo-pedido | aberta | nenhuma tela linka o Editar até lá |
+| T-0127 | Regras fiscais no BKO e catálogo regra_base | v0.3.32 | modulo-fiscal | aberta | banco ~3h17, fiscal ~7h; desenho aprovado |
+| T-0128 | DIFAL e acabamento do cálculo (RN-FIS-05) | v0.3.32 | modulo-fiscal | aberta | hoje bloqueado fail-closed (icms.ts:109), sem reservar número |
+| T-0129 | Formulário só leitura sem a permissão de editar (campo `editar` no descritor; 403 com mensagem do cadastros) | v0.3.32 | engenheiro-software | aberta | 🟡 do shell de Clientes (27/11 20h38) |
+| T-0130 | Filiais no cadastro de usuário do /config (GET de filiais por empresa na plataforma) | v0.3.32 | modulo-core | aberta | campo oculto até lá |
+| T-0131 | Integrações da Config: contadores Enviados/Aceitos/Gravados, histórico de envios por ligação e cabeçalho do Contato só leitura | v0.3.32 | modulo-integracao-fdv | aberta | divergências de contrato da Config v4 |
 | T-0132 | ICMS-ST e IPI para o FDV (decisão 63 A): 0 só quando houve regra aplicada; sem regra, o campo é omitido; o total é omitido se algum item não tem regra | v0.3.31 | modulo-fiscal | aberta | fiscal ~9h, integracao-fdv ~3,7h, pedido ~4,6h, faturamento ~3,3h; sem migração |
 | T-0133 | Login só com e-mail e senha, sem o código da empresa (ADR 0021, RN-CORE-18) | v0.3.30 | engenheiro-software | concluida | feita na v0.3.30: #915 (0079), #917 (API e SDK), #916 (core, 409 email_em_uso), #919 (web), #918 (testes), #923, #926 e #906 |
 | T-0134 | Empresas do /config: coluna "Macuxi FDV" (campo novo no core); menu "Ações ▾" da linha com "Suspender"/"Reativar" e "Redefinir senha do administrador", sem "Abrir" (o nome já é o link), e só com ao menos uma ação do perfil; busca do empresas_listar também pelo nome | v0.3.31 | modulo-core | aberta | aprovada pelo PO às 02h23; v0.3.31 enquanto a decisão 128 está sem resposta (se o Alexandre escolher A, entra na v0.3.30 e o liberar vai para ~05h15–05h30) |
@@ -230,6 +230,15 @@ Gerente ativo: session_019xHEXorMcUM7hAvrbsGwJd. PO: session_019xHEXqMSs1piLUgLS
 - Entraram depois do #301: #302 → a902d3b, #303 → 98f306e, #304 → c547f5d, #305 → b696132, #306 → e6d2903, #307 → 7aec401, #309 → ae55aa9 e #311 → 1b1587e (08h55).
 - Entraram depois do #286: #287, #288, #289, #290, #291, #292, #293, #294, #295, #296, #297, #298 e #299.
 - Entraram: #279 → 818e4ad, #284 → 2047e0b, #285 → 30fe879 e #275 → 41b39c7. O #273 (quadro de 22/11, 07h38) foi fechado e substituído por este.
+
+## 28/11 manhã — v0.3.31 em andamento (Manaus)
+- **Previsão aprovada pelo PO às 04h16** (dono + 15%, etapa por etapa): caminho crítico ~10h15 (T-0132) + ~3h de fechamento; **liberar entre 17h30 e 18h30**. Sessões disparadas às 04h18.
+- **Escopo:** T-0132, T-0134 e T-0135. Bandeira por tenant do ST/IPI ao FDV (Gerente Sênior, via PO 04h18): lista versionada `TENANTS_ENVIA_ST_IPI = []` em modules/integracao-fdv/domain/bandeiras.ts, desligada; liga a AM2808 por PR de 1 linha depois do ok do FDV (prazo 17h00); ~52 min, sem mudar o caminho.
+- **Para a v0.3.32 (PO, 04h20 e 04h24):** T-0089, T-0099 (o resto; nesta só Empresas do /config e Usuários do BKO), T-0123 a T-0131. Ordem de merge no fiscal: contrato T-0132 (#935) → cálculo T-0132 → T-0127/T-0128.
+- **Com o Alexandre, sem mexer no quadro:** T-0090 (MFA) e T-0054 (Planos), com o PO pelo Gerente Sênior.
+- **Regra de ST/IPI:** sem carga nem seed em fiscal.regra_tributaria (0013, 0021); na v0.3.31 o cálculo sai "sem regra" em produção e os campos são omitidos (63 A). Sem regra não se inventa alíquota; a carga vira tarefa própria do banco-dados.
+- **PR B do known_hosts (opção c, PO 04h15):** fixar a impressão digital SHA256:wRktlR17… (keyscan -t ed25519, HostKeyAlgorithms ssh-ed25519, StrictHostKeyChecking yes, 4 casos de teste); governança, Agente: alexandre.
+- **PRs:** #935 (fiscal, contrato) e #936 (cadastros, textos). Migrações reservadas: **0080** (empresas_listar por nome + tem_fdv) e **0081** (trava do último administrador); próxima livre **0082**.
 
 ## 28/11 madrugada — v0.3.30 fechada (Manaus)
 - **Versões:** v0.3.29 no ar; **v0.3.30 com o código fechado** no SHA dae2a2fe081a4188cba8ff9864a7624c09962d4d; liberar disparado pelo PO às 03h49 (CI do push: run 46122537193); a publicação vem em seguida.

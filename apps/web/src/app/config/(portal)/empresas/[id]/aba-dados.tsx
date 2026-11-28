@@ -72,7 +72,7 @@ export function AbaDados({ empresaId, dados, fuso, integracao = null, entrada = 
   };
   const colunas: ColunaTabela<LinhaCarga>[] = [
     // #840: em tela estreita a última carga sobe para sob o nome e a coluna dela some (só um dos dois aparece, por CSS).
-    { id: 'cadastro', titulo: 'Cadastro', celula: (l) => <>{l.rotulo}<span className="carga-sob-nome">Última carga: {l.ultima ?? AUSENTE}</span></> },
+    { id: 'cadastro', titulo: 'Cadastro', celula: (l) => <>{l.rotulo}{l.ultima && <span className="carga-sob-nome">Última carga: {l.ultima}</span>}</> },
     { id: 'situacao', titulo: 'Situação', tipo: 'status', celula: (l) => <Chip tom={l.chip.tom}>{l.chip.texto}</Chip> },
     { id: 'ultima', titulo: 'Última carga', tipo: 'data', celula: (l) => l.ultima ?? AUSENTE },
     // "Registros" e "Com erro" são do último lote recebido pela ligação do sistema do cliente (a tabela "Lotes recebidos" saiu, RD-1103).

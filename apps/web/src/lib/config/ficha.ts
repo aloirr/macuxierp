@@ -4,7 +4,7 @@ import { formatarDataHora } from '@macuxierp/platform-sdk';
 /** Ficha da empresa pela Receita (T-0101): textos da aba Empresa. Só dado da ficha MASCARADA; nada vai a log. O formulário editável (RN-CORE-16) fica em `ficha-edicao.ts`. */
 
 /** "4781400" → "4781-4/00"; fora de 7 dígitos, como veio. */
-const formatarCnae = (c: string): string => (/^\d{7}$/.test(c) ? `${c.slice(0, 4)}-${c.slice(4, 5)}/${c.slice(5)}` : c);
+export const formatarCnae = (c: string): string => (/^\d{7}$/.test(c) ? `${c.slice(0, 4)}-${c.slice(4, 5)}/${c.slice(5)}` : c);
 
 /** Texto de um CNAE: "4781-4/00 · Descrição" (a descrição como a tabela oficial traz); sem descrição, só o código formatado. */
 export function textoCnae(codigo: string, descricao?: string | null): string {
@@ -12,10 +12,12 @@ export function textoCnae(codigo: string, descricao?: string | null): string {
   return d ? `${formatarCnae(codigo)} · ${d}` : formatarCnae(codigo);
 }
 
-/** Os CNAE secundários em texto: com descrição quando o contrato a trouxer; senão, os códigos antigos sem descrição. */
-export function textosCnaeSecundarios(f: Pick<FichaReceitaPlanaMascarada, 'cnae_secundarios' | 'cnae_secundarios_descritos'>): string[] {
-  if (f.cnae_secundarios_descritos && f.cnae_secundarios_descritos.length > 0) return f.cnae_secundarios_descritos.map((c) => textoCnae(c.codigo, c.descricao));
-  return (f.cnae_secundarios ?? []).map((c) => textoCnae(c));
+/** Os CNAE secundários no campo da ficha: um por linha, formatados ("4781-4/00"); a edição aceita com ou sem máscara. */
+export const cnaesSecundariosNoCampo = (codigos: readonly string[] | null | undefined): string => (codigos ?? []).map(formatarCnae).join('\n');
+
+/** A descrição dos CNAE secundários sob o campo: só os que têm descrição (o código já está no campo, formatado; T-0134). */
+export function textosCnaeSecundarios(f: Pick<FichaReceitaPlanaMascarada, 'cnae_secundarios_descritos'>): string[] {
+  return (f.cnae_secundarios_descritos ?? []).filter((c) => c.descricao?.trim()).map((c) => textoCnae(c.codigo, c.descricao));
 }
 
 export type EstadoFicha = 'nunca' | 'sem_dados' | 'com_dados';

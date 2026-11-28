@@ -35,6 +35,13 @@ describe('linhas da aba Cargas (T-0058)', () => {
     expect(l.ultima).toBeNull();
     expect(linhasCargas(null, 'America/Manaus').every((x) => x.situacao === 'nao_carregado')).toBe(true);
   });
+  it('"carregado" sem ultima_carga (a API manda quando há registro vindo do BKO): sem data não há selo Carregado', () => {
+    const d = situacoes({ filial: { situacao: 'carregado' } });
+    const sem = { ...d, cadastros: d.cadastros.map((c) => (c.cadastro === 'filial' ? { ...c, ultima_carga: null } : c)) };
+    const l = linhasCargas(sem, 'America/Manaus').find((x) => x.cadastro === 'filial')!;
+    expect(l.chip).toEqual({ tom: 'neutro', texto: 'Não carregado' });
+    expect(l.ultima).toBeNull();
+  });
   it('só as unidades são "(opcional)", sem ponto final', () => {
     expect(linhas.filter((l) => l.rotulo.includes('(opcional)')).map((l) => l.rotulo)).toEqual(['Unidades (opcional)']);
   });
