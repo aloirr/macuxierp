@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { paraCsv } from '@macuxierp/platform-sdk/listas';
 import { PERFIS, ROTULOS_PERFIL, type Perfil } from '@macuxierp/platform-sdk';
-import { COLUNAS_AUDITORIA, COLUNAS_USUARIOS, TOM_SITUACAO_USUARIO, linhaAuditoria, linhaLicenca, linhaUsuario, opcoesDePerfil, paginaAuditoria, paginaLicencas } from './listas';
+import { COLUNAS_AUDITORIA, COLUNAS_USUARIOS, TOM_SITUACAO_USUARIO, linhaAuditoria, linhaLicenca, linhaUsuario, opcoesDePerfil, paginaAuditoria, rotuloAcaoAuditoria, rotuloEntidadeAuditoria, paginaLicencas } from './listas';
 import { PAGINAS_CORE, paginasVisiveis } from './paginas';
 
 const ID = '11111111-1111-4111-8111-111111111111';
@@ -19,7 +19,7 @@ describe('T-0087: telas do core no BKO (RF-CORE-02/03/05)', () => {
   it('RF-CORE-02: os filtros da URL das páginas vêm do descritor do SDK (busca, inativos, período, usuário, cursor e limite)', () => {
     const pagina = (id: string) => PAGINAS_CORE.find((p) => p.id === id);
     expect(pagina('usuarios')?.filtros).toEqual(['busca', 'cursor', 'inativos', 'limite']);
-    expect(pagina('auditoria')?.filtros).toEqual(['ate', 'cursor', 'de', 'entidade', 'limite', 'usuario_id']);
+    expect(pagina('auditoria')?.filtros).toEqual(['ate', 'cursor', 'de', 'entidade', 'limite', 'usuario', 'usuario_id']);
     expect(pagina('usuarios')?.exportaCsv && pagina('auditoria')?.exportaCsv && pagina('licencas')?.exportaCsv).toBe(true);
   });
 
@@ -29,11 +29,12 @@ describe('T-0087: telas do core no BKO (RF-CORE-02/03/05)', () => {
     expect(paginaAuditoria.consulta.safeParse({ de: 'ontem' }).success).toBe(false);
   });
 
-  it('LGPD: a auditoria da tela e do CSV não tem antes/depois nem nome ou e-mail, só o id do autor', () => {
+  it('RD-2419 e LGPD: a auditoria mostra o nome do autor (nunca o id nem e-mail), sem coluna de UUID e sem antes/depois', () => {
     const ids = paginaAuditoria.colunas.map((c) => c.id);
-    expect(ids).toEqual(['ocorrido_em', 'usuario_id', 'acao', 'entidade', 'entidade_id']);
-    const csv = paraCsv(paginaAuditoria.colunas, [{ id: ID, usuario_id: ID, acao: 'core.usuario.criado', entidade: 'usuario', entidade_id: null, ocorrido_em: '2026-11-10T12:00:00.000Z' }]);
-    expect(csv).toContain(ID);
+    expect(ids).toEqual(['ocorrido_em', 'usuario_nome', 'acao', 'entidade']);
+    const csv = paraCsv(paginaAuditoria.colunas, [{ id: ID, usuario_id: ID, usuario_nome: 'Maria Teste', acao: 'core.usuario.criado', entidade: 'usuario', entidade_id: ID, ocorrido_em: '2026-11-10T12:00:00.000Z' }]);
+    expect(csv).toContain('Maria Teste');
+    expect(csv).not.toContain(ID);
     expect(csv).toContain('Usuário criado');
     const campos = (paginaAuditoria.item as unknown as { shape: Record<string, unknown> }).shape;
     expect(campos).not.toHaveProperty('antes');
@@ -52,7 +53,15 @@ describe('T-0087: telas do core no BKO (RF-CORE-02/03/05)', () => {
     expect(linhaUsuario(u, 'America/Manaus')).toMatchObject({ perfil: 'Gerente', situacao: 'Ativo' });
     expect(linhaUsuario(u, 'America/Manaus').ultimo_acesso_em).toContain('12:00');
     expect(linhaUsuario({ ...u, ultimo_acesso_em: null, ativo: false, situacao: 'inativo' as const }, 'America/Manaus')).toMatchObject({ ultimo_acesso_em: 'Nunca entrou', situacao: 'Inativo' });    expect(linhaLicenca({ modulo: 'cadastros', ativo: true, valido_ate: null }, 'America/Manaus')).toEqual({ modulo: 'Cadastros', ativo: 'sim', valido_ate: 'Sem prazo' });
-    expect(linhaAuditoria({ id: ID, usuario_id: null, acao: 'core.usuario.senha_redefinida', entidade: 'usuario', entidade_id: null, ocorrido_em: '2026-11-20T16:00:00.000Z' }, 'America/Manaus')).toMatchObject({ usuario_id: 'Sistema', acao: 'Senha redefinida' });
+    expect(linhaAuditoria({ id: ID, usuario_id: null, usuario_nome: null, acao: 'core.usuario.senha_redefinida', entidade: 'usuario', entidade_id: null, ocorrido_em: '2026-11-20T16:00:00.000Z' }, 'America/Manaus')).toMatchObject({ usuario_nome: 'Sistema', acao: 'Senha redefinida', entidade: 'Usuário' });
+  });
+
+  it('RD-2419: ação e entidade de auditoria saem em português; o desconhecido vira texto genérico, nunca o código', () => {
+    expect(rotuloAcaoAuditoria('cadastros.carga.iniciar')).toBe('Carga de dados iniciada');
+    expect(rotuloEntidadeAuditoria('carga_portal')).toBe('Carga de dados');
+    expect(rotuloAcaoAuditoria('xpto.coisa.nova')).toBe('Alteração registrada');
+    expect(rotuloEntidadeAuditoria('xpto_nova')).toBe('Outro registro');
+    expect(paginaAuditoria.consulta.safeParse({ usuario: 'Maria' }).success).toBe(true);
   });
 
   it('RN-CORE-10: o seletor de perfil lista todos os perfis conhecidos com rótulo; licenças não têm busca nem inativos', () => {

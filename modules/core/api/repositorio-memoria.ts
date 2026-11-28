@@ -130,10 +130,11 @@ export class RepositorioCoreMemoria implements RepositorioCore {
     this.ambientesLinhas.push(a);
   }
 
-  async auditoria(_tx: Transacao, f: { entidade?: string; usuario_id?: string; de?: Date; ate?: Date; limite: number; cursor?: string }): Promise<LinhaAuditoria[]> {
+  async auditoria(_tx: Transacao, f: { entidade?: string; usuario_id?: string; usuario?: string; de?: Date; ate?: Date; limite: number; cursor?: string }): Promise<LinhaAuditoria[]> {
     return this.auditoriaLinhas
       .filter((a) => !f.entidade || a.entidade === f.entidade)
       .filter((a) => !f.usuario_id || a.usuario_id === f.usuario_id)
+      .filter((a) => !f.usuario || (a.usuario_nome ?? '').toLowerCase().includes(f.usuario.toLowerCase()))
       .filter((a) => !f.de || a.ocorrido_em >= f.de)
       .filter((a) => !f.ate || a.ocorrido_em <= f.ate)
       .filter((a) => !f.cursor || a.id > f.cursor)

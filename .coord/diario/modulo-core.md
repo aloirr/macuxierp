@@ -10,3 +10,4 @@
 2026-11-24 — T-0088 — core: tela de empresa e ambiente fiscal (só exibição, sem ação de troca; troca segue só pela rota da T-0030)
 2026-11-27 — T-0101 — v0.3.24 RN-CORE-16: cnpj_em_uso revalidado no domínio (empresa_cnpj_em_uso), db.test da ficha contra a 0077 (#850), revisão do corretor aplicada; PR depende do #850, do PR do engenheiro (401 por etapa) e do R-1 do testes.
 2026-11-28 — T-0134/T-0135 — tem_fdv mapeado (default false), external_id excluído = 409, rótulos de permissão e vocabulário da licença
+2026-11-28 — RD-2419 — auditoria do BKO: ação/entidade em pt-BR, nome do usuário (join plataforma.usuario), filtro por nome, sem coluna Registro
