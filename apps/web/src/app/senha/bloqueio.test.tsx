@@ -31,10 +31,10 @@ describe('bloqueio do shell até a troca (T-0052)', () => {
     eu.troca = true;
     await expect(Casca({ children: 'x' })).rejects.toThrow('REDIRECT /senha');
   });
-  it('layout: sem troca pendente renderiza o menu, com "Trocar senha" apontando para a página atual', async () => {
+  it('layout: sem troca pendente renderiza o menu, com "Alterar senha" no botão do usuário, apontando para a página atual', async () => {
     eu.troca = undefined;
     const h = renderToStaticMarkup(await Casca({ children: 'x' }));
-    expect(h).toContain('Trocar senha');
+    expect(h).toContain('Alterar senha');
     expect(h).toContain('href="/senha?destino=%2Fpedido%2Flista"');
   });
   it('download: o 403 TROCAR_SENHA vira redirect RELATIVO para /senha (sem ERR_FAILED)', async () => {

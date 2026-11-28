@@ -1,5 +1,6 @@
 import { AssinaturaErp } from '@macuxierp/ui/marca';
 import { SeloPlataforma } from '@macuxierp/ui';
+import { MenuUsuario } from '@/components/menu-usuario';
 import { sairConfigAcao } from './sair';
 
 /**
@@ -13,8 +14,7 @@ export function TopoPlataforma({ nome }: { nome: string }) {
       <span className="marca"><AssinaturaErp fundo="grafite" /></span>
       <SeloPlataforma />
       <span className="espaco" />
-      <span className="nome-usuario">{nome}</span>
-      <form action={sairConfigAcao}><button className="link" type="submit">Sair</button></form>
+      <MenuUsuario nome={nome} hrefPerfil="/config/perfil" hrefSenha="/config/senha" sair={sairConfigAcao} />
     </header>
   );
 }

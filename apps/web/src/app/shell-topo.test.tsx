@@ -10,7 +10,7 @@ vi.mock('next/navigation', () => ({ redirect: vi.fn(), usePathname: () => '/' })
 vi.mock('./(shell)/nav-lateral', () => ({ NavLateral: () => null }));
 vi.mock('./(shell)/botao-menu', () => ({ BotaoMenu: () => null }));
 vi.mock('./(shell)/botao-sair', () => ({ BotaoSair: () => null }));
-vi.mock('./(shell)/link-trocar-senha', () => ({ LinkTrocarSenha: () => null }));
+vi.mock('@/components/menu-usuario', () => ({ MenuUsuario: () => null }));
 vi.mock('./(shell)/aviso-senha-trocada', () => ({ AvisoSenhaTrocada: () => null }));
 
 // O layout é importado uma única vez (o mock de sessão lê ctx.valor a cada chamada), sem vi.resetModules.
