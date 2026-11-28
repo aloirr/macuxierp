@@ -17,9 +17,9 @@ import type { AcaoVista } from './tipos';
 const ID = '3f1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c70';
 
 describe('rota do pedido no shell (T-0015)', () => {
-  it('as quatro páginas estão registradas e só a lista entra no menu', () => {
+  it('as três páginas estão registradas e só a lista entra no menu (sem /:id/editar, decisão do PO)', () => {
     expect(PAGINAS_REGISTRADAS.filter((p) => p.modulo === 'pedido').map((p) => [p.rota, Boolean(p.ocultaNoMenu)])).toEqual([
-      ['/pedido/pedidos', false], ['/pedido/pedidos/novo', true], ['/pedido/pedidos/:id', true], ['/pedido/pedidos/:id/editar', true],
+      ['/pedido/pedidos', false], ['/pedido/pedidos/novo', true], ['/pedido/pedidos/:id', true],
     ]);
     expect(paginasDoMenu('pedido', 'Pedidos').map((p) => p.rota)).toEqual(['/pedido/pedidos']);
   });
@@ -29,10 +29,8 @@ describe('rota do pedido no shell (T-0015)', () => {
     expect(c?.pagina.rota).toBe('/pedido/pedidos/:id');
     expect(c?.params).toEqual({ id: ID });
     expect(casarRota(`/pedido/pedidos/${ID}/x`)).toBeUndefined();
-    // /:id e /:id/editar têm tamanhos diferentes e não se confundem; o editar ainda não tem tela construída (aviso padrão).
-    const ed = casarRota(`/pedido/pedidos/${ID}/editar`);
-    expect(ed?.pagina.rota).toBe('/pedido/pedidos/:id/editar');
-    expect(ed?.params).toEqual({ id: ID });
+    // /:id/editar saiu de PAGINAS_PEDIDO (decisão do PO): a rota não casa com nenhuma página.
+    expect(casarRota(`/pedido/pedidos/${ID}/editar`)).toBeUndefined();
     expect(telaDaRota('/pedido/pedidos/:id/editar')).toBeUndefined();
     expect(casarRota('/pedido/pedidos/%E0%A4%A')).toBeUndefined();
   });

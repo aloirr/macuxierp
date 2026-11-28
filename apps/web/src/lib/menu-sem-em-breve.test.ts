@@ -44,9 +44,7 @@ describe('menu sem páginas "em breve" (decisão do PO, v0.3.28)', () => {
     expect(PAGINAS_REGISTRADAS.find((p) => p.rota === ROTA_AMBIENTE_FISCAL)?.ocultaNoMenu).not.toBe(true);
   });
 
-  it('nenhuma tela linka para "Editar pedido" (rota /pedido/pedidos/:id/editar): ela fica fora do menu e sem descritor', () => {
-    const editar = PAGINAS_REGISTRADAS.find((p) => p.rota.endsWith('/:id/editar'));
-    expect(editar?.ocultaNoMenu).toBe(true);
-    expect(editar && telaDaRota(editar.rota)).toBeUndefined();
+  it('nenhuma tela linka para "Editar pedido": a rota /pedido/pedidos/:id/editar não está registrada', () => {
+    expect(PAGINAS_REGISTRADAS.find((p) => p.rota.endsWith('/:id/editar'))).toBeUndefined();
   });
 });
