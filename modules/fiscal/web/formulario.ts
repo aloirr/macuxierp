@@ -30,6 +30,24 @@ const TODAS = { valor: '', rotulo: 'Todos' } as const;
 const UF_OPCOES = [TODAS, ...UFS.map((u) => ({ valor: u, rotulo: u }))];
 const SIM_NAO = [{ valor: '', rotulo: 'Não informado' }, { valor: 'sim', rotulo: 'Sim' }, { valor: 'nao', rotulo: 'Não' }] as const;
 
+const MOD_BC = [
+  { valor: '0', rotulo: 'Margem de valor agregado' },
+  { valor: '1', rotulo: 'Pauta' },
+  { valor: '2', rotulo: 'Preço tabelado máximo' },
+  { valor: '3', rotulo: 'Valor da operação' },
+] as const;
+/** modBCST do Manual da NF-e: o motor só calcula a margem de valor agregado; a API recusa as demais com mensagem em português. */
+const MOD_BC_ST = [
+  { valor: '', rotulo: 'Não se aplica' },
+  { valor: '4', rotulo: 'Margem de valor agregado' },
+  { valor: '5', rotulo: 'Pauta' },
+  { valor: '0', rotulo: 'Preço tabelado ou máximo sugerido' },
+  { valor: '1', rotulo: 'Lista negativa' },
+  { valor: '2', rotulo: 'Lista positiva' },
+  { valor: '3', rotulo: 'Lista neutra' },
+] as const;
+const CRT_OPCOES = [TODAS, { valor: '1', rotulo: '1 Simples' }, { valor: '2', rotulo: '2 Sublimite' }, { valor: '3', rotulo: '3 Normal' }, { valor: '4', rotulo: '4 MEI' }] as const;
+
 const t = (nome: string, rotulo: string, colunas: ColunasRegra, extra: Partial<CampoRegra> = {}): CampoRegra => ({ nome, rotulo, tipo: 'texto', colunas, ...extra });
 const p = (nome: string, rotulo: string, colunas: ColunasRegra = 2): CampoRegra => ({ nome, rotulo, tipo: 'percentual', colunas });
 const d4 = (nome: string, rotulo: string, colunas: ColunasRegra = 2): CampoRegra => ({ nome, rotulo, tipo: 'decimal4', colunas });
@@ -40,58 +58,58 @@ export const GRUPOS_REGRA: readonly GrupoRegra[] = [
     id: 'alvo', titulo: 'A quem a regra se aplica',
     campos: [
       sel('tributo', 'Tributo', 2, [{ valor: 'icms', rotulo: 'ICMS' }, { valor: 'ipi', rotulo: 'IPI' }, { valor: 'pis', rotulo: 'PIS' }, { valor: 'cofins', rotulo: 'COFINS' }, { valor: 'ibs_cbs', rotulo: 'IBS/CBS' }, { valor: 'is', rotulo: 'IS' }], { obrigatorio: true }),
-      t('ncm_prefixo', 'NCM (prefixo)', 2, { ajuda: '2 a 8 dígitos; vazio = todos' }),
-      t('cfop', 'CFOP', 2),
-      sel('uf_origem', 'UF origem', 1, UF_OPCOES),
-      sel('uf_destino', 'UF destino', 1, UF_OPCOES),
+      t('ncm_prefixo', 'NCM (prefixo)', 2, { ajuda: 'De 2 a 8 dígitos. Deixe em branco para todos' }),
+      t('cfop', 'CFOP', 1),
+      sel('uf_origem', 'UF origem', 2, UF_OPCOES),
+      sel('uf_destino', 'UF destino', 2, UF_OPCOES),
       sel('tipo_cliente', 'Cliente', 2, [TODAS, { valor: 'contribuinte', rotulo: 'Contribuinte' }, { valor: 'isento', rotulo: 'Isento' }, { valor: 'nao_contribuinte', rotulo: 'Não contribuinte' }]),
-      sel('crt', 'CRT', 2, [TODAS, { valor: '1', rotulo: '1 Simples' }, { valor: '2', rotulo: '2 Sublimite' }, { valor: '3', rotulo: '3 Normal' }, { valor: '4', rotulo: '4 MEI' }]),
+      sel('crt', 'CRT', 1, CRT_OPCOES),
     ],
   },
   {
     id: 'icms', titulo: 'ICMS e FCP',
     campos: [
       t('codigo', 'CST/CSOSN', 2, { ajuda: 'CST (2 dígitos) ou CSOSN (3)' }),
-      t('mod_bc', 'Modalidade da BC', 2),
-      p('aliquota_icms', 'Alíquota ICMS (%)'),
-      p('reducao_bc', 'Redução da BC (%)'),
-      p('p_fcp', 'FCP (%)'),
-      p('p_cred_sn', 'Crédito Simples (%)'),
-      p('p_dif', 'Diferimento (%)'),
-      p('p_icms_efet', 'ICMS efetivo (%)'),
+      sel('mod_bc', 'Base de cálculo do ICMS', 4, MOD_BC),
+      p('aliquota_icms', 'ICMS (%)', 1),
+      p('reducao_bc', 'Redução (%)', 1),
+      p('p_fcp', 'FCP (%)', 1),
+      p('p_cred_sn', 'Crédito (%)', 1),
+      p('p_dif', 'Diferido (%)', 1),
+      p('p_icms_efet', 'Efetivo (%)', 1),
     ],
   },
   {
     id: 'st', titulo: 'ICMS-ST (por MVA)',
     campos: [
-      t('mod_bc_st', 'Modalidade da BC-ST', 2, { ajuda: 'Só 4 (MVA) é calculada' }),
-      p('mva_original', 'MVA original (%)'),
-      p('mva_ajustada', 'MVA ajustada (%)'),
+      sel('mod_bc_st', 'Base de cálculo da ST', 4, MOD_BC_ST, { ajuda: 'O cálculo atual atende a margem de valor agregado' }),
+      p('mva_original', 'MVA (%)', 1),
+      p('mva_ajustada', 'MVA ajust. (%)', 1),
       { nome: 'ajustar_mva', rotulo: 'Ajustar a MVA', tipo: 'booleano3', colunas: 2, opcoes: SIM_NAO, ajuda: 'ST interestadual exige sim ou não' },
-      p('reducao_bc_st', 'Redução BC-ST (%)'),
-      p('aliquota_interna_destino', 'Alíq. interna destino (%)'),
-      p('p_fcp_st', 'FCP-ST (%)'),
+      p('reducao_bc_st', 'Redução ST (%)', 1),
+      p('aliquota_interna_destino', 'Alíq. destino (%)', 2),
+      p('p_fcp_st', 'FCP ST (%)', 1),
     ],
   },
   {
     id: 'ipi-pis-cofins', titulo: 'IPI, PIS e COFINS',
     campos: [
-      t('cst_ipi', 'CST IPI', 1), p('aliquota_ipi', 'IPI (%)', 1), d4('valor_unidade_ipi', 'IPI por unidade (R$)'), t('c_enq', 'Enquadramento', 2),
+      t('cst_ipi', 'CST IPI', 1), p('aliquota_ipi', 'IPI (%)', 1), d4('valor_unidade_ipi', 'IPI por unidade (R$)'), t('c_enq', 'Enquadramento', 2, { ajuda: 'Deixe em branco quando não houver enquadramento' }),
       t('cst_pis', 'CST PIS', 1), p('aliquota_pis', 'PIS (%)', 1), t('cst_cofins', 'CST COFINS', 2), p('aliquota_cofins', 'COFINS (%)'),
     ],
   },
   {
-    id: 'ibs-cbs-is', titulo: 'IBS, CBS e IS (NT 2025.002-RTC)',
+    id: 'ibs-cbs-is', titulo: 'Reforma tributária (IBS, CBS e IS)',
     campos: [
-      t('cst_ibs_cbs', 'CST IBS/CBS', 2), t('c_class_trib', 'cClassTrib', 2), p('p_ibs_uf', 'IBS UF (%)'), p('p_ibs_mun', 'IBS Mun. (%)'), p('p_cbs', 'CBS (%)'), t('versao_nt_rtc', 'Versão da NT', 2),
-      p('p_red_ibs', 'Redução IBS (%)'), p('p_red_cbs', 'Redução CBS (%)'), t('cst_is', 'CST IS', 2), t('c_class_trib_is', 'cClassTrib IS', 2), p('p_is', 'IS (%)'), d4('valor_unidade_is', 'IS por unidade (R$)'),
+      t('cst_ibs_cbs', 'CST IBS/CBS', 2), t('c_class_trib', 'Classificação tributária', 2), p('p_ibs_uf', 'IBS UF (%)'), p('p_ibs_mun', 'IBS Mun. (%)'), p('p_cbs', 'CBS (%)'), t('versao_nt_rtc', 'Versão da NT', 2),
+      p('p_red_ibs', 'Redução IBS (%)'), p('p_red_cbs', 'Redução CBS (%)'), t('cst_is', 'CST IS', 2), t('c_class_trib_is', 'Classificação do IS', 2), p('p_is', 'IS (%)'), d4('valor_unidade_is', 'IS por unidade (R$)'),
     ],
   },
   {
     id: 'fonte', titulo: 'Fonte e vigência',
     campos: [
       sel('fonte_tipo', 'Tipo da fonte', 2, [{ valor: 'NT', rotulo: 'NT' }, { valor: 'convenio', rotulo: 'Convênio' }, { valor: 'anexo', rotulo: 'Anexo' }, { valor: 'lei', rotulo: 'Lei' }, { valor: 'ajuste_sinief', rotulo: 'Ajuste SINIEF' }, { valor: 'resolucao', rotulo: 'Resolução' }, { valor: 'outro', rotulo: 'Outro' }], { obrigatorio: true }),
-      t('fonte_referencia', 'Referência da fonte', 8, { obrigatorio: true }),
+      t('fonte_referencia', 'Referência', 4, { obrigatorio: true }),
       t('versao', 'Versão', 2, { obrigatorio: true }),
       { nome: 'vigencia_inicio', rotulo: 'Início da vigência', tipo: 'data', colunas: 2, obrigatorio: true },
       { nome: 'vigencia_fim', rotulo: 'Fim da vigência', tipo: 'data', colunas: 2 },
@@ -128,12 +146,12 @@ export function valoresDaRegra(r?: Partial<RegraDetalhe>): Record<string, string
     const bruto = c.nome === 'fonte_tipo' ? fonte?.tipo : c.nome === 'fonte_referencia' ? fonte?.referencia : (r as Record<string, unknown> | undefined)?.[c.nome];
     if (c.tipo === 'percentual' || c.tipo === 'decimal4') v[c.nome] = texto4(bruto as number | null | undefined);
     else if (c.tipo === 'booleano3') v[c.nome] = bruto === true ? 'sim' : bruto === false ? 'nao' : '';
+    else if (c.nome === 'c_enq' && bruto === '999') v[c.nome] = '';
     else v[c.nome] = bruto === null || bruto === undefined ? '' : String(bruto);
   }
   if (!r) {
     v.tributo = 'icms';
     v.mod_bc = '3';
-    v.c_enq = '999';
   }
   return v;
 }

@@ -77,4 +77,28 @@ describe('formulário da regra (grade de 12 colunas, regra 11)', () => {
     const v = valoresDaRegra({ ...regra({ aliquota_icms: 185000, ajustar_mva: null }), updated_at: 'x', situacao: 'vigente' });
     expect(v).toMatchObject({ aliquota_icms: '18,5', ajustar_mva: '', fonte_tipo: 'convenio', crt: '' });
   });
+  it('RN-FIS-04: base de cálculo é lista com nomes (o código fica por dentro) e a tela não mostra termos técnicos de norma', () => {
+    const mod = CAMPOS_REGRA.find((c) => c.nome === 'mod_bc')!;
+    expect(mod.tipo).toBe('selecao');
+    expect(mod.opcoes?.map((o) => o.rotulo)).toEqual(['Margem de valor agregado', 'Pauta', 'Preço tabelado máximo', 'Valor da operação']);
+    expect(CAMPOS_REGRA.find((c) => c.nome === 'mod_bc_st')!.tipo).toBe('selecao');
+    const textos = [...GRUPOS_REGRA.map((g) => g.titulo), ...CAMPOS_REGRA.flatMap((c) => [c.rotulo, c.ajuda ?? ''])].join(' | ');
+    expect(textos).not.toMatch(/cClassTrib|RTC|999|opção 4|modBC/);
+  });
+  it('RN-FIS-04: regra sem enquadramento sai com o campo em branco e vai à API como 999', () => {
+    expect(valoresDaRegra({ ...regra({ c_enq: '999' }), updated_at: 'x', situacao: 'vigente' }).c_enq).toBe('');
+    expect(valoresDaRegra().c_enq).toBe('');
+  });
+  it('RN-FIS-04: cada linha do formulário soma 12 colunas (a página preenche a largura)', () => {
+    for (const g of GRUPOS_REGRA) {
+      const total = g.campos.reduce((n, c) => n + c.colunas, 0);
+      expect(total % 12, g.id).toBe(0);
+    }
+  });
+  it('RN-FIS-04: a coluna Fonte mostra só a referência e o tipo tem coluna própria', () => {
+    const ids = paginaRegras.colunas.map((c) => c.id);
+    expect(ids.indexOf('fonte_tipo')).toBe(ids.indexOf('fonte') - 1);
+    const linha = RegraLinha.parse({ ...regra(), updated_at: '2026-01-01T00:00:00.000Z', situacao: 'vigente' });
+    expect(paginaRegras.colunas.find((c) => c.id === 'fonte')!.valor(linha)).toBe(linha.fonte!.referencia);
+  });
 });
