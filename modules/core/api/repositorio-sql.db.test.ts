@@ -236,6 +236,19 @@ describe.skipIf(!PG_DISPONIVEL)('concorrência do adaptador SQL do core (Postgre
     await t2.descartar();
   });
 
+  it('RN-CORE-05: reenvio com o external_id de usuário excluído é 409 no banco real (não 500) e sem eco do valor', async () => {
+    const id = randomUUID();
+    const novo = { email: 'ext@piloto.test', nome: 'Pessoa Ext', senha_hash: '$argon2id$y', perfil: 'faturista', filial_ids: [], ativo: true, external_id: 'ext-sigiloso' };
+    const t1 = await abrir();
+    await repo.criarUsuario(t1, { id, ...novo } as never);
+    await repo.excluirUsuario(t1, id, new Date('2026-11-27T23:00:00Z'));
+    expect(await repo.usuarioPorExternalId(t1, 'ext-sigiloso')).toBeNull();
+    const e = await repo.criarUsuario(t1, { id: randomUUID(), ...novo, email: 'ext2@piloto.test' } as never).catch((x: unknown) => x);
+    expect(e).toMatchObject({ status: 409 });
+    expect(JSON.stringify(e)).not.toContain('ext-sigiloso');
+    await t1.descartar();
+  });
+
   it('T-0052: criar usuário e redefinir senha exigem a troca da senha provisória', async () => {
     const id = randomUUID();
     const flag = async () => (await b.admin.query('SELECT deve_trocar_senha FROM plataforma.usuario WHERE id = $1', [id])).rows[0] as { deve_trocar_senha: boolean };
