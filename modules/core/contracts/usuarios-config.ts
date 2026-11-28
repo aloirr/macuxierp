@@ -39,6 +39,10 @@ export const ROTULOS_ACAO_USUARIO: Readonly<Record<AcaoUsuario, string>> = {
 export const ROTULO_ULTIMO_ADMIN = 'último administrador';
 /** RN-CORE-01: mensagem da recusa (MXU01 no banco, 422 na API), igual nos dois lados. */
 export const MENSAGEM_ULTIMO_ADMIN = 'A empresa precisa de ao menos um administrador ativo';
+/** RN-CORE-40: o usuário fica com pelo menos uma filial (422 na API; a tela recusa com o mesmo texto). */
+export const MENSAGEM_FILIAL_DO_USUARIO = 'Escolha ao menos uma filial.';
+/** RN-CORE-40: filial de outra empresa ou excluída. */
+export const MENSAGEM_FILIAL_FORA_DA_EMPRESA = 'Escolha só filiais desta empresa.';
 /** RN-CORE-17: e-mail de usuário não excluído (ativo, bloqueado ou inativo) do mesmo tenant. */
 export const MENSAGEM_EMAIL_EM_USO_NA_EMPRESA = 'Já existe usuário com este e-mail';
 
