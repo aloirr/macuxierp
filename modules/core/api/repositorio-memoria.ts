@@ -23,7 +23,7 @@ export class RepositorioCoreMemoria implements RepositorioCore {
   ambientesLinhas: (LinhaAmbiente & { alterado_por?: string })[] = [];
   auditoriaLinhas: LinhaAuditoria[] = [];
   exportacoes: LinhaExportacao[] = [];
-  /** RN-CORE-18: e-mails vivos de outras empresas e superadmins (simula a visão global do banco). */
+  /** RN-CORE-18: e-mails vivos de usuários de outras empresas (simula a visão global do banco). */
   emailsEmOutrasContas = new Set<string>();
   arquivos = new Map<string, string>();
   parametrosLinhas = new Map<string, unknown>();

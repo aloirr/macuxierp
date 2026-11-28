@@ -6,7 +6,7 @@ describe('RN-CORE-18: e-mail único no sistema todo', () => {
     expect(normalizarEmailUsuario('  Ana.Silva@Empresa.COM.br ')).toBe('ana.silva@empresa.com.br');
     expect(normalizarEmailUsuario('a b@x.com')).toBe('ab@x.com');
   });
-  it('RN-CORE-18: e-mail vivo em outra empresa ou num superadmin dá EMAIL_EM_USO com a mensagem do produto', () => {
+  it('RN-CORE-18: e-mail vivo em outra empresa dá EMAIL_EM_USO com a mensagem do produto', () => {
     expect(decidirEmailUnico({ existe_vivo_em_outra_conta: true })).toEqual({
       ok: false,
       codigo: 'EMAIL_EM_USO',

@@ -1,7 +1,7 @@
 /**
- * RN-CORE-18: o e-mail do usuário é único em todo o sistema (usuários de todas as empresas e superadmin da
- * Plataforma), normalizado em minúsculas e sem espaços, contando só as contas vivas. Funções puras: a consulta
- * "existe e-mail vivo em outra conta" é uma porta (banco-dados, 0079).
+ * RN-CORE-18: o e-mail do usuário é único entre os usuários de todas as empresas, normalizado em minúsculas e
+ * sem espaços, contando só as contas vivas. O superadmin da Plataforma fica fora (decisão 45 A: o /config abre
+ * pelo BKO com o mesmo e-mail). Funções puras: a consulta é uma porta (banco-dados, 0079).
  */
 export const CODIGO_EMAIL_EM_USO = 'EMAIL_EM_USO';
 export const MENSAGEM_EMAIL_EM_USO_GLOBAL = 'Este e-mail já está em uso em outra empresa. Use outro e-mail.';

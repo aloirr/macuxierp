@@ -254,7 +254,7 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
           if (repetido) return { status: 200, corpo: usuarioDto(repetido, c.agora) };
         }
         if (await repo.usuarioPorEmail(c.tx, email)) throw erros.conflito(MENSAGEM_EMAIL_EM_USO);
-        // RN-CORE-18: único no sistema todo (outras empresas e superadmin); a regra é do domain, a consulta é a porta.
+        // RN-CORE-18: único no sistema todo (usuários de outras empresas; o superadmin fica fora); a regra é do domain, a consulta é a porta.
         const unico = decidirEmailUnico({ existe_vivo_em_outra_conta: await repo.existeEmailVivoEmOutraConta(c.tx, email) });
         if (!unico.ok) throw new ErroApi(409, unico.codigo, unico.mensagem);
         const senha = gerarSenhaProvisoria(aleatorios(256));

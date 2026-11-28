@@ -196,7 +196,7 @@ describe('RF-CORE-02: usuários', () => {
     await expect(t.chamar('POST', '/usuarios', { corpo: { ...novo, email: 'MARIA@piloto.test' } })).rejects.toMatchObject({ status: 409 });
   });
 
-  it('RN-CORE-18: e-mail vivo em outra empresa ou superadmin é recusado com EMAIL_EM_USO e nada é gravado', async () => {
+  it('RN-CORE-18: e-mail vivo em outra empresa é recusado com EMAIL_EM_USO e nada é gravado', async () => {
     const t = montar();
     t.repo.emailsEmOutrasContas.add('rita@outra.test');
     const antes = t.repo.usuarios.length;
