@@ -12,9 +12,8 @@ name: producao — diagnóstico (só leitura)
 # concorrência é PRÓPRIO (producao-diagnostico), de propósito: no grupo producao-vm do publicar, um diagnóstico na fila
 # cancelaria a publicação que estivesse esperando (o Actions guarda um só pendente por grupo).
 # SSH igual ao do producao-publicar.yml: PROD_SSH_KEY, PROD_HOST e PROD_USER; chave do host, sempre com
-# StrictHostKeyChecking yes, nesta ordem: secret PROD_SSH_KNOWN_HOSTS → .github/producao/known_hosts → cache do runner
-# (macuxierp-prod-known-hosts-v1) → TOFU (ssh-keyscan ed25519, com aviso e a impressão digital no resumo; grava no cache
-# desta ref depois do primeiro SSH que deu certo).
+# StrictHostKeyChecking yes: secret PROD_SSH_KNOWN_HOSTS se existir, senão ssh-keyscan ed25519 a cada execução, sempre
+# conferida pelo .github/scripts/chave-host.sh (impressão digital fixada; HostKeyAlias macuxierp-prod; v0.3.31).
 # Environment DIAGNOSTICO (decisão do PO): próprio, SEM revisor (só lê) e restrito ao branch main; os secrets PROD_SSH_*
 # (PROD_SSH_KEY e PROD_SSH_KNOWN_HOSTS), PROD_HOST e PROD_USER são cópias dos de produção guardadas nesse environment. Quem
 # cria o environment e as cópias é o Alexandre; sem ele, o job falha só no passo "secrets presentes".
@@ -46,7 +45,7 @@ jobs:
           persist-credentials: false
           sparse-checkout: |
             scripts/deploy/producao
-            .github/producao
+            .github/scripts
 
       - name: scripts do diagnóstico presentes
         run: |
@@ -72,20 +71,11 @@ jobs:
           [[ "$PROD_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || { echo "::error::PROD_USER inválido"; exit 1; }
           echo "secrets obrigatórios presentes"
 
-      - name: chave do host no cache do runner
-        id: conhecidos
-        uses: actions/cache/restore@v4
-        with:
-          path: .producao-ssh/known_hosts
-          key: macuxierp-prod-known-hosts-v1
-
       - name: chave SSH
-        id: ssh
         env:
           CHAVE: ${{ secrets.PROD_SSH_KEY }}
           HOST: ${{ secrets.PROD_HOST }}
           CONHECIDOS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
-          DO_CACHE: ${{ steps.conhecidos.outputs.cache-hit }}
         run: |
           install -d -m 700 ~/.ssh
           # mesma remontagem do producao-publicar.yml (chave colada numa linha só)
@@ -102,61 +92,25 @@ jobs:
           fi
           chmod 600 ~/.ssh/prod
           ssh-keygen -y -P '' -f ~/.ssh/prod > /dev/null 2>&1 || { echo "::error::PROD_SSH_KEY ilegível (veja as mensagens do producao-publicar.yml)"; exit 1; }
-          CACHE=.producao-ssh/known_hosts
-          fonte=""
+          # mesma chave do host do producao-publicar.yml (secret ou ssh-keyscan, conferida pelo .github/scripts/chave-host.sh)
           if [ -n "$CONHECIDOS" ]; then
-            printf '%s\n' "$CONHECIDOS" | tr -d '\r' > ~/.ssh/known_hosts
-            echo "chave do host: secret PROD_SSH_KNOWN_HOSTS"
-          elif [ -s .github/producao/known_hosts ]; then
-            tr -d '\r' < .github/producao/known_hosts > ~/.ssh/known_hosts
-            echo "chave do host: .github/producao/known_hosts (versionado)"
-          elif [ "$DO_CACHE" = true ] && [ -s "$CACHE" ]; then
-            cp "$CACHE" ~/.ssh/known_hosts
-            echo "chave do host: cache do runner (macuxierp-prod-known-hosts-v1)"
-            fonte="cache do runner"
+            printf '%s\n' "$CONHECIDOS" > "$RUNNER_TEMP/chave-host"
+            fonte="secret PROD_SSH_KNOWN_HOSTS"
           else
-            # TOFU (decisão de 22/11, a mesma do publicar): o cache do publicar nasce na ref da tag e não é visto daqui
-            install -d -m 700 .producao-ssh
-            ssh-keyscan -T 15 -t ed25519 "$HOST" 2>/dev/null | tr -d '\r' | grep -v '^#' > "$CACHE" || true
-            grep -q ' ssh-ed25519 ' "$CACHE" || { echo "::error::ssh-keyscan não trouxe a chave ed25519 do PROD_HOST"; exit 1; }
-            cp "$CACHE" ~/.ssh/known_hosts
-            digital="$(ssh-keygen -lf "$CACHE" | awk '{print $1, $2, $NF}')"
-            echo "::warning::chave do host por TOFU (ssh-keyscan): $digital — confira com a da VM (ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub)"
-            echo "tofu=1" >> "$GITHUB_OUTPUT"
-            fonte="TOFU"
+            ssh-keyscan -T 15 -t ed25519 "$HOST" 2>/dev/null > "$RUNNER_TEMP/chave-host" || true
+            fonte="ssh-keyscan"
           fi
-          # Resumo da chave do host SEM o host (prepara o PR B, v0.3.30: .github/producao/known_hosts com
-          # "macuxierp-prod ssh-ed25519 ..." + HostKeyAlias). Só tipo e chave pública; o campo 1 (host) nunca sai.
-          if [ -n "$fonte" ]; then
-            esperada='SHA256:wRktlR17SPnfY7hK7u1/4XhMJ1qeON3xyFzF+b9Gy0s'
-            chave_host="$(awk '$2=="ssh-ed25519"{print $2" "$3; exit}' ~/.ssh/known_hosts)"
-            tmp_kh="$(mktemp)"; printf 'macuxierp-prod %s\n' "$chave_host" > "$tmp_kh"
-            digital_host="$(ssh-keygen -lf "$tmp_kh" 2>/dev/null | awk '{print $2}' || true)"; rm -f "$tmp_kh"
-            if [ -n "$digital_host" ] && [ "$digital_host" = "$esperada" ]; then
-              confere="bate com a conferida na VM (ED25519 $esperada)"
-            else
-              confere="NÃO bate com a conferida na VM (ED25519 $esperada)"
-              echo "::warning::chave do host ($fonte) não bate com a conferida na VM: ${digital_host:-sem ed25519}"
-            fi
-            {
-              echo "### Chave do host de produção ($fonte)"
-              echo
-              echo "Chave pública: \`$chave_host\`"
-              echo "Impressão digital: \`$digital_host\` — $confere."
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
-          printf 'Host prod\n  HostName %s\n  IdentityFile ~/.ssh/prod\n  IdentitiesOnly yes\n  BatchMode yes\n  StrictHostKeyChecking yes\n  ServerAliveInterval 30\n' "$HOST" > ~/.ssh/config
+          bash .github/scripts/chave-host.sh "$RUNNER_TEMP/chave-host" "$fonte" ~/.ssh/known_hosts
+          printf 'Host prod\n  HostName %s\n  HostKeyAlias macuxierp-prod\n  HostKeyAlgorithms ssh-ed25519\n  CheckHostIP no\n  UpdateHostKeys no\n  IdentityFile ~/.ssh/prod\n  IdentitiesOnly yes\n  BatchMode yes\n  StrictHostKeyChecking yes\n  ServerAliveInterval 30\n' "$HOST" > ~/.ssh/config
           chmod 600 ~/.ssh/config
 
       - name: diagnóstico na VM (só leitura)
-        id: diag
         env:
           USUARIO: ${{ secrets.PROD_USER }}
         run: |
           set -o pipefail
           pasta="$(ssh -l "$USUARIO" prod 'mktemp -d "$HOME/macuxierp-diagnostico.XXXXXX"')"
           [[ "$pasta" =~ ^/[A-Za-z0-9._/-]+/macuxierp-diagnostico\.[A-Za-z0-9]{6}$ ]] || { echo "::error::pasta temporária inválida na VM"; exit 1; }
-          echo "ssh_ok=1" >> "$GITHUB_OUTPUT"
           set +e
           scp -q -o User="$USUARIO" scripts/deploy/producao/diagnostico.sh scripts/deploy/producao/diagnostico.sql \
             scripts/deploy/producao/comum.sh "prod:$pasta/" \
@@ -174,14 +128,6 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           [ "$saida" = 0 ] || { echo "::error::diagnóstico falhou (código $saida; log acima)"; exit "$saida"; }
 
-      # TOFU: grava a chave no cache (escopo desta ref) só depois do primeiro SSH que deu certo
-      - name: chave do host no cache do runner (TOFU)
-        if: ${{ always() && steps.ssh.outputs.tofu == '1' && steps.diag.outputs.ssh_ok == '1' }}
-        uses: actions/cache/save@v4
-        with:
-          path: .producao-ssh/known_hosts
-          key: macuxierp-prod-known-hosts-v1
-
       - name: limpar a chave do runner
         if: ${{ always() }}
-        run: rm -rf ~/.ssh/prod ~/.ssh/config ~/.ssh/known_hosts .producao-ssh
+        run: rm -rf ~/.ssh/prod ~/.ssh/config ~/.ssh/known_hosts "$RUNNER_TEMP/chave-host"
