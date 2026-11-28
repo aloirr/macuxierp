@@ -6,7 +6,7 @@ import { montarMenu, resolverPagina } from '../menu';
 import { PAGINAS_REGISTRADAS } from '../paginas';
 import { telaDaRota } from '../telas';
 import type { Linha, TelaQuadro } from '../descritor/tipos';
-import { LISTA_CATALOGO, LISTA_REGRAS, ROTA_CATALOGO, ROTA_REGRA, ROTA_REGRAS_FISCAIS, ROTA_REGRA_NOVA, TEXTO_CAMPO } from './fiscal';
+import { LISTA_CATALOGO, LISTA_REGRAS, ROTA_CATALOGO, ROTA_REGRA, ROTA_REGRAS_FISCAIS, ROTA_REGRA_NOVA } from './fiscal';
 
 const ID = '3f1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c70';
 const FISCAL = [{ id: 'fiscal' as const, menus: ['Regras fiscais'] }];
@@ -42,8 +42,7 @@ describe('regras fiscais no shell (T-0127)', () => {
     const rotulos = LISTA_REGRAS.colunas('fiscal', 'America/Manaus').map((c) => c.rotulo);
     expect(rotulos).toEqual(expect.arrayContaining(['NCM (produto)', 'Situação tributária', 'Margem ST (MVA)', 'Regime (CRT)']));
     for (const r of [...rotulos, ...LISTA_CATALOGO.colunas('fiscal', 'America/Manaus').map((c) => c.rotulo), ...LISTA_REGRAS.filtrosTela.map((f) => f.rotulo)]) expect(r, r).not.toMatch(/_|^CST/);
-    for (const c of GRUPOS_REGRA.flatMap((g) => g.campos)) expect(TEXTO_CAMPO[c.nome]?.rotulo ?? c.rotulo, c.nome).not.toMatch(/_/);
-    for (const nome of ['ncm_prefixo', 'codigo', 'mva_original']) expect(TEXTO_CAMPO[nome]?.ajuda, nome).toBeTruthy();
+    for (const c of GRUPOS_REGRA.flatMap((g) => g.campos)) expect(c.rotulo, c.nome).not.toMatch(/_/);
   });
 
   it('catálogo: a coluna Título tem largura mínima para não quebrar em várias linhas', () => {

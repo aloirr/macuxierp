@@ -3,12 +3,12 @@ import Link from 'next/link';
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Dialogo, RegiaoErros, ResultadoAcao, useResultado } from '@macuxierp/ui';
-import { GRUPOS_REGRA, acoesDaRegra, corpoDaRegra, type CampoRegra, type ErrosRegra, type ValoresRegra } from '@macuxierp/fiscal/web';
+import { GRUPOS_REGRA, acoesDaRegra, corpoDaRegra, opcoesDoCampo, type CampoRegra, type ErrosRegra, type ValoresRegra } from '@macuxierp/fiscal/web';
 import { pode, type Perfil } from '@macuxierp/platform-sdk';
 import { escrever } from '@/lib/acoes-cliente';
 import { resultadoErro } from '@/lib/resultado-acao';
 import { aposResposta, chaveParaEnvio, novoEstado, type EstadoChave } from '@/lib/descritor/idempotencia';
-import { API_REGRA, API_REGRAS, ROTA_REGRAS_FISCAIS, TEXTO_CAMPO } from '@/lib/telas/fiscal';
+import { API_REGRA, API_REGRAS, ROTA_REGRAS_FISCAIS } from '@/lib/telas/fiscal';
 import { novaChave } from '@/lib/telas/comum';
 
 /** Campo da API que a tela mostra em outro campo (a fonte é um par: tipo e referência). */
@@ -114,16 +114,15 @@ export function FormularioRegra({ modo, perfil, valores: iniciais, id, versao }:
 
 function CampoDaRegra({ campo: c, valor, erro, desligado, aoMudar }: { campo: CampoRegra; valor: string; erro: string | undefined; desligado: boolean; aoMudar: (v: string) => void }) {
   const id = `campo-${c.nome}`;
-  const texto = TEXTO_CAMPO[c.nome];
-  const rotulo = texto?.rotulo ?? c.rotulo;
-  const ajuda = texto?.ajuda ?? c.ajuda;
+  const rotulo = c.rotulo;
+  const ajuda = c.ajuda;
   const comum = { id, disabled: desligado, 'aria-invalid': erro ? true : undefined, 'aria-describedby': erro ? `${id}-erro` : ajuda ? `${id}-ajuda` : undefined } as const;
   return (
     <label className={`campo campo-col-${c.colunas}`} htmlFor={id}>
       <span>{rotulo}{c.obrigatorio ? ' *' : ''}</span>
       {c.opcoes ? (
         <select {...comum} value={valor} onChange={(e) => aoMudar(e.target.value)}>
-          {c.opcoes.map((o) => <option key={o.valor} value={o.valor}>{o.rotulo}</option>)}
+          {opcoesDoCampo(c, valor).map((o) => <option key={o.valor} value={o.valor}>{o.rotulo}</option>)}
         </select>
       ) : (
         <input {...comum} type={c.tipo === 'data' ? 'date' : 'text'} lang="pt-BR" inputMode={c.tipo === 'percentual' || c.tipo === 'decimal4' ? 'decimal' : undefined} value={valor} onChange={(e) => aoMudar(e.target.value)} />

@@ -1,7 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 import { z } from 'zod';
 import { RegraDetalhe, FonteRegra } from '@macuxierp/fiscal/contracts';
-import { ROTULO_CRT, ROTULO_TRIBUTO, valoresDaRegra } from '@macuxierp/fiscal/web';
+import { ROTULO_CRT, ROTULO_TRIBUTO, paginaRegras, valoresDaRegra } from '@macuxierp/fiscal/web';
 import type { Perfil } from '@macuxierp/platform-sdk';
 import { ApiIndisponivel, DadosInvalidos, NaoAutenticado, SemPermissao, buscarRegistro, getValidado } from '@/lib/api';
 import { ROTA_SENHA, TrocarSenhaPendente } from '@/lib/troca-pendente';
@@ -47,6 +47,10 @@ const Tributo = z.object({
 });
 const Resolucao = z.object({ data_emissao: z.string(), icms: Tributo, ipi: Tributo, pis: Tributo, cofins: Tributo });
 
+/** Tipo da fonte em português: o mesmo texto da coluna "Tipo da fonte" da lista do fiscal (uma montagem só, a do módulo). */
+const colunaTipoFonte = paginaRegras.colunas.find((c) => c.id === 'fonte_tipo');
+const tipoDaFonte = (fonte: { tipo: string; referencia: string } | null | undefined): string => (fonte && colunaTipoFonte ? String((colunaTipoFonte.valor as (l: unknown) => unknown)({ fonte })) : '');
+
 const CAMPOS_VALE = ['ncm', 'cfop', 'uf_origem', 'uf_destino', 'tipo_cliente', 'crt'] as const;
 const TIPOS_CLIENTE = [{ valor: 'contribuinte', rotulo: 'Contribuinte' }, { valor: 'isento', rotulo: 'Isento' }, { valor: 'nao_contribuinte', rotulo: 'Não contribuinte' }];
 
@@ -65,7 +69,7 @@ export async function QualRegraVale({ acesso, rota, busca }: { acesso: string; r
         <div className="tabela-rolavel">
           <table>
             <caption className="pular">Regra que vale para cada tributo</caption>
-            <thead><tr><th scope="col">Tributo</th><th scope="col">Situação</th><th scope="col">Versão</th><th scope="col">Fonte</th></tr></thead>
+            <thead><tr><th scope="col">Tributo</th><th scope="col">Situação</th><th scope="col">Versão</th><th scope="col">Tipo da fonte</th><th scope="col">Fonte</th></tr></thead>
             <tbody>
               {(['icms', 'ipi', 'pis', 'cofins'] as const).map((t) => {
                 const x = r[t];
@@ -74,6 +78,7 @@ export async function QualRegraVale({ acesso, rota, busca }: { acesso: string; r
                     <th scope="row">{ROTULO_TRIBUTO[t]}</th>
                     <td><Selo selo={{ texto: x.ok ? 'Regra encontrada' : 'Sem regra', tom: x.ok ? 'ok' : 'erro' }} />{!x.ok && x.erros?.[0] && <span className="apoio"> {x.erros[0].mensagem}</span>}</td>
                     <td>{x.versao ?? ''}</td>
+                    <td>{tipoDaFonte(x.fonte)}</td>
                     <td>{x.fonte ? x.fonte.referencia : ''}</td>
                   </tr>
                 );

@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import { valoresDaRegra } from '@macuxierp/fiscal/web';
+import { CAMPOS_REGRA, valoresDaRegra } from '@macuxierp/fiscal/web';
 import { FormularioRegra } from './formulario-regra';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
@@ -26,10 +26,15 @@ describe('formulário da regra fiscal (regras 11 e 12, T-0127)', () => {
     expect(h).toContain('campo-col-1');
     expect(h).not.toContain('campo-col-12');
   });
-  it('rótulos e dicas em português: nada de nome de coluna na tela', () => {
+  it('rótulos e dicas vêm do módulo em português: nada de nome de coluna na tela', () => {
     const h = render('fiscal', 'criar');
-    for (const t of ['NCM (código do produto)', 'Situação tributária (CST/CSOSN)', 'Margem de valor agregado, original (%)', 'Os 2 a 8 primeiros dígitos']) expect(h).toContain(t);
+    for (const c of CAMPOS_REGRA) expect(h, c.nome).toContain(c.rotulo.replace(/&/g, '&amp;'));
     expect(h).not.toMatch(/>(ncm_prefixo|mva_original|aliquota_icms)</);
+  });
+  it('código salvo fora da lista aparece como "código não listado" em vez de abrir vazio', () => {
+    const h = renderToStaticMarkup(<FormularioRegra modo="editar" perfil="fiscal" valores={{ ...valoresDaRegra(), codigo: '77' }} id="3f1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c70" versao="v" />);
+    expect(h).toContain('77 – código não listado');
+    expect(render('fiscal', 'criar')).not.toContain('código não listado');
   });
   it('quem só vê (gerente): campos desligados e sem barra de escrita', () => {
     const h = render('gerente', 'editar');

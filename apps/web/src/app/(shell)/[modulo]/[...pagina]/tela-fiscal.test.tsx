@@ -31,6 +31,8 @@ describe('"Qual regra vale" (RN-FIS-01)', () => {
     const h = renderToStaticMarkup(await QualRegraVale({ acesso: 'x', rota: ROTA, busca: new URLSearchParams(CONSULTA) }));
     expect(api.get.mock.calls[0]?.[0]).toContain('/v1/fiscal/regras/resolver?');
     expect(h).toContain('142/2018');
+    expect(h).toContain('Tipo da fonte');
+    expect(h).toContain('Convênio');
     expect(h).not.toContain('convenio 142');
     expect(h).toContain('Regra que vale');
     expect(h).toContain('Nenhuma regra vigente');

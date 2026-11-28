@@ -26,43 +26,12 @@ type Pagina = typeof paginaRegras | typeof paginaCatalogo;
 const colunasDe = (p: Pagina): readonly ColunaFiscal<unknown>[] => p.colunas as unknown as readonly ColunaFiscal<unknown>[];
 
 /**
- * Texto da tela em português claro (sem sigla solta nem nome de coluna): o módulo entrega o descritor técnico e o shell mostra o rótulo e a dica
- * de quem usa. A sigla fica entre parênteses para quem a conhece.
+ * Rótulo das colunas da lista em português claro (sem sigla solta nem nome de coluna); os campos do formulário já vêm assim do módulo.
  */
 export const ROTULO_COLUNA: Readonly<Record<string, string>> = {
   ncm_prefixo: 'NCM (produto)', crt: 'Regime (CRT)', codigo: 'Situação tributária', mva_original: 'Margem ST (MVA)', aliquota_icms: 'Alíquota ICMS',
   tipo_cliente: 'Tipo de cliente', vigencia_inicio: 'Vigência desde', vigencia_fim: 'Vigência até', chave: 'Modelo',
 };
-export interface TextoCampo { rotulo: string; ajuda?: string }
-export const TEXTO_CAMPO: Readonly<Record<string, TextoCampo>> = {
-  ncm_prefixo: { rotulo: 'NCM (código do produto)', ajuda: 'Os 2 a 8 primeiros dígitos. Vazio vale para todos os produtos.' },
-  cfop: { rotulo: 'CFOP (natureza da operação)', ajuda: '4 dígitos. Vazio vale para todas as operações.' },
-  tipo_cliente: { rotulo: 'Tipo de cliente' },
-  crt: { rotulo: 'Regime da empresa (CRT)', ajuda: 'Regime tributário de quem emite a nota.' },
-  codigo: { rotulo: 'Situação tributária (CST/CSOSN)', ajuda: 'CST com 2 dígitos (regime normal) ou CSOSN com 3 (Simples).' },
-  mod_bc: { rotulo: 'Base de cálculo do ICMS', ajuda: 'Como a base é calculada; 3 é o valor da operação.' },
-  mod_bc_st: { rotulo: 'Base de cálculo da ST', ajuda: 'Só a opção 4 (margem de valor agregado) é calculada.' },
-  mva_original: { rotulo: 'Margem de valor agregado, original (%)', ajuda: 'MVA: margem presumida de revenda usada na substituição tributária.' },
-  mva_ajustada: { rotulo: 'Margem de valor agregado, ajustada (%)', ajuda: 'Usada quando a margem é ajustada pela alíquota.' },
-  ajustar_mva: { rotulo: 'Ajustar a margem (MVA)', ajuda: 'A ST entre estados exige sim ou não.' },
-  reducao_bc: { rotulo: 'Redução da base (%)' },
-  reducao_bc_st: { rotulo: 'Redução da base da ST (%)' },
-  p_fcp: { rotulo: 'Fundo de combate à pobreza (%)' },
-  p_fcp_st: { rotulo: 'Fundo de combate à pobreza na ST (%)' },
-  p_cred_sn: { rotulo: 'Crédito do Simples (%)' },
-  p_dif: { rotulo: 'Diferimento (%)' },
-  p_icms_efet: { rotulo: 'ICMS efetivo (%)' },
-  aliquota_interna_destino: { rotulo: 'Alíquota interna do destino (%)' },
-  cst_ipi: { rotulo: 'Situação do IPI (CST)' }, cst_pis: { rotulo: 'Situação do PIS (CST)' }, cst_cofins: { rotulo: 'Situação do COFINS (CST)' },
-  c_enq: { rotulo: 'Enquadramento do IPI', ajuda: '999 quando não há enquadramento específico.' },
-  cst_ibs_cbs: { rotulo: 'Situação do IBS/CBS (CST)' }, c_class_trib: { rotulo: 'Classificação tributária (cClassTrib)' },
-  c_class_trib_is: { rotulo: 'Classificação do IS (cClassTrib)' }, cst_is: { rotulo: 'Situação do IS (CST)' },
-  versao_nt_rtc: { rotulo: 'Versão da nota técnica' },
-  p_ibs_uf: { rotulo: 'IBS do estado (%)' }, p_ibs_mun: { rotulo: 'IBS do município (%)' }, p_red_ibs: { rotulo: 'Redução do IBS (%)' }, p_red_cbs: { rotulo: 'Redução da CBS (%)' },
-  valor_unidade_ipi: { rotulo: 'IPI por unidade (R$)' }, valor_unidade_is: { rotulo: 'IS por unidade (R$)' },
-};
-/** Rótulo mostrado de um campo ou coluna: o do override, ou o do módulo. */
-export const rotuloDoCampo = (nome: string, padrao: string): string => TEXTO_CAMPO[nome]?.rotulo ?? padrao;
 
 const OPCOES_TRIBUTO = TributoRegra.options.map((t) => ({ valor: t, rotulo: ROTULO_TRIBUTO[t] }));
 const OPCOES_CRT = Object.entries(ROTULO_CRT).map(([valor, rotulo]) => ({ valor, rotulo }));
