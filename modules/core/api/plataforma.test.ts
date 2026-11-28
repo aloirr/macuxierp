@@ -49,6 +49,7 @@ function repoMemoria(inicial: Partial<EmpresaPlataforma> = {}, op: OpcoesFicha =
     fuso: 'America/Manaus',
     situacao: 'ativo',
     modulos: [{ modulo: 'core', ativo: true, valido_ate: null }],
+    ...{ tem_fdv: false }, // T-0134: vira propriedade direta depois do tem_fdv no SDK
     primeiro_admin: null,
     created_at: AGORA.toISOString(),
     updated_at: AGORA.toISOString(),
