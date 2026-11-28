@@ -1,0 +1,235 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Entrada: esqueci</title><style>/* Gerado de tokens.ts (gerarCss). Não edite à mão: o teste exige igualdade. */
+:root {
+  --mx-cor-azul-noite: #1E3350;
+  --mx-cor-perola: #F8F6F1;
+  --mx-cor-branco: #FFFFFF;
+  --mx-cor-azul-claro: #9AA3B0;
+  --mx-cor-azul-medio: #5B7FA6;
+  --mx-cor-sol-laranja: #C2540A;
+  --mx-cor-sol-claro: #F59A52;
+  --mx-cor-grafite: #16202A;
+  --mx-cor-grafite-menu: #2B3743;
+  --mx-cor-texto-secundario: #4A5562;
+  --mx-cor-texto-apoio: #5B6673;
+  --mx-cor-nevoa: #ECEEF1;
+  --mx-cor-borda-cinza: #C9CED5;
+  --mx-cor-borda-campo: #7A8593;
+  --mx-cor-borda-tabela: #DFE2E6;
+  --mx-cor-verde-sucesso: #1D6B4F;
+  --mx-cor-grafico-outros: #8B96A3;
+  --mx-cor-ativo-fundo: #E2F1EA;
+  --mx-cor-erro-texto: #A8261B;
+  --mx-cor-erro-fundo: #FDE8E6;
+  --mx-cor-aviso-texto: #7A4F00;
+  --mx-cor-aviso-fundo: #FFF1D6;
+  --mx-cor-linha-alternada: #FBFAF8;
+  --mx-cor-ativo-texto: var(--mx-cor-verde-sucesso);
+  --mx-cor-inativo-fundo: var(--mx-cor-nevoa);
+  --mx-cor-linha-suave: var(--mx-cor-nevoa);
+  --mx-cor-grafico-serie-cinza: var(--mx-cor-texto-secundario);
+  --mx-cor-rotulo-destaque: var(--mx-cor-azul-noite);
+  --mx-fonte-texto: system-ui, "Segoe UI", Roboto, -apple-system, sans-serif;
+  --mx-fonte-codigo: ui-monospace, "Cascadia Mono", "Roboto Mono", monospace;
+  --mx-fonte-numeros: tabular-nums;
+  --mx-tamanho-micro: 12px;
+  --mx-tamanho-pequeno: 13px;
+  --mx-tamanho-base: 15px;
+  --mx-tamanho-medio: 17px;
+  --mx-tamanho-grande: 20px;
+  --mx-tamanho-titulo: 24px;
+  --mx-tamanho-titulo-cartao: var(--mx-tamanho-pequeno);
+  --mx-tamanho-titulo-dialogo: var(--mx-tamanho-grande);
+  --mx-tamanho-h1: var(--mx-tamanho-grande);
+  --mx-tamanho-texto: var(--mx-tamanho-pequeno);
+  --mx-tamanho-rotulo-menu: var(--mx-tamanho-micro);
+  --mx-tamanho-titulo-grupo: var(--mx-tamanho-micro);
+  --mx-tamanho-selo: var(--mx-tamanho-micro);
+  --mx-tamanho-rotulo-dado: var(--mx-tamanho-micro);
+  --mx-peso-normal: 400;
+  --mx-peso-medio: 500;
+  --mx-peso-cabecalho-tabela: 700;
+  --mx-peso-rotulo-campo: 600;
+  --mx-peso-botao-principal: 600;
+  --mx-peso-numero-card: 600;
+  --mx-peso-aba-ativa: 600;
+  --mx-peso-rotulo-pequeno: 600;
+  --mx-peso-rotulo-dado: 600;
+  --mx-peso-titulo: 700;
+  --mx-grade-cartao-minimo: 280px;
+  --mx-medida-altura-campo: 34px;
+  --mx-medida-altura-linha-tabela: 36px;
+  --mx-medida-canto-cartao: 8px;
+  --mx-letras-caixa-alta: .04em;
+}
+/* Gerado de estilos.ts (gerarCssBotoes). Não edite à mão: o teste exige igualdade. */
+.mx-botao {
+  font-family: var(--mx-fonte-texto);
+  font-size: var(--mx-tamanho-texto);
+  font-weight: var(--mx-peso-botao-principal);
+  color: var(--mx-cor-branco);
+  height: var(--mx-medida-altura-campo);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  text-decoration: none;
+  padding: 0 14px;
+  border-radius: 6px;
+  line-height: calc(var(--mx-medida-altura-campo) - 2px);
+  white-space: nowrap;
+  cursor: pointer;
+  background: var(--mx-cor-azul-noite);
+  border: 1px solid var(--mx-cor-azul-noite);
+}
+.mx-botao-secundario {
+  font-family: var(--mx-fonte-texto);
+  font-size: var(--mx-tamanho-texto);
+  font-weight: var(--mx-peso-medio);
+  color: var(--mx-cor-grafite);
+  height: var(--mx-medida-altura-campo);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  text-decoration: none;
+  padding: 0 14px;
+  border-radius: 6px;
+  line-height: calc(var(--mx-medida-altura-campo) - 2px);
+  white-space: nowrap;
+  cursor: pointer;
+  background: var(--mx-cor-branco);
+  border: 1px solid var(--mx-cor-borda-campo);
+}
+.mx-botao-destrutivo {
+  font-family: var(--mx-fonte-texto);
+  font-size: var(--mx-tamanho-texto);
+  font-weight: var(--mx-peso-botao-principal);
+  color: var(--mx-cor-branco);
+  height: var(--mx-medida-altura-campo);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  text-decoration: none;
+  padding: 0 14px;
+  border-radius: 6px;
+  line-height: calc(var(--mx-medida-altura-campo) - 2px);
+  white-space: nowrap;
+  cursor: pointer;
+  background: var(--mx-cor-erro-texto);
+  border: 1px solid var(--mx-cor-erro-texto);
+}
+.mx-botao:hover:not(:disabled):not([aria-disabled="true"]) {
+  background: var(--mx-cor-grafite);
+  border: 1px solid var(--mx-cor-grafite);
+}
+.mx-botao-secundario:hover:not(:disabled):not([aria-disabled="true"]) {
+  background: var(--mx-cor-nevoa);
+}
+.mx-olho:hover:not(:disabled):not([aria-disabled="true"]) {
+  color: var(--mx-cor-grafite);
+}
+.mx-botao:focus-visible, .mx-botao-secundario:focus-visible, .mx-botao-destrutivo:focus-visible {
+  outline: 2px solid var(--mx-cor-azul-noite);
+  outline-offset: 2px;
+}
+.mx-olho:focus-visible {
+  outline: 2px solid var(--mx-cor-azul-noite);
+  outline-offset: -2px;
+}
+.mx-radio {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border-radius: 50%;
+  border: 1px solid var(--mx-cor-borda-campo);
+  background: var(--mx-cor-branco);
+}
+.mx-radio:checked {
+  border: 1px solid var(--mx-cor-azul-noite);
+  background: var(--mx-cor-azul-noite);
+  box-shadow: inset 0 0 0 4px var(--mx-cor-branco);
+}
+.mx-radio:focus-visible {
+  outline: 2px solid var(--mx-cor-azul-noite);
+  outline-offset: 2px;
+}
+.mx-checkbox {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border-radius: 3px;
+  border: 1px solid var(--mx-cor-borda-campo);
+  background: var(--mx-cor-branco);
+}
+.mx-checkbox:checked {
+  border: 1px solid var(--mx-cor-azul-noite);
+  background: var(--mx-cor-azul-noite);
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2012%2012%22%3E%3Cpath%20d%3D%22M2%206.5%205%209.5%2010%203%22%20fill%3D%22none%22%20stroke%3D%22%23FFFFFF%22%20stroke-width%3D%222%22%2F%3E%3C%2Fsvg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 12px 12px;
+}
+.mx-checkbox:focus-visible {
+  outline: 2px solid var(--mx-cor-azul-noite);
+  outline-offset: 2px;
+}
+.mx-fundo-escuro :focus-visible {
+  outline: 2px solid var(--mx-cor-branco);
+  outline-offset: 2px;
+}
+h1 {
+  color: var(--mx-cor-azul-noite);
+}
+.mx-botao:disabled, .mx-botao-secundario:disabled, .mx-botao-destrutivo:disabled, .mx-botao[aria-disabled="true"], .mx-botao-secundario[aria-disabled="true"], .mx-botao-destrutivo[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.mx-checkbox:disabled, .mx-radio:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.mx-acoes-item:hover:not([aria-disabled="true"]):not(.mx-acoes-perigo) {
+  background: var(--mx-cor-nevoa);
+}
+.mx-acoes-item.mx-acoes-perigo:hover:not([aria-disabled="true"]) {
+  background: var(--mx-cor-erro-fundo);
+  color: var(--mx-cor-erro-texto);
+}
+.mx-acoes-item:focus-visible, .mx-acoes-gatilho:focus-visible {
+  outline: 2px solid var(--mx-cor-azul-noite);
+  outline-offset: -2px;
+}
+@media (max-width: 640px) {
+  .mx-acoes-alvo {
+    min-height: 44px;
+  }
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:var(--mx-fonte-texto);font-size:var(--mx-tamanho-base);background:var(--mx-cor-perola);color:var(--mx-cor-grafite);line-height:1.5}
+a{color:var(--mx-cor-azul-noite)}
+.cartao-central{background:var(--mx-cor-branco);border:1px solid var(--mx-cor-borda-tabela);border-radius:10px;padding:32px;max-width:420px;margin:8vh auto}
+@media(max-width:480px){.cartao-central{margin-left:16px;margin-right:16px}}
+.cartao-central header{background:var(--mx-cor-azul-noite);margin:-32px -32px 24px;padding:24px 32px;border-radius:10px 10px 0 0}
+.cartao-central header img{display:block;height:100px;width:auto}
+.cartao-central h1{font-size:var(--mx-tamanho-titulo-dialogo);font-weight:var(--mx-peso-titulo);margin:0 0 16px}
+.campo{display:block;margin-bottom:16px}
+.campo>span{display:block;font-weight:var(--mx-peso-rotulo-campo);font-size:var(--mx-tamanho-micro);margin-bottom:4px;color:var(--mx-cor-rotulo-destaque);text-transform:uppercase;letter-spacing:var(--mx-letras-caixa-alta)}
+.campo input{width:100%;padding:0 12px;height:var(--mx-medida-altura-campo);border:1px solid var(--mx-cor-borda-campo);border-radius:6px;font:inherit;font-size:var(--mx-tamanho-texto);background:var(--mx-cor-branco);color:var(--mx-cor-grafite)}
+.campo input[aria-invalid=true]{border-color:var(--mx-cor-erro-texto)}
+.com-olho{position:relative}.com-olho input{padding-right:40px}
+.mx-olho{position:absolute;top:0;right:0;width:var(--mx-medida-altura-campo);height:var(--mx-medida-altura-campo);display:flex;align-items:center;justify-content:center;border:0;background:transparent;color:var(--mx-cor-texto-secundario)}
+.barra{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px}
+.barra .mx-botao{flex:1}
+.erro-login{color:var(--mx-cor-erro-texto);background:var(--mx-cor-erro-fundo);border:1px solid var(--mx-cor-erro-texto);border-radius:6px;padding:8px 12px;margin:16px 0 0;font-size:var(--mx-tamanho-texto)}
+.erro-login::before{content:"Erro. ";font-weight:var(--mx-peso-titulo)}
+.aviso-sucesso{color:var(--mx-cor-ativo-texto);background:var(--mx-cor-ativo-fundo);border:1px solid var(--mx-cor-verde-sucesso);border-radius:6px;padding:8px 12px;margin:0 0 16px;font-size:var(--mx-tamanho-texto)}
+.aviso-sucesso::before{content:"Enviado. ";font-weight:var(--mx-peso-titulo)}
+.apoio{color:var(--mx-cor-texto-secundario);font-size:var(--mx-tamanho-pequeno);margin:16px 0 0}
+.apoio.neutro{margin:0 0 16px}
+button.link{background:none;border:0;padding:0;font:inherit;color:var(--mx-cor-azul-noite);text-decoration:underline;cursor:pointer}
+</style></head><body><main class="cartao-central"><header><img src="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20353.40%20327.90%22%20role%3D%22img%22%20aria-label%3D%22Macuxi%20ERP%22%3E%3Cg%20transform%3D%22translate(59.842%20-47.473)%20scale(3.65180)%22%3E%3CclipPath%20id%3D%22sol-e%22%3E%3Crect%20width%3D%2264%22%20height%3D%2222.8%22%2F%3E%3C%2FclipPath%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2224%22%20r%3D%2211%22%20fill%3D%22%23F59A52%22%20clip-path%3D%22url(%23sol-e)%22%2F%3E%3Cpath%20d%3D%22M2%2050%20L10%2042%20L12.8%2028%20Q13.3%2025.5%2016%2025.5%20L48%2025.5%20Q50.7%2025.5%2051.2%2028%20L54%2042%20L62%2050Z%22%20fill%3D%22%23FFFFFF%22%2F%3E%3Crect%20x%3D%222%22%20y%3D%2255%22%20width%3D%2260%22%20height%3D%224.5%22%20rx%3D%222.25%22%20fill%3D%22%23FFFFFF%22%2F%3E%3C%2Fg%3E%3Cpath%20fill%3D%22%23FFFFFF%22%20d%3D%22M16.30%20289.45L0%20289.45L0%20220.75L26.10%20220.75L34.40%20251.35Q34.90%20252.95%2035.60%20255.70Q36.30%20258.45%2037%20261.45Q37.70%20264.45%2038.20%20266.85L38.20%20266.85L39%20266.85Q39.40%20264.95%2040%20262.30Q40.60%20259.65%2041.30%20256.70Q42%20253.75%2042.60%20251.25L42.60%20251.25L51%20220.75L76.40%20220.75L76.40%20289.45L59%20289.45L59%20260.15Q59%20255.85%2059.05%20251.45Q59.10%20247.05%2059.20%20243.45Q59.30%20239.85%2059.30%20238.25L59.30%20238.25L58.50%20238.25Q58.20%20239.75%2057.55%20242.60Q56.90%20245.45%2056.15%20248.50Q55.40%20251.55%2054.80%20253.75L54.80%20253.75L44.80%20289.45L30.40%20289.45L20.30%20253.75Q19.80%20251.75%2019.10%20248.95Q18.40%20246.15%2017.75%20243.25Q17.10%20240.35%2016.60%20238.35L16.60%20238.35L15.80%20238.35Q15.90%20240.95%2016%20244.70Q16.10%20248.45%2016.20%20252.50Q16.30%20256.55%2016.30%20260.15L16.30%20260.15L16.30%20289.45ZM104.80%20290.65L104.80%20290.65Q101.50%20290.65%2098.35%20290.00Q95.20%20289.35%2092.65%20287.70Q90.10%20286.05%2088.60%20283.15Q87.10%20280.25%2087.10%20275.85L87.10%20275.85Q87.10%20270.15%2089.50%20266.55Q91.90%20262.95%2096.45%20260.90Q101%20258.85%20107.45%20258.05Q113.90%20257.25%20121.90%20257.25L121.90%20257.25L121.90%20253.95Q121.90%20251.65%20121%20250.10Q120.10%20248.55%20118.35%20247.70Q116.60%20246.85%20113.70%20246.85L113.70%20246.85Q111.10%20246.85%20109.15%20247.45Q107.20%20248.05%20106.20%20249.20Q105.20%20250.35%20105.20%20251.95L105.20%20251.95L105.20%20252.85L89.20%20252.85Q89.10%20252.35%2089.10%20252.00Q89.10%20251.65%2089.10%20251.05L89.10%20251.05Q89.10%20246.35%2092.05%20242.85Q95%20239.35%20100.50%20237.45Q106%20235.55%20113.80%20235.55L113.80%20235.55Q121.10%20235.55%20126.55%20237.35Q132%20239.15%20135.15%20242.85Q138.30%20246.55%20138.30%20252.55L138.30%20252.55L138.30%20275.05Q138.30%20276.75%20139.25%20277.75Q140.20%20278.75%20141.60%20278.75L141.60%20278.75L145%20278.75L145%20288.85Q143.90%20289.35%20141.55%20290.00Q139.20%20290.65%20135.90%20290.65L135.90%20290.65Q132.50%20290.65%20129.95%20289.80Q127.40%20288.95%20125.75%20287.40Q124.10%20285.85%20123.50%20283.75L123.50%20283.75L122.80%20283.75Q120.90%20285.75%20118.35%20287.35Q115.80%20288.95%20112.45%20289.80Q109.10%20290.65%20104.80%20290.65ZM110.90%20279.35L110.90%20279.35Q113.30%20279.35%20115.30%20278.65Q117.30%20277.95%20118.75%20276.70Q120.20%20275.45%20121.05%20273.65Q121.90%20271.85%20121.90%20269.75L121.90%20269.75L121.90%20266.25Q116.20%20266.25%20112.10%20267.05Q108%20267.85%20105.80%20269.55Q103.60%20271.25%20103.60%20273.85L103.60%20273.85Q103.60%20275.75%20104.55%20277.00Q105.50%20278.25%20107.10%20278.80Q108.70%20279.35%20110.90%20279.35ZM176.60%20290.65L176.60%20290.65Q167.90%20290.65%20161.80%20287.65Q155.70%20284.65%20152.45%20278.50Q149.20%20272.35%20149.20%20263.05L149.20%20263.05Q149.20%20253.75%20152.50%20247.60Q155.80%20241.45%20161.90%20238.45Q168%20235.45%20176.60%20235.45L176.60%20235.45Q182.20%20235.45%20186.95%20236.75Q191.70%20238.05%20195.25%20240.75Q198.80%20243.45%20200.70%20247.55Q202.60%20251.65%20202.60%20257.35L202.60%20257.35L186.50%20257.35Q186.50%20253.95%20185.35%20251.75Q184.20%20249.55%20182%20248.45Q179.80%20247.35%20176.50%20247.35L176.50%20247.35Q172.70%20247.35%20170.35%20248.95Q168%20250.55%20166.90%20253.65Q165.80%20256.75%20165.80%20261.35L165.80%20261.35L165.80%20264.95Q165.80%20269.45%20166.90%20272.55Q168%20275.65%20170.50%20277.20Q173%20278.75%20176.90%20278.75L176.90%20278.75Q180.30%20278.75%20182.55%20277.70Q184.80%20276.65%20186%20274.40Q187.20%20272.15%20187.20%20268.75L187.20%20268.75L202.60%20268.75Q202.60%20274.25%20200.70%20278.40Q198.80%20282.55%20195.30%20285.25Q191.80%20287.95%20187%20289.30Q182.20%20290.65%20176.60%20290.65ZM230.40%20290.65L230.40%20290.65Q221.90%20290.65%20217.25%20285.95Q212.60%20281.25%20212.60%20271.55L212.60%20271.55L212.60%20236.75L229%20236.75L229%20269.25Q229%20271.35%20229.55%20272.95Q230.10%20274.55%20231.10%20275.65Q232.10%20276.75%20233.65%20277.25Q235.20%20277.75%20237%20277.75L237%20277.75Q239.90%20277.75%20242.10%20276.40Q244.30%20275.05%20245.60%20272.70Q246.90%20270.35%20246.90%20267.55L246.90%20267.55L246.90%20236.75L263.30%20236.75L263.30%20289.45L249.80%20289.45L248.80%20281.95L248.10%20281.95Q246.30%20284.55%20243.55%20286.55Q240.80%20288.55%20237.45%20289.60Q234.10%20290.65%20230.40%20290.65ZM288.60%20289.45L270.30%20289.45L289.90%20261.85L272%20236.75L291.40%20236.75L300.70%20251.75L301.20%20251.75L310.60%20236.75L328.90%20236.75L310.80%20261.95L330%20289.45L310.80%20289.45L300%20272.15L299.50%20272.15L288.60%20289.45ZM353.40%20229.65L337%20229.65L337%20217.05L353.40%20217.05L353.40%20229.65ZM353.40%20289.45L337%20289.45L337%20236.75L353.40%20236.75L353.40%20289.45Z%22%2F%3E%3Cpath%20fill%3D%22%23C9CED5%22%20d%3D%22M12.88%20318.72L12.88%20322.00L0%20322.00L0%20302.45L12.88%20302.45L12.88%20305.73L3.70%20305.73L3.70%20310.49L11.82%20310.49L11.82%20313.74L3.70%20313.74L3.70%20318.72L12.88%20318.72ZM175.71%20314.46L172.21%20314.46L172.21%20322.00L168.51%20322.00L168.51%20302.45L177.33%20302.45Q179.12%20302.45%20180.41%20303.19Q181.70%20303.94%20182.40%20305.29Q183.10%20306.65%20183.10%20308.50L183.10%20308.50Q183.10%20310.49%20182.19%20311.96Q181.28%20313.43%20179.46%20314.04L179.46%20314.04L183.46%20322.00L179.35%20322.00L175.71%20314.46ZM172.21%20305.67L172.21%20311.36L176.97%20311.36Q177.69%20311.36%20178.20%20311.09Q178.70%20310.82%20178.98%20310.33Q179.26%20309.84%20179.26%20309.14L179.26%20309.14L179.26%20307.86Q179.26%20307.13%20178.98%20306.65Q178.70%20306.18%20178.20%20305.92Q177.69%20305.67%20176.97%20305.67L176.97%20305.67L172.21%20305.67ZM342.51%20314.55L342.51%20322.00L338.81%20322.00L338.81%20302.45L347.60%20302.45Q349.42%20302.45%20350.71%20303.21Q352.00%20303.96%20352.70%20305.32Q353.40%20306.68%20353.40%20308.50L353.40%20308.50Q353.40%20310.32%20352.70%20311.68Q352.00%20313.04%20350.71%20313.79Q349.42%20314.55%20347.60%20314.55L347.60%20314.55L342.51%20314.55ZM347.27%20305.67L342.51%20305.67L342.51%20311.36L347.27%20311.36Q348.00%20311.36%20348.50%20311.09Q349.00%20310.82%20349.28%20310.33Q349.56%20309.84%20349.56%20309.14L349.56%20309.14L349.56%20307.86Q349.56%20307.13%20349.28%20306.65Q349.00%20306.18%20348.50%20305.92Q348.00%20305.67%20347.27%20305.67L347.27%20305.67Z%22%2F%3E%3C%2Fsvg%3E" alt="Macuxi ERP"></header><h1>Esqueci a senha</h1><form><label class="campo"><span>E-mail</span><input type="email" value="ana@empresa.com.br" autocomplete="username"></label><div class="barra"><button class="mx-botao" type="submit">Enviar instruções</button><button class="mx-botao-secundario" type="button">Voltar para entrar</button></div></form></main></body></html>
