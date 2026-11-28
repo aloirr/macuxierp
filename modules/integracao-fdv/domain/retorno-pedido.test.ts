@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { RetornoErp } from '../contracts';
-import { corpoCanonicoDoRetorno, ORDEM_HUB, PayloadPedidoLido, PRAZO_AGUARDAR_CHAVE_MS, retornoDoPedido, retornoRejeitadoErp, type EventoPedido } from './retorno-pedido';
+import { corpoCanonicoDoRetorno, ORDEM_HUB, PayloadPedidoLido, PRAZO_AGUARDAR_CHAVE_MS, retornoDoPedido, retornoRejeitadoErp, semStIpi, type EventoPedido } from './retorno-pedido';
 
 const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const ev = (nome: string, extra: Record<string, unknown> = {}): EventoPedido => ({
@@ -180,5 +180,71 @@ describe('retornoDoPedido (RN-PED-05, T-0013 §6.2)', () => {
     if (a.acao !== 'enviar' || b.acao !== 'enviar') throw new Error('esperava enviar');
     expect(corpoCanonicoDoRetorno(a.corpo)).toBe(corpoCanonicoDoRetorno(b.corpo));
     expect(corpoCanonicoDoRetorno(a.corpo)).not.toContain('ocorrido_em');
+  });
+});
+
+describe('T-0132 (63 A): ST e IPI no retorno faturado', () => {
+  const R = { st: true, ipi: true };
+  const SEM = { st: false, ipi: false };
+  const com = (seq: number, st: number, ipi: number) => ({ sequencia: seq, produto_id: U(3), quantidade: 10_000, valor_centavos: 1000, regra_aplicada: R, calc_st: { v_bc: 1200, p_aliq: 180000, v_valor: st }, calc_ipi: { v_bc: 1000, p_aliq: 50000, v_valor: ipi } });
+  const sem = (seq: number) => ({ sequencia: seq, produto_id: U(3), quantidade: 10_000, valor_centavos: 1000, regra_aplicada: SEM });
+  const fat = (its: unknown[], status = 'faturado', total: Record<string, unknown> = {}) => {
+    const d = retornoDoPedido(ev('pedido.pedido.faturado@1', { status, ambiente: 'producao', nota: { ...nota, ...total }, itens_faturados: its }), 'integrado', CHAVES);
+    if (d.acao !== 'enviar') throw new Error('esperava enviar');
+    return d.corpo;
+  };
+
+  it('RN-FIS-05: item com regra leva v_icms_st_cents e v_ipi_cents; 0 COM regra vai como 0; o total vem de nota.calc_*', () => {
+    const c = fat([com(1, 360, 500), com(2, 0, 0)], 'faturado', { calc_st: { v_bc: 1200, v_valor: 360 }, calc_ipi: { v_bc: 1000, v_valor: 500 } });
+    expect(c.itens_faturados).toMatchObject([{ v_icms_st_cents: 360, v_ipi_cents: 500 }, { v_icms_st_cents: 0, v_ipi_cents: 0 }]);
+    expect(c.nota).toMatchObject({ v_icms_st_cents: 360, v_ipi_cents: 500 });
+    expect(RetornoErp.safeParse(c).success).toBe(true);
+  });
+  it('RN-FIS-05: sem regra o campo é omitido, nunca 0 (item e total)', () => {
+    const c = fat([sem(1)]);
+    expect(c.itens_faturados?.[0]).not.toHaveProperty('v_icms_st_cents');
+    expect(c.itens_faturados?.[0]).not.toHaveProperty('v_ipi_cents');
+    expect(c.nota).not.toHaveProperty('v_icms_st_cents');
+    expect(c.nota).not.toHaveProperty('v_ipi_cents');
+  });
+  it('RN-FIS-05: emissor antigo (sem regra_aplicada) = sem regra; v_st/v_ipi antigos não são deduzidos', () => {
+    const c = fat(itens.map((i) => ({ ...i, v_st: 0, v_ipi: 0 })));
+    expect(JSON.stringify(c)).not.toContain('v_icms_st_cents');
+    expect(JSON.stringify(c)).not.toContain('v_ipi_cents');
+  });
+  it('RN-FIS-05: item misto (nota sem calc_*) omite o total, mas o item com regra mantém o seu valor', () => {
+    const c = fat([com(1, 360, 500), sem(2)]); // o pedido já omite o total quando o item é misto
+    expect(c.itens_faturados?.[0]).toMatchObject({ v_icms_st_cents: 360 });
+    expect(c.itens_faturados?.[1]).not.toHaveProperty('v_icms_st_cents');
+    expect(c.nota).not.toHaveProperty('v_icms_st_cents');
+    expect(c.nota).not.toHaveProperty('v_ipi_cents');
+  });
+  it('RN-FIS-05: ST com regra e IPI sem regra: o total de ST sai e o de IPI é omitido', () => {
+    const it1 = { ...com(1, 360, 0), regra_aplicada: { st: true, ipi: false }, calc_ipi: undefined };
+    const c = fat([it1], 'faturado', { calc_st: { v_bc: 1200, v_valor: 360 } });
+    expect(c.nota).toMatchObject({ v_icms_st_cents: 360 });
+    expect(c.nota).not.toHaveProperty('v_ipi_cents');
+  });
+  it('RN-FIS-05: nota parcial repassa o total desta nota (nota.calc_*)', () => {
+    const c = fat([com(2, 100, 50)], 'faturado_parcial', { calc_st: { v_bc: 1, v_valor: 100 }, calc_ipi: { v_bc: 1, v_valor: 50 } });
+    expect(c.nota).toMatchObject({ v_icms_st_cents: 100, v_ipi_cents: 50 });
+  });
+  it('RN-FIS-05: reenvio sem os dados antigos (regra sem calc_*) omite o campo, nunca 0', () => {
+    const it1 = { ...com(1, 360, 500), calc_st: undefined, calc_ipi: undefined };
+    const c = fat([it1]);
+    expect(c.itens_faturados?.[0]).not.toHaveProperty('v_icms_st_cents');
+    expect(c.nota).not.toHaveProperty('v_ipi_cents');
+  });
+  it('RN-INT-IDEM: o hash ignora ocorrido_em, repete com o mesmo evento e difere com e sem os campos (sem colisão)', () => {
+    const a = fat([com(1, 360, 500)]);
+    const b = { ...fat([com(1, 360, 500)]), ocorrido_em: '2026-11-22T00:00:00.000Z' };
+    expect(corpoCanonicoDoRetorno(a)).toBe(corpoCanonicoDoRetorno(b));
+    expect(corpoCanonicoDoRetorno(a)).not.toBe(corpoCanonicoDoRetorno(semStIpi(a)));
+    expect(corpoCanonicoDoRetorno(fat([com(1, 360, 500)]))).not.toBe(corpoCanonicoDoRetorno(fat([com(1, 361, 500)])));
+  });
+  it('T-0132: semStIpi devolve o corpo igual ao de antes (sem os dois campos, em item e nota)', () => {
+    const c = semStIpi(fat([com(1, 360, 500)], 'faturado', { calc_st: { v_bc: 1200, v_valor: 360 }, calc_ipi: { v_bc: 1000, v_valor: 500 } }));
+    expect(JSON.stringify(c)).not.toMatch(/v_icms_st_cents|v_ipi_cents/);
+    expect(c.itens_faturados?.[0]).toEqual({ sequencia: 1, produto_external_id: 'P001', quantidade: 1, valor_cents: 1000 });
   });
 });

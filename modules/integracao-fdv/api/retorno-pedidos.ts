@@ -5,8 +5,8 @@
  */
 import { MARGEM_POSSE_AGENDA_MS, type Banco, type ConsumidorEvento, type EnvelopeEvento, type Relogio, type Transacao } from '@macuxierp/platform-sdk';
 import type { MotivoPausa, RetornoErp, StatusRetornoHub } from '../contracts';
-import { atrasoRetentativaSegundos } from '../domain';
-import { EVENTOS_DE_RETORNO, ORDEM_HUB, PayloadPedidoLido, retornoDoPedido } from '../domain/retorno-pedido';
+import { atrasoRetentativaSegundos, enviaStIpi } from '../domain';
+import { EVENTOS_DE_RETORNO, ORDEM_HUB, PayloadPedidoLido, retornoDoPedido, semStIpi } from '../domain/retorno-pedido';
 import type { Alertar, ClienteHubPedidos, LogPedidos } from './portas';
 import { adiarPresoAPosse } from './conector-comum';
 import { codigoSeguro, gravarRetorno, motivoDaRecusa } from './util-pedidos';
@@ -41,7 +41,12 @@ function casoOrdemHub(coluna: string): string {
   return `CASE ${coluna} ${quando.join(' ')} END`;
 }
 
-export function criarConsumidorRetornoPedido(deps: { log: LogPedidos; relogio: Relogio; alertar?: Alertar }): ConsumidorEvento {
+/** T-0132: o filtro da bandeira na montagem do retorno. Desligada, o corpo sai sem `v_icms_st_cents` e `v_ipi_cents`, igual ao de antes. */
+export function corpoComBandeira(tenantId: string, corpo: RetornoErp, ligada: (tenantId: string) => boolean = enviaStIpi): RetornoErp {
+  return ligada(tenantId) ? corpo : semStIpi(corpo);
+}
+
+export function criarConsumidorRetornoPedido(deps: { log: LogPedidos; relogio: Relogio; alertar?: Alertar; bandeiraStIpi?: (tenantId: string) => boolean }): ConsumidorEvento {
   return {
     id: 'integracao-fdv.retorno-pedido',
     eventos: EVENTOS_DE_RETORNO,
@@ -85,7 +90,9 @@ export function criarConsumidorRetornoPedido(deps: { log: LogPedidos; relogio: R
         throw new ChaveDoProdutoAusente();
       }
       if (decisao.acao === 'enviar') {
-        await gravarRetorno(tx, evento.tenant_id, decisao.corpo, agora);
+        // T-0132: bandeira por tenant, desligada por padrão; desligada, o corpo e o hash são idênticos aos de antes (sem v_icms_st_cents/v_ipi_cents).
+        const corpo = corpoComBandeira(evento.tenant_id, decisao.corpo, deps.bandeiraStIpi);
+        await gravarRetorno(tx, evento.tenant_id, corpo, agora);
       }
     },
   };

@@ -92,11 +92,14 @@ export const RetornoErp = z.object({
       chave_acesso: z.string().regex(CHAVE_ACESSO_HUB_REGEX).nullable().optional(),
       emitida_em: z.string(),
       total_cents: CentavosLido,
+      /** T-0132 (63 A): OPCIONAIS e atrás da bandeira `enviaStIpi`. Ausente = "sem regra"; 0 só com regra aplicada em TODOS os itens faturados desta nota. */
+      v_icms_st_cents: CentavosLido.optional(),
+      v_ipi_cents: CentavosLido.optional(),
     })
     .optional(),
   itens_faturados: z
     // `RetornoErp.itens_faturados` do Hub (OpenAPI real): `anyOf array minItems 1 | null`, não obrigatório. `[]` é inválido.
-    .array(z.object({ sequencia: z.number().int().min(1), produto_external_id: ChaveHubLida, quantidade: QuantidadeAte4(), valor_cents: CentavosLido }))
+    .array(z.object({ sequencia: z.number().int().min(1), produto_external_id: ChaveHubLida, quantidade: QuantidadeAte4(), valor_cents: CentavosLido, v_icms_st_cents: CentavosLido.optional(), v_ipi_cents: CentavosLido.optional() }))
     .min(1)
     .nullable()
     .optional(),
