@@ -1,7 +1,7 @@
 # Quadro — Macuxi ERP
 
 > Dono: gerente-projetos. Status: aberta → em_andamento → em_teste → em_revisao → concluida (ou bloqueada). Horários de Manaus.
-> Fase atual: **v0.3.26 em produção**; **v0.3.28** (login único + conserto do laço da troca) com liberar verde (#895, tag → 28fa735), publicando. A v0.3.27 (a4c05fc) voltou atrás sozinha às 22h50 e não vai ao ar (decisão 107 A). Seguem **v0.3.29** (marca, Início, cadastros, menu) ~01h40 e **v0.3.30** (0078, Usuários, Config v4, T-0113) ~04h00. Ver "28/11 madrugada".
+> Fase atual: **v0.3.29 em produção** desde 01h17 de 28/11 (run 46111070385, SHA ae50544); a v0.3.28 foi ao ar antes dela. A v0.3.27 (a4c05fc) voltou atrás sozinha às 22h50 e não vai ao ar (decisão 107 A). **v0.3.30** (0078, Usuários, Config v4, T-0113, login só por e-mail da T-0133) em fechamento, liberar previsto para ~04h30–04h45. Ver "28/11 madrugada — v0.3.29 no ar, v0.3.30 fechando".
 > Empresa piloto: **thathyany** (R-20261120-231848-gerente-projetos). Biblioteca NF-e: ADR 0002 opção A (R-20261120-231934-gerente-projetos).
 
 | Tarefa | Título | Fase | Dono | Status | Onde |
@@ -123,6 +123,9 @@
 | T-0129 | Formulário só leitura sem a permissão de editar (campo `editar` no descritor; 403 com mensagem do cadastros) | v0.3.30 | engenheiro-software | aberta | 🟡 do shell de Clientes (27/11 20h38) |
 | T-0130 | Filiais no cadastro de usuário do /config (GET de filiais por empresa na plataforma) | v0.3.31 | modulo-core | aberta | campo oculto até lá |
 | T-0131 | Integrações da Config: contadores Enviados/Aceitos/Gravados, histórico de envios por ligação e cabeçalho do Contato só leitura | v0.3.31 | modulo-integracao-fdv | aberta | divergências de contrato da Config v4 |
+| T-0132 | ICMS-ST e IPI para o FDV (decisão 63 A): 0 só quando houve regra aplicada; sem regra, o campo é omitido; o total é omitido se algum item não tem regra | v0.3.31 | modulo-fiscal | aberta | fiscal ~9h, integracao-fdv ~3,7h, pedido ~4,6h, faturamento ~3,3h; sem migração |
+| T-0133 | Login só com e-mail e senha, sem o código da empresa (ADR 0021, RN-CORE-18) | v0.3.30 | engenheiro-software | em_andamento | no main: #915 (0079), #917 (API e SDK), #916 (core, 409 email_em_uso), #919 (web); abertos: #918 (testes) e o PR curto que tira os @deprecated do SDK |
+| T-0134 | Empresas do /config: coluna "Macuxi FDV" (campo novo no core); menu "Ações ▾" da linha com "Suspender"/"Reativar" e "Redefinir senha do administrador", sem "Abrir" (o nome já é o link), e só com ao menos uma ação do perfil; busca do empresas_listar também pelo nome | v0.3.31 | modulo-core | aberta | aprovada pelo PO às 02h23; v0.3.31 enquanto a decisão 128 está sem resposta (se o Alexandre escolher A, entra na v0.3.30 e o liberar vai para ~05h15–05h30) |
 | [T-0055](tarefas/T-0055.md) | Catálogo: atributos por empresa e compatibilidade por veículo (FDV e ERP; nova versão de produto no Hub + ADR) | backlog | engenheiro-software | backlog | "BACKLOG" do Alexandre (23/11 ~12h20, pelo PO); sem data, depois da v0.3.4 e da T-0054; o lado do FDV vai ao PO do FDV |
 | T-0079 | Cadeia ICP-Brasil obrigatória para o A1 em produção | backlog | engenheiro-software | backlog | "BACKLOG" do Alexandre (23/11 22h17, pelo PO); proposta (C) da brecha do A1 autoassinado aceito no upload |
 | T-0113 | API pública e documentada de saída do ERP para qualquer força de vendas (lê cadastros, envia pedidos) | backlog | engenheiro-software | backlog | "49) A backlog" do Alexandre (27/11 ~10h22, pelo PO); docs/backlog.md |
@@ -226,6 +229,17 @@ Gerente ativo: session_019xHEXorMcUM7hAvrbsGwJd. PO: session_019xHEXqMSs1piLUgLS
 - Entraram depois do #301: #302 → a902d3b, #303 → 98f306e, #304 → c547f5d, #305 → b696132, #306 → e6d2903, #307 → 7aec401, #309 → ae55aa9 e #311 → 1b1587e (08h55).
 - Entraram depois do #286: #287, #288, #289, #290, #291, #292, #293, #294, #295, #296, #297, #298 e #299.
 - Entraram: #279 → 818e4ad, #284 → 2047e0b, #285 → 30fe879 e #275 → 41b39c7. O #273 (quadro de 22/11, 07h38) foi fechado e substituído por este.
+
+## 28/11 madrugada — v0.3.29 no ar, v0.3.30 fechando (Manaus)
+- **Versões:** v0.3.28 no ar; **v0.3.29 no ar desde 01h17** (run 46111070385, SHA ae50544), fumaça pulada (FUMACA_* ausentes) e saúde ok; **v0.3.30 em fechamento**, liberar previsto para ~04h30–04h45.
+- **No main:** #885, #883, #914, #915, #917, #916 e #919. O #905 entrou com o autorizo do Alexandre (127 A).
+- **Tarefas:** T-0132 (ICMS-ST e IPI para o FDV, 63 A, v0.3.31), T-0133 (login só por e-mail, v0.3.30) e T-0134 (Empresas do /config, aprovada pelo PO às 02h23; v0.3.31 até a resposta da decisão 128). Na T-0134, a busca pelo nome no empresas_listar é do banco-dados e a tela é do engenheiro-apps. Próxima livre **T-0135**; próxima migração **0080**.
+- **RN-CORE-18** (e-mail único entre as empresas) registrada no doc 03.
+- **Definição de pronto, regra nova do PO:** em toda versão, o corretor revisa os prints de TODAS as telas no ar, não só o diff. Antes do liberar da v0.3.30, o corretor refaz a rodada em todas as telas e mostra pelo número as 11 RD altas resolvidas: RD-2360, RD-2361, RD-2368, RD-2370, RD-2373, RD-2380, RD-2381, RD-2382, RD-2390, RD-2391 e RD-2394.
+- **Regra 125 B:** nenhuma caixa de mensagem começa com rótulo ("Erro.", "Aviso.", "Atenção.", "Pronto.", "Sucesso."); aplicada no componente do packages/ui (#910).
+- **PR B do known_hosts:** depois da publicação da v0.3.30, com a linha conferida contra o fingerprint wRktlR17….
+- **Backlog do Alexandre** (passos manuais que ele mandou para o backlog; não se cobram nem travam PR ou deploy): environment DIAGNOSTICO; ACTIONS_KEY/GHCR; chave do S3; PG_CA_CERT; FUMACA_*; o aviso à Thathyany; o C-5 pela tela; o texto da regra de deploy no CLAUDE.md e na skill agente-po; os incidentes 41555125 e 41555126 do GitGuardian (falsos positivos do #914, lista de nomes de ação), que ele fecha no painel; a limpeza dos branches obsoletos agente/v0329-web-config-v4, agente/v0330-api-login-email, agente/v0330-core-email-global, agente/v0330-testes-login-email, agente/v0330-testes-login-email-17 e nuvem/v0330-banco-email-global. Com o Alexandre ficam só o "autorizo" de governança, as simulações e o "aprovo produção fiscal".
+- **Lição:** o `git stash` é dividido entre os worktrees do mesmo repositório; nunca usar. O trabalho parcial vai num commit WIP local.
 
 ## 28/11 madrugada — v0.3.27 volta atrás, v0.3.28 sai (Manaus)
 - **v0.3.27 (a4c05fc):** suíte verde; liberar #893; publicar 46099454260 voltou atrás sozinho às 22h50: o laço da troca exigia 200 em /login, que responde 308 desde o #886. Produção ficou na v0.3.26, saudável. A tag não vai ao ar.
@@ -409,6 +423,7 @@ Retomada às 14h52 (R-20261125-145235): no máximo 6 sessões, 1 subagente por v
 - Regra nova (22/11, 00h05, depois do main vermelho entre o #88 e o #94): PR que muda `contracts/` entra sozinho; o PR seguinte que consome o contrato só entra com o CI rodado de novo sobre o main novo (ou o typecheck do merge local conferido pelo gerente).
 
 ## Depende do Alexandre
+> Desde 28/11 de madrugada, ficam com ele só o "autorizo" de governança, as simulações e o "aprovo produção fiscal". Os passos manuais foram para o backlog dele (ver "28/11 madrugada — v0.3.29 no ar, v0.3.30 fechando") e não travam PR nem deploy; os itens abaixo são histórico.
 - Roteiro da virada da thathyany (`docs/status/2026-11-21-roteiro-virada-thathyany.md`), REPLANEJADO em 22/11, 02h15: o kit foi desativado e o Conector `macuxierp` tem todos os módulos; sem "desligar no kit". TRAVA desde 02h08 (R-20261122-020834-gerente-projetos): nenhuma escrita no Hub real (POST /lotes, GET /pedidos/pendentes, retorno) até produção + carga conferida + ok do PO. Fase A (pedidos de volta, ~08h30): infra do Alexandre, Deploy 1, carga, L3a + R-013902 + tela Integração FDV, Deploy 2, chave no ERP, recebimento ligado com ok do PO. Fase B (cadastros, ~12h00), entidade por entidade, cada uma com ok do PO. Fase C (estoque, título, nota) só na F5. **Prioridade máxima do time.**
 - Pendentes de 22/11, 01h20: anexar o aloirr/macuxifdv a uma sessão do design-de-marca (T-0049); aprovar o `pnpm install` na sessão do faturamento (lockfile do 1c); saída do comando só de leitura da VM (memória ≥ 1,5 GiB, rede e portas); apagar o branch nuvem/T-0018-spike-nfe-previa.
 - Decididas em 22/11: thathyany MEI (R-20261122-003721); emissão própria da ADR 0002, sem API de terceiros; marca vale em todo o ERP (§6 da T-0023).
