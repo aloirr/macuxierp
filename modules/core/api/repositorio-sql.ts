@@ -4,8 +4,9 @@
  * licença, auditoria, arquivo). O certificado: o app nunca lê `pfx_cifrado` nem `senha_cifrada` (ADR 0005), então o
  * SELECT de resumo lista as colunas uma a uma.
  */
-import type { Transacao } from '@macuxierp/platform-sdk';
+import { erros, type Transacao } from '@macuxierp/platform-sdk';
 import { ORIGEM_CERTIFICADO_PADRAO } from '@macuxierp/platform-sdk/certificado-origem';
+import { ehEmailEmUso } from './erro-pg';
 import type {
   LinhaAmbiente,
   LinhaAuditoria,
@@ -75,12 +76,17 @@ export class RepositorioCoreSql implements RepositorioCore {
   }
 
   async criarUsuario(tx: Transacao, u: NovoUsuario): Promise<LinhaUsuario> {
-    const [linha] = await tx.consultar<LinhaUsuario>(
+    const [linha] = await tx
+      .consultar<LinhaUsuario>(
       // T-0052: a senha inicial é provisória, então o primeiro acesso exige a troca.
       `INSERT INTO plataforma.usuario (id, tenant_id, email, nome, senha_hash, perfil, filial_ids, ativo, external_id, deve_trocar_senha)
        VALUES ($1, plataforma.tenant_atual(), $2, $3, $4, $5, $6::uuid[], $7, $8, true) RETURNING ${COLUNAS_USUARIO}`,
       [u.id, u.email, u.nome, u.senha_hash, u.perfil, u.filial_ids, u.ativo, u.external_id],
-    );
+    )
+      .catch((e: unknown) => {
+        // RN-CORE-18 (0079): o índice global pega o e-mail de outra empresa, que a RLS esconde da busca da rota.
+        throw ehEmailEmUso(e) ? erros.emailEmUso() : e;
+      });
     if (!linha) throw new Error('plataforma.usuario: insert sem retorno');
     return linha;
   }

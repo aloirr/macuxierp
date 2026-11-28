@@ -289,6 +289,7 @@ jobs:
           fi
           echo "chave privada lida; impressão digital da pública: $(ssh-keygen -lf ~/.ssh/prod | awk '{print $2}')"
           CACHE=.producao-ssh/known_hosts
+          fonte=""
           if [ -n "$CONHECIDOS" ]; then
             printf '%s\n' "$CONHECIDOS" | tr -d '\r' > ~/.ssh/known_hosts
             echo "chave do host: secret PROD_SSH_KNOWN_HOSTS"
@@ -298,6 +299,7 @@ jobs:
           elif [ "$DO_CACHE" = true ] && [ -s "$CACHE" ]; then
             cp "$CACHE" ~/.ssh/known_hosts
             echo "chave do host: cache do runner (macuxierp-prod-known-hosts-v1)"
+            fonte="cache do runner"
           else
             # TOFU (decisão de 22/11: sem PROD_SSH_KNOWN_HOSTS): confia na primeira resposta e grava no cache
             install -d -m 700 .producao-ssh
@@ -311,9 +313,29 @@ jobs:
               echo "### Chave do host de produção por TOFU"
               echo
               echo "Sem PROD_SSH_KNOWN_HOSTS, sem .github/producao/known_hosts e sem cache: a chave veio do ssh-keyscan."
-              echo "Impressão digital: \`$digital\`. Confira com \`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub\` na VM."
             } >> "$GITHUB_STEP_SUMMARY"
             echo "tofu=1" >> "$GITHUB_OUTPUT"
+            fonte="TOFU"
+          fi
+          # Resumo da chave do host SEM o host (prepara o PR B, v0.3.30: .github/producao/known_hosts com
+          # "macuxierp-prod ssh-ed25519 ..." + HostKeyAlias). Só tipo e chave pública; o campo 1 (host) nunca sai.
+          if [ -n "$fonte" ]; then
+            esperada='SHA256:wRktlR17SPnfY7hK7u1/4XhMJ1qeON3xyFzF+b9Gy0s'
+            chave_host="$(awk '$2=="ssh-ed25519"{print $2" "$3; exit}' ~/.ssh/known_hosts)"
+            tmp_kh="$(mktemp)"; printf 'macuxierp-prod %s\n' "$chave_host" > "$tmp_kh"
+            digital_host="$(ssh-keygen -lf "$tmp_kh" 2>/dev/null | awk '{print $2}' || true)"; rm -f "$tmp_kh"
+            if [ -n "$digital_host" ] && [ "$digital_host" = "$esperada" ]; then
+              confere="bate com a conferida na VM (ED25519 $esperada)"
+            else
+              confere="NÃO bate com a conferida na VM (ED25519 $esperada)"
+              echo "::warning::chave do host ($fonte) não bate com a conferida na VM: ${digital_host:-sem ed25519}"
+            fi
+            {
+              echo "### Chave do host de produção ($fonte)"
+              echo
+              echo "Chave pública: \`$chave_host\`"
+              echo "Impressão digital: \`$digital_host\` — $confere."
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
           printf 'Host prod\n  HostName %s\n  IdentityFile ~/.ssh/prod\n  IdentitiesOnly yes\n  BatchMode yes\n  StrictHostKeyChecking yes\n  ServerAliveInterval 30\n' "$HOST" > ~/.ssh/config
           chmod 600 ~/.ssh/config
