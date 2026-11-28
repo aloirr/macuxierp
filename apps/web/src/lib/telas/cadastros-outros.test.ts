@@ -115,12 +115,13 @@ describe('adaptador do cadastros: Tabelas de preço, só o cabeçalho (v0.3.28)'
   const tabela = { id: ID, nome: 'Varejo 2026', vigencia_inicio: '2026-01-01', vigencia_fim: null, padrao: true, external_id: null, inativo: false };
   const mod = [{ id: 'cadastros' as EuResposta['modulos'][number]['id'], menus: ['Tabelas de preço'] }];
 
-  it('registra lista, novo e edição; o PATCH só vale em /tabelas-preco/<uuid> (os itens em lote não entram)', () => {
+  it('registra lista, novo e edição; o PATCH só vale em /tabelas-preco/<uuid>; o PUT dos itens é da grade (lote C)', () => {
     expect(telaDaRota(ROTA_TABELAS_PRECO)).toBe(LISTA_TABELAS_PRECO);
     expect(telaFormulario(ROTA_TABELA_PRECO_NOVA)).toBe(NOVA_TABELA_PRECO);
     expect(telaFormulario(ROTA_TABELA_PRECO)).toBe(EDITAR_TABELA_PRECO);
     expect(escritaDeclarada('PATCH', `/v1/cadastros/tabelas-preco/${ID}`)).toBe(true);
-    expect(escritaDeclarada('PUT', `/v1/cadastros/tabelas-preco/${ID}/itens`)).toBe(false);
+    expect(escritaDeclarada('PUT', `/v1/cadastros/tabelas-preco/${ID}/itens`)).toBe(true);
+    expect(escritaDeclarada('PATCH', `/v1/cadastros/tabelas-preco/${ID}/itens`)).toBe(false);
   });
 
   it('lista, formulário (RN-CAD-06) e edição', () => {
