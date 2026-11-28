@@ -46,6 +46,7 @@ a { color: var(--mx-cor-azul-noite); }
 .conteudo h1 { font-size: var(--mx-tamanho-h1); font-weight: var(--mx-peso-titulo); color: var(--mx-cor-azul-noite); margin: 0 0 4px; } /* MC-0216: azul-noite (não herda o grafite do body) e 4 px sob o título, nunca os 13,4 px do navegador */
 .conteudo h1 + :not(p) { margin-top: 16px; }
 .conteudo h1 + p { margin-top: 0; } /* MC-0216: o h1 fica a 4 px da saudação (o p logo abaixo não soma a margem do navegador) */
+.conteudo h2 { font-size: var(--mx-tamanho-titulo-cartao); font-weight: var(--mx-peso-titulo); color: var(--mx-cor-rotulo-destaque); }
 table { border-collapse: collapse; width: 100%; background: var(--mx-cor-branco); }
 th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--mx-cor-linha-suave); }
 /* Decisões 40 e 44 A (MC-0201/0202): cabeçalho na névoa, 12/700 em caixa-alta azul-noite com linha de 2 px; linha par na linhaAlternada. */

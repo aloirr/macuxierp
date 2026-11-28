@@ -16,7 +16,7 @@ import { escrever } from '@/lib/acoes-cliente';
 /** Largura do campo na grade de 12 colunas do formulário (regra 11): curto (2), médio (4), longo (6, padrão) ou largo (12). */
 export function larguraDoCampo(c: { nome: string; tipo: string }): string {
   if (c.tipo === 'area') return ' campo-largo';
-  if (c.tipo === 'data' || c.tipo === 'numero' || /^(end_)?(codigo|uf|cep|telefone|numero|serie|ncm|cfop|quantidade|preco|latitude|longitude|municipio_ibge)(_|$)/.test(c.nome)) return ' campo-curto';
+  if (c.tipo === 'data' || c.tipo === 'numero' || /(^|_)(codigo|uf|cep|telefone|numero|serie|ncm|cfop|quantidade|preco|latitude|longitude|municipio_ibge)(_|$)/.test(c.nome)) return ' campo-curto';
   if (c.tipo === 'cadastro' || c.tipo === 'selecao') return ' campo-medio';
   if (/(observacao|endereco|logradouro|descricao)/.test(c.nome)) return ' campo-largo';
   return '';
