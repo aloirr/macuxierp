@@ -87,6 +87,10 @@ const fichaChave = portal.locator('dl.ficha[aria-label="Chave do Macuxi FDV"]');
 /** O cartão "ERP → Macuxi FDV" da aba Integrações: a chave e a tabela "Cadastros enviados" (a de recebidos fica de fora). */
 const SEL_ENVIADOS = 'section[aria-labelledby="h-ligacao-saida"]';
 const enviados = portal.locator(SEL_ENVIADOS);
+/** O cartão "Sistema do cliente → ERP" da aba Integrações: a tabela dos cadastros recebidos (Modelo e Importar). */
+const recebidos = portal.locator('section[aria-labelledby="h-ligacao-entrada"]');
+// T-0137 (RD-2422): o reenvio de tudo saiu da tabela dos recebidos ("Carga completa") para o "Ações" dos enviados.
+const REENVIAR = 'Reenviar tudo ao FDV';
 const ABAS = portal.getByRole('navigation', { name: 'Abas da empresa' });
 /**
  * Abre a aba da empresa pelo link e espera o `?aba=` dela. Se a aba já é a atual (`aria-current="page"`), não clica de novo
@@ -104,17 +108,21 @@ async function abrirAba(nome, aba) {
  * Item `acao` do botão "Ações" da linha `rotulo` (T-0099: as ações da linha saíram dos botões soltos para o `MenuAcoes`).
  * Abre o menu e devolve o item; quem chama clica ou confere o estado (`aria-disabled`).
  */
-async function itemDoMenu(rotulo, acao) {
-  // Na aba Dados, "Cadastros recebidos" também tem "Ações de <cadastro>": o gatilho é o da tabela dos enviados.
-  const gatilho = enviados.getByRole('button', { name: `Ações de ${rotulo}`, exact: true });
+async function itemDoMenu(rotulo, acao, onde = enviados) {
+  // A tabela dos recebidos também tem "Ações de <cadastro>": o gatilho é o da tabela `onde` (por padrão, a dos enviados).
+  const gatilho = onde.getByRole('button', { name: `Ações de ${rotulo}`, exact: true });
   // No next dev o primeiro clique pode chegar antes da hidratação e não abrir: tenta de novo até o menu abrir.
   for (let i = 0; i < 20 && (await gatilho.getAttribute('aria-expanded')) !== 'true'; i++) {
     await gatilho.click();
     await portal.waitForTimeout(250);
   }
   exigir((await gatilho.getAttribute('aria-expanded')) === 'true', `o menu "Ações de ${rotulo}" não abriu`);
-  return portal.getByRole('menu', { name: `Ações de ${rotulo}` }).getByRole('menuitem', { name: acao, exact: true });
+  return menuAberto(rotulo).getByRole('menuitem', { name: acao, exact: true });
 }
+/** O menu "Ações de <rotulo>" aberto (só um abre por vez). */
+const menuAberto = (rotulo) => portal.getByRole('menu', { name: `Ações de ${rotulo}` });
+/** Linhas do registro de rotas da API (`MÉTODO rota status`), gravado pelo `api-portal-integracao.ts`. */
+const rotasDaApi = () => readFileSync(dados.rotas, 'utf8').split('\n').filter(Boolean);
 const itemDesabilitado = async (item) => (await item.getAttribute('aria-disabled')) === 'true';
 const fecharMenu = (p) => p.keyboard.press('Escape');
 
@@ -157,7 +165,8 @@ async function bkoConfere(esperado) {
   exigir(noBko.length === 10 && textoSelos(noBko) === textoSelos(noPortal), `BKO × portal: ${textoSelos(noBko)} || ${textoSelos(noPortal)}`);
   await htmlSemChave(bko, 'BKO');
   exigir((await bko.locator('main form, main input').count()) === 0, 'a tela do BKO tem formulário ou campo');
-  exigir((await bko.locator('main').getByRole('button', { name: /Ligar|Desligar|chave|Testar|Carga/ }).count()) === 0, 'a tela do BKO tem botão de escrita');
+  exigir((await bko.locator('main').getByRole('button', { name: /Ligar|Desligar|chave|Testar|Carga|Reenviar/ }).count()) === 0, 'a tela do BKO tem botão de escrita');
+  exigir(!(await bko.locator('main').innerText()).includes(REENVIAR), `o BKO mostra "${REENVIAR}"`);
   const api = await apiStatusTenant();
   const naApi = api.cadastros.map((c) => (c.ligada ? 'Ligado' : 'Desligado')).join(',');
   exigir(naApi === noBko.map(([, s]) => s).join(','), `API do tenant × BKO: ${naApi} || ${textoSelos(noBko)}`);
@@ -227,6 +236,8 @@ try {
     exigir(api.entidades_habilitadas.length === 0, `habilitadas depois de salvar a chave: ${api.entidades_habilitadas.join(',')}`);
     exigir(api.cadastros.every((c) => !c.ligada), 'API do portal: algum cadastro ligado depois de salvar a chave');
     exigir(!(await itemDesabilitado(await itemDoMenu(ROTULO, 'Ligar'))), 'Ligar desabilitado com chave');
+    // T-0137: com o cadastro desligado, o "Reenviar tudo ao FDV" não aparece no menu.
+    exigir((await menuAberto(ROTULO).getByRole('menuitem', { name: REENVIAR }).count()) === 0, `"${REENVIAR}" aparece com Produtos desligado`);
     await fecharMenu(portal);
     await print(portal, '02-portal-chave-salva.png');
   });
@@ -241,6 +252,41 @@ try {
     exigir((await seloDe(enviados, ROTULO)) === 'Ligado', 'depois de recarregar, Produtos não está Ligado');
     await htmlSemChave(portal, '/config depois de ligar');
     await print(portal, '03-portal-produtos-ligado.png');
+  });
+
+  await passo('(d1b) T-0137: o bloco do cliente fica sem "Carga completa" e sem Registros; "Reenviar tudo ao FDV" de Produtos (ligado) pede confirmação e chega à rota do contrato', async () => {
+    // Sistema do cliente → ERP: Cadastro, Situação, Com erro e Ações à vista ("Última carga" sobe para sob o nome, por CSS).
+    const visiveis = await recebidos.getByRole('columnheader').evaluateAll((ths) => ths.filter((th) => th.offsetParent !== null).map((th) => th.textContent?.trim()));
+    exigir(visiveis.join('|') === 'Cadastro|Situação|Com erro|Ações', `colunas à vista do bloco do cliente: ${visiveis.join('|')}`);
+    exigir((await recebidos.getByRole('columnheader', { name: 'Registros', exact: true }).count()) === 0, 'o bloco do cliente tem a coluna Registros');
+    exigir(!/Carga completa|Reenviar/.test(await recebidos.innerText()), 'o bloco do cliente mostra "Carga completa" ou "Reenviar"');
+    // Produtos está ligado (d1): o "Ações de Produtos" do bloco do cliente traz só Importar e Modelo (T-0099: um botão por linha).
+    await itemDoMenu(ROTULO, 'Importar', recebidos);
+    const doCliente = (await menuAberto(ROTULO).getByRole('menuitem').allInnerTexts()).map((t) => t.trim());
+    exigir(doCliente.join('|') === 'Importar|Modelo', `menu de Produtos no bloco do cliente: ${doCliente.join('|')}`);
+    await fecharMenu(portal);
+    // ERP → Macuxi FDV: o "Ações de Produtos" traz o reenvio habilitado (Produtos ligado, sem lote em voo).
+    const item = await itemDoMenu(ROTULO, REENVIAR);
+    await item.waitFor();
+    exigir(!(await itemDesabilitado(item)), `"${REENVIAR}" desabilitado com Produtos ligado`);
+    const antes = rotasDaApi().length;
+    await item.click();
+    const dialogo = portal.getByRole('dialog');
+    await dialogo.getByRole('heading', { name: 'Reenviar todos os Produtos ao FDV?', exact: true }).waitFor();
+    exigir((await dialogo.innerText()).includes('Envia tudo de uma vez: pode demorar e inativar cadastros no FDV.'), 'o diálogo sem o aviso do reenvio');
+    const botoes = (await dialogo.getByRole('button').allInnerTexts()).map((t) => t.trim());
+    exigir(botoes.join('|') === `Cancelar|${REENVIAR}`, `botões do diálogo: ${botoes.join('|')}`);
+    await print(portal, '03b-portal-reenviar-tudo-confirmacao.png');
+    await dialogo.getByRole('button', { name: REENVIAR, exact: true }).click();
+    await portal.getByRole('status').filter({ hasText: 'Reenvio pedido: Produtos.' }).waitFor();
+    // A ação passa pelo BFF: a API registrou um POST na rota do contrato do SDK (`CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.cargaCompleta`), com sucesso.
+    // O registro sai no onResponse, logo depois da resposta: espera até 5 s por ele.
+    let novas = [];
+    for (let i = 0; i < 20 && novas.length === 0; i++, await portal.waitForTimeout(250)) novas = rotasDaApi().slice(antes).filter((l) => l.startsWith(`POST ${dados.portal.cargaCompleta} `));
+    exigir(novas.length === 1 && /\s2\d\d$/.test(novas[0]), `POST ${dados.portal.cargaCompleta} na API: ${novas.join(' ; ') || 'nenhum'}`);
+    exigir((await seloDe(enviados, ROTULO)) === 'Ligado', 'Produtos deixou de estar Ligado depois do reenvio');
+    await htmlSemChave(portal, '/config depois do reenvio');
+    await print(portal, '03c-portal-reenvio-pedido.png');
   });
 
   await passo('(e1) administrador entra no BKO; Integração FDV mostra Produtos Ligado, igual ao portal e à API, sem chave nem escrita', async () => {
