@@ -45,8 +45,8 @@ export async function ListaGenerica({ tela, rota, rotaDaPagina, busca, perfil, a
   // RD-2383: coluna sem nenhum valor nem selo nas linhas (ex.: pendências, selo) não ocupa lugar; sem linhas, todas ficam.
   const textos = pagina.itens.map((l) => ({ t: tela.linha(l as Record<string, unknown>, fuso), s: tela.selos?.(l as Record<string, unknown>, fuso) }));
   const colunas = textos.length === 0 ? todasColunas : todasColunas.filter((c) => textos.some((x) => (x.t[c.id] ?? '') !== '' || (x.s?.[c.id]?.length ?? 0) > 0));
-  const largura = colunasDosFiltros([...(tela.pagina.busca ? ['busca' as const] : []), ...tela.filtrosTela.map((f) => (f.tipo === 'data' ? 'data' as const : f.tipo === 'texto' ? 'texto' as const : 'selecao' as const))]);
-  const col = (n: number) => `campo filtro-col-${largura[n] ?? 2}`;
+  const largura = colunasDosFiltros([...(tela.pagina.busca ? [{ tipo: 'busca' as const }] : []), ...tela.filtrosTela.map((f) => ({ tipo: f.tipo, chave: f.chave, ...(f.colunas ? { colunas: f.colunas } : {}) }))]);
+  const col = (n: number) => `campo filtro-col-${largura[n] ?? 4}`;
   const rotulos = new Map(tela.filtrosTela.flatMap((f, i) => (f.tipo === 'cadastro' ? [[f.chave, new Map((opcoes[i] ?? []).map((o) => [o.valor, o.rotulo] as const))] as const] : [])));
   /** Só filtro real acende o link "Limpar filtros" ao lado dos filtros: cursor e limite são paginação. */
   const filtrada = Object.keys(filtros).some((k) => k !== 'cursor' && k !== 'limite');

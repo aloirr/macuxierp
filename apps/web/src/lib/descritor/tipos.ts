@@ -15,6 +15,8 @@ export interface FiltroTela {
   chave: string;
   rotulo: string;
   tipo: 'texto' | 'data' | 'selecao' | 'cadastro';
+  /** Dica de largura na linha de filtros, em colunas da grade de 12 (1 a 12). Opcional: sem ela o shell reparte a linha. */
+  colunas?: number;
   /** `selecao`: valores fixos (ex.: status). */
   opcoes?: readonly { valor: string; rotulo: string }[];
   /** `cadastro`: de onde ler as opções (cadastros). */
