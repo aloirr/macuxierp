@@ -45,10 +45,10 @@ describe('montarMenu (RN-CORE-02, RD-11)', () => {
     expect(resolverPagina(m, '/core/inexistente', 'administrador')).toBeUndefined();
   });
   it('resolverPagina devolve undefined para o que não está no menu e o rótulo para módulo sem páginas', () => {
-    // Fiscal ainda não declara páginas: a rota vem do rótulo do manifesto (o faturamento já declara as dele, T-0021).
+    // Sem páginas declaradas (lista vazia), a rota vem do rótulo do manifesto.
     const m = montarMenu([...EU_FALSO.modulos, { id: 'fiscal', menus: ['Regras fiscais'] }], MANIFESTOS, 'administrador', []);
     const rotulo = m.find((g) => g.modulo === 'fiscal')!.itens[0]!;
-    expect(resolverPagina(m, rotulo.href, 'administrador')).toEqual({ rotulo: rotulo.rotulo });
+    expect(resolverPagina(m, rotulo.href, 'administrador')).toMatchObject({ rotulo: rotulo.rotulo }); // o fiscal declara páginas desde a T-0127
     expect(resolverPagina(m, '/fiscal/outra-coisa', 'administrador')).toBeUndefined();
   });
 });

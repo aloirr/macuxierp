@@ -83,7 +83,7 @@ export interface TelaLista {
   pagina: PaginaLista;
   filtrosTela: readonly FiltroTela[];
   /** Colunas da tabela para o perfil (id e título). */
-  colunas: (perfil: Perfil, fuso: string) => readonly { id: string; rotulo: string; tipo?: 'texto' | 'numero' | 'dinheiro' | 'data' | 'status' }[];
+  colunas: (perfil: Perfil, fuso: string) => readonly { id: string; rotulo: string; tipo?: 'texto' | 'numero' | 'dinheiro' | 'data' | 'status'; largura?: string }[];
   /** Linha pronta para exibir (texto por id de coluna), no fuso do tenant. */
   linha: (item: Linha, fuso: string) => Readonly<Record<string, string>>;
   /** Botão "Novo", quando houver; some se o perfil não puder `criar`. */
