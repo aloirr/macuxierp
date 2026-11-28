@@ -47,9 +47,11 @@ describe('adaptador CalculoFiscal sobre fiscal.calculo@1', () => {
     expect(sem.saida.totais.calc_st).toBeUndefined();
     expect(sem.saida.itens[0]?.calc_st).toBeUndefined();
   });
-  it('RN-FIS-05: adaptador (pedido/FDV) com emitente industrial sem regra de IPI: sem erro e calc_ipi omitido; no modo emissão, REGRA_NAO_ENCONTRADA', async () => {
+  it('RN-FIS-05: adaptador com emitente industrial sem regra de IPI: padrão (emissão) dá REGRA_NAO_ENCONTRADA; modo 'previa' explícito omite calc_ipi sem erro', async () => {
     const ind: EmitenteFiscal = { ...normal, industrial_ipi: true };
-    const previa = await montar(ind, [regra()]).calc.calcular(tx, entrada());
+    const padrao = await montar(ind, [regra()]).calc.calcular(tx, entrada());
+    expect(padrao).toMatchObject({ ok: false, erros: [{ codigo: 'REGRA_NAO_ENCONTRADA' }] });
+    const previa = await criarCalculoFiscal({ emitentes: { emitente: async () => ind, producaoPropria: async () => new Set() }, repositorio: { regras: async () => [regra()], cargas: async () => new Map() }, modo: 'previa' }).calcular(tx, entrada());
     if (!previa.ok) throw new Error(JSON.stringify(previa.erros));
     expect(previa.saida.itens[0]?.regra_aplicada?.ipi).toBe(false);
     expect(previa.saida.itens[0]?.calc_ipi).toBeUndefined();
