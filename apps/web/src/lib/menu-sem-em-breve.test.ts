@@ -28,10 +28,10 @@ describe('menu sem páginas "em breve" (decisão do PO, v0.3.28)', () => {
     }
   });
 
-  it('saem do menu: Condições de pagamento, Equipe e carteira e Regras fiscais; ficam Clientes, Produtos, Tabelas de preço, Filiais, Estoque e Tabelas oficiais (T-0123, lote A)', () => {
+  it('sai do menu só Regras fiscais; ficam Clientes, Produtos, Tabelas de preço, Filiais, Estoque, Condições, Equipe e Tabelas oficiais (T-0123)', () => {
     const rotulos = montarMenu(TODOS, MANIFESTOS, 'administrador').flatMap((g) => g.itens.map((i) => i.rotulo));
-    for (const fora of ['Condições de pagamento', 'Equipe e carteira', 'Regras fiscais']) expect(rotulos).not.toContain(fora);
-    for (const dentro of ['Clientes', 'Produtos', 'Tabelas de preço', 'Filiais', 'Estoque', 'Tabelas oficiais', 'Usuários e perfis', 'Pedidos']) expect(rotulos).toContain(dentro);
+    for (const fora of ['Regras fiscais']) expect(rotulos).not.toContain(fora);
+    for (const dentro of ['Clientes', 'Produtos', 'Tabelas de preço', 'Filiais', 'Estoque', 'Condições de pagamento', 'Equipe e carteira', 'Tabelas oficiais', 'Usuários e perfis', 'Pedidos']) expect(rotulos).toContain(dentro);
   });
 
   it('Empresa: Certificado A1, Exportar meus dados e a própria página saem; o item abre direto no "Ambiente fiscal"', () => {
