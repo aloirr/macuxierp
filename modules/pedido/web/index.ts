@@ -6,7 +6,7 @@ export {
 } from './acoes';
 export { ROTULO_PENDENCIA, ROTULO_PERFIL, cabecalhoDoPedido, linhasDeHistorico, linhasDeItens, linhasDePendencias, resumoDaDecisao, type LinhaPendencia } from './detalhe';
 export { ITEM_VAZIO, formularioVazio, formularioDoPedido, edicaoDoPedido, novaChaveDoFormulario, retornoDoLancamento, totalDoFormulario, validarFormulario, type Formulario, type LinhaItemFormulario, type ResultadoFormulario, type RetornoDoLancamento } from './formulario';
-export { MENSAGEM_CONFLITO_EDICAO, MENSAGEM_FORA_DE_ANALISE, chaveDoCampo, errosPorCampo, falhaDaEdicao, mensagemDaIssue, type FalhaDaEdicao } from './erros';
+export { MENSAGEM_CONFLITO_EDICAO, chaveDoCampo, errosPorCampo, falhaDaEdicao, mensagemDaIssue, type FalhaDaEdicao } from './erros';
 export { ErroPedido, criarClientePedido, type FetchPedido } from './cliente';
 export { textoCentavos, textoQuantidade } from './texto';
 export { calcularTotal, type ItemParaTotal } from './total';

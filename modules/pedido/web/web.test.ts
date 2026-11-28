@@ -4,7 +4,7 @@ import { paraCsv } from '@macuxierp/platform-sdk/listas';
 import { manifest } from '../manifest';
 import type { Pedido } from '../contracts';
 import { acoesDoPedido, avisoDoMotivo, rotaDeEdicao, validarAprovacao, validarMotivo } from './acoes';
-import { falhaDaEdicao, MENSAGEM_CONFLITO_EDICAO, MENSAGEM_FORA_DE_ANALISE } from './erros';
+import { falhaDaEdicao, MENSAGEM_CONFLITO_EDICAO } from './erros';
 import { criarClientePedido, ErroPedido } from './cliente';
 import { cabecalhoDoPedido, linhasDeHistorico, linhasDeItens, linhasDePendencias, resumoDaDecisao } from './detalhe';
 import { formatarCentavos, formatarDataHora, formatarPontosBase, formatarQuantidade } from '@macuxierp/platform-sdk/formatar';
@@ -312,9 +312,9 @@ describe('edição, endereço de entrega e fontes dos seletores (T-0015, lote 3b
   it('412 e 409 do If-Match pedem recarregar; pedido fora de análise (422) também; o resto mostra a mensagem da API', () => {
     expect(falhaDaEdicao({ status: 412, codigo: 'PRECONDICAO', message: 'm' })).toEqual({ mensagem: MENSAGEM_CONFLITO_EDICAO, recarregar: true });
     expect(falhaDaEdicao({ status: 409, codigo: 'CONFLITO', message: 'm' })).toEqual({ mensagem: MENSAGEM_CONFLITO_EDICAO, recarregar: true });
-    expect(falhaDaEdicao({ status: 422, codigo: 'RN-PED-02', message: 'm' })).toEqual({ mensagem: MENSAGEM_FORA_DE_ANALISE, recarregar: true });
+    expect(falhaDaEdicao({ status: 422, codigo: 'RN-PED-02', message: 'm' })).toEqual({ mensagem: MENSAGEM_CONFLITO_EDICAO, recarregar: true });
     expect(falhaDaEdicao({ status: 422, codigo: 'RN-PED-03', message: 'Pendência' })).toEqual({ mensagem: 'Pendência', recarregar: false });
-    for (const m of [MENSAGEM_CONFLITO_EDICAO, MENSAGEM_FORA_DE_ANALISE]) expect(m).not.toMatch(/^[^.]{1,20}:/);
+    expect(MENSAGEM_CONFLITO_EDICAO).toBe('O pedido foi alterado por outra pessoa. Recarregue para ver a versão atual.');
   });
   it('o 412 do servidor chega como ErroPedido e vira a mensagem de recarregar', async () => {
     const cliente = criarClientePedido({ baseUrl: 'http://api', token: () => 't', fetch: async () => ({ status: 412, ok: false, headers: { get: () => 'application/json' }, json: async () => ({ codigo: 'PRECONDICAO', mensagem: 'velho' }) }) });

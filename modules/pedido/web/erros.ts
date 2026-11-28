@@ -36,8 +36,7 @@ export interface FalhaDaEdicao {
   recarregar: boolean;
 }
 
-export const MENSAGEM_CONFLITO_EDICAO = 'Outra pessoa alterou este pedido. Recarregue para ver a versão atual e refaça a edição.';
-export const MENSAGEM_FORA_DE_ANALISE = 'O pedido saiu de análise e não pode mais ser editado. Volte ao pedido.';
+export const MENSAGEM_CONFLITO_EDICAO = 'O pedido foi alterado por outra pessoa. Recarregue para ver a versão atual.';
 
 /**
  * Falha do `PUT /pedidos/:id` em texto para a tela (RF-PED-02). O `If-Match` velho vem como 412 (precondição) ou 409
@@ -45,6 +44,6 @@ export const MENSAGEM_FORA_DE_ANALISE = 'O pedido saiu de análise e não pode m
  */
 export function falhaDaEdicao(e: { status: number; codigo: string; message: string }): FalhaDaEdicao {
   if (e.status === 412 || e.status === 409 || e.codigo === 'CONFLITO') return { mensagem: MENSAGEM_CONFLITO_EDICAO, recarregar: true };
-  if (e.status === 422 && e.codigo === 'RN-PED-02') return { mensagem: MENSAGEM_FORA_DE_ANALISE, recarregar: true };
+  if (e.status === 422 && e.codigo === 'RN-PED-02') return { mensagem: MENSAGEM_CONFLITO_EDICAO, recarregar: true };
   return { mensagem: e.message, recarregar: false };
 }
