@@ -1,10 +1,10 @@
 # ADR 0021 — Login por e-mail único no sistema, sem o código da empresa
 
-- **Status:** Proposta (28/11/2026). Fica **a decidir** o item 7 (superadmin × usuário com o mesmo e-mail).
+- **Status:** Proposta (28/11/2026). O item 7 foi decidido pelo PO: opção A (28/11/2026, 00h29, Manaus).
 - **Data:** 28/11/2026, 00h28 (Manaus)
 - **Dono:** engenheiro-software
 - **Tarefa:** T-0133 (v0.3.30). Desenho: o do engenheiro-software para a T-0133; banco: migração 0079 (banco-dados), depois da 0078.
-- **Decisão do PO (28/11/2026, repassada pelo gerente-projetos):** a mensagem da empresa suspensa, que só aparece depois de a senha conferir (item 3).
+- **Decisões do PO (28/11/2026, repassadas pelo gerente-projetos):** a mensagem da empresa suspensa, que só aparece depois de a senha conferir (item 3), e a opção A para o superadmin (item 7).
 - **Altera:** a D2 da T-0002 (`docs/desenho/T-0002.md`: usuário por tenant, login com empresa, e-mail e senha), a ADR 0012 §2 (login do superadmin e o `tenant_por_slug` no Suspender) e a ADR 0018 (o código reservado `MACUXI` no campo "empresa").
 - **Número:** o 0020 já é a ADR `0020-formas-e-prazos.md`; esta é a 0021, o próximo livre no `main` e nos branches.
 
@@ -15,13 +15,14 @@ Hoje o login pede empresa (código), e-mail e senha (D2 e ADR 0018). O e-mail é
 
 ### 1. E-mail único no sistema todo
 - A chave é `lower(btrim(email))`. Contam só as linhas vivas (`deleted_at IS NULL`).
-- A unicidade vale entre os `plataforma.usuario` de **todas** as empresas. Contra o `plataforma.superadmin`, depende do item 7 (a decidir).
+- A unicidade vale entre os `plataforma.usuario` de **todas** as empresas e, à parte, entre os superadmins (o `superadmin_email_uq` da 0033, que já guarda o e-mail normalizado). O superadmin fica **fora** da unicidade com os usuários (item 7).
 - Quem atende duas empresas usa um e-mail diferente em cada uma.
 - Mensagem ao usuário, na criação ou na troca de e-mail com um e-mail já usado: **"Este e-mail já está em uso em outra empresa. Use outro e-mail."** (código `email_em_uso`, fonte única no SDK). A mensagem não diz qual empresa.
 
 ### 2. Login: `plataforma.conta_por_email(p_email)`
 - Função `SECURITY DEFINER STABLE` (banco-dados, 0079). `EXECUTE` só do `macuxierp_app`; `REVOKE` de `PUBLIC`.
 - Devolve **no máximo 1 linha**: `{ tipo: 'usuario' | 'superadmin', tenant_id | null, suspensa: boolean }`. Nunca devolve hash, nome nem e-mail.
+- **Ordem (item 7):** procura primeiro o usuário de empresa; só sem usuário vivo com esse e-mail devolve o superadmin.
 - Empresa **encerrada** ou inexistente = nenhuma linha. Empresa **suspensa** devolve a linha com `suspensa = true` (item 3).
 - Ela substitui o `plataforma.tenant_por_slug` no `semTenant` do login. Depois dela, o fluxo segue igual: a transação abre no `tenant_id` devolvido e lê o usuário com RLS, como hoje.
 - **Sessão e JWT não mudam**: mesmo refresh, mesmo cookie, mesmas claims.
@@ -45,19 +46,24 @@ Hoje o login pede empresa (código), e-mail e senha (D2 e ADR 0018). O e-mail é
 - A API conta em log quantos logins ainda mandam `empresa`: só a contagem, com `tenant_id` quando houver, `modulo` e `request_id`, **sem e-mail nem código**.
 - O e-mail da senha temporária deixa de levar o código da empresa.
 
-### 7. Superadmin × usuário com o mesmo e-mail (**a decidir**)
-A unicidade contra o superadmin quebra a emenda §1-A da ADR 0012 (decisão 45 A): o `/config` pelo BKO acha o superadmin pelo **mesmo e-mail** do usuário do BKO. Com o e-mail único também contra o superadmin, esse par não existe mais.
+### 7. Superadmin × usuário com o mesmo e-mail (decidido: opção A)
+A emenda §1-A da ADR 0012 (decisão 45 A) acha o superadmin pelo **mesmo e-mail** do usuário do BKO. Com o e-mail único também contra o superadmin, esse par deixaria de existir. Foram duas opções:
 
-- **Opção A (recomendada):** o superadmin fica **fora** da unicidade com os usuários. A unicidade vale só entre usuários de todas as empresas, e entre superadmins. No login, a `conta_por_email` prefere o usuário da empresa; o superadmin que não tem usuário com o mesmo e-mail entra no `/config`. O superadmin com usuário entra no BKO e passa ao `/config` pela §1-A, como hoje. Custo: nenhum dado novo; a §1-A não muda.
-- **Opção B:** um vínculo explícito entre o superadmin e o usuário do BKO (por exemplo, `plataforma.superadmin.usuario_id`), no lugar da comparação por e-mail. O e-mail fica único também contra o superadmin. Custo: coluna e migração do vínculo, ajuste da `superadmin_acesso_pelo_bko` e da `superadmin_abrir_sessao_pelo_bko` e do `operador.sh criar-superadmin`.
+- **Opção A (escolhida pelo PO):** o superadmin fica **fora** da unicidade com os usuários. O e-mail continua único entre todas as empresas e entre os superadmins. A §1-A não muda e não há dado novo.
+- **Opção B (descartada):** um vínculo explícito entre o superadmin e o usuário do BKO (por exemplo, `plataforma.superadmin.usuario_id`), com o e-mail único também contra o superadmin. Pedia coluna, migração e ajuste das funções da §1-A e do `operador.sh criar-superadmin`.
 
-Até a escolha, os itens 1 e 8 que tocam o superadmin ficam condicionados a ela.
+**Como fica o login:**
+- e-mail só de usuário de empresa: entra no BKO (`destino: 'bko'`);
+- e-mail só de superadmin: entra no `/config` (`destino: 'config'`);
+- o mesmo e-mail nos dois: a entrada leva **sempre ao BKO**, com a senha do usuário. O `/config` só abre pelo caminho da 45 A (`POST /v1/auth/config`, `CAMINHO_ENTRAR_PELO_BKO`), **nunca direto pela tela de entrada**. A senha do superadmin não é conferida na tela nesse caso, e a falha é o mesmo 401 genérico.
+
+**Teste obrigatório** (API, com PG real, `*.db.test.ts`): com um usuário e um superadmin com o mesmo e-mail, o login com a senha do usuário dá `destino: 'bko'` e nenhum cookie `COOKIE_CONFIG`; com a senha do superadmin dá 401 `NAO_AUTENTICADO`; e o `/config` abre pelo `POST /v1/auth/config` dessa sessão do BKO. Cobre também o e-mail só de superadmin, que dá `destino: 'config'`.
 
 ### 8. Migração 0079 (banco-dados), depois da 0078
-1. **Checagem antes de tudo:** conta os e-mails repetidos entre usuários vivos (e, na opção B, usuário × superadmin). Se houver, aborta com `RAISE EXCEPTION` que leva **só a contagem**, nunca o e-mail.
+1. **Checagem antes de tudo:** conta os e-mails repetidos entre os usuários vivos de todas as empresas. Se houver, aborta com `RAISE EXCEPTION` que leva **só a contagem**, nunca o e-mail. Usuário × superadmin não entra na checagem (item 7).
 2. Índice único `usuario_email_global_uq` em `lower(btrim(email)) WHERE deleted_at IS NULL`, no lugar do índice por tenant da 0078.
-3. Gatilho `BEFORE INSERT OR UPDATE OF email, deleted_at` nas duas tabelas (`usuario` e `superadmin`), com `pg_advisory_xact_lock(hashtext(lower(btrim(email))))`, que serializa a corrida entre as tabelas (o índice não cruza tabelas) e dá o erro `email_em_uso`. Na opção A, o gatilho cuida só de superadmin × superadmin e o índice cobre os usuários.
-4. As funções de criação de usuário (primeiro admin e usuário do BKO) checam o e-mail globalmente e devolvem `email_em_uso`.
+3. **Sem gatilho entre as tabelas** (opção A): o índice cobre os usuários e o `superadmin_email_uq` da 0033 cobre os superadmins. Não há `pg_advisory_xact_lock` nem checagem cruzada.
+4. As funções de criação e de troca de e-mail do usuário (primeiro admin e usuário do BKO) checam o e-mail entre todas as empresas e devolvem `email_em_uso`; a violação do índice, numa corrida, dá o mesmo erro.
 5. A função `conta_por_email` do item 2.
 
 O `producao-publicar` volta atrás sozinho se a checagem abortar: a migração roda numa transação, e a versão anterior segue no ar. Repetidos em produção são resolvidos com o cliente antes de publicar de novo.
@@ -70,7 +76,7 @@ O `producao-publicar` volta atrás sozinho se a checagem abortar: a migração r
 - A tela de login tem só e-mail e senha; o navegador não guarda mais o código da empresa.
 - Uma pessoa com duas empresas precisa de dois e-mails.
 - A web mostra a mensagem do `email_em_uso` no cadastro de usuário e no primeiro admin.
-- Os testes do login cobrem: e-mail inexistente com o mesmo custo, senha errada, empresa suspensa só depois da senha, empresa encerrada como inexistente, trava por e-mail, `/esqueci` sempre 202 e o campo `empresa` ignorado.
+- Os testes do login cobrem: e-mail inexistente com o mesmo custo, senha errada, empresa suspensa só depois da senha, empresa encerrada como inexistente, trava por e-mail, `/esqueci` sempre 202, o campo `empresa` ignorado e o mesmo e-mail em usuário e superadmin (item 7).
 
 ## Referências
 D2 da T-0002 · ADR 0012 (§2, §6 e emenda §1-A) · ADR 0018 · RN-CORE-12 e RN-CORE-13 · `apps/api/src/auth/servico.ts`, `repositorio-pg.ts` e `portas.ts` · `apps/api/src/plataforma/limite-ip.ts` e `servico.ts` · `packages/platform-sdk/src/login.ts` e `portal-config.ts` · migrações 0049, 0078 e 0079.
