@@ -9,7 +9,7 @@ import { VisaoLogin } from './formulario';
 vi.mock('./entrar', () => ({ entrarAction: vi.fn() }));
 vi.mock('./esqueci', () => ({ pedirEsqueciAction: vi.fn() }));
 
-const valores = { empresa: 'AM2808', email: 'usuario@exemplo.com.br', senha: '' };
+const valores = { email: 'usuario@exemplo.com.br', senha: '' };
 
 describe('T-0111: conta bloqueada na tela de entrada', () => {
   it('reconhece o bloqueio num ponto só: só 423 ou CODIGO_CONTA_BLOQUEADA do SDK; o 429 do IP não é bloqueio', () => {
@@ -59,14 +59,12 @@ describe('T-0111: conta bloqueada na tela de entrada', () => {
     expect(h).not.toContain(R.acao.rotulo);
   });
 
-  it('Recuperar a senha abre com o código e o e-mail já preenchidos (superadmin incluso), sem URL nem storage', () => {
-    for (const empresa of ['AM2808', 'MACUXI']) {
-      const h = renderToStaticMarkup(<EsqueciSenha empresaInicial={empresa} emailInicial="usuario@exemplo.com.br" aoVoltar={() => undefined} />);
-      expect(h).toContain(`value="${empresa}"`);
-      expect(h).toContain('value="usuario@exemplo.com.br"');
-      expect(h).toContain('Enviar senha temporária');
-      expect(h).toContain('Voltar para entrar');
-    }
+  it('Recuperar a senha abre só com o e-mail já preenchido (sem campo de empresa), sem URL nem storage', () => {
+    const h = renderToStaticMarkup(<EsqueciSenha emailInicial="usuario@exemplo.com.br" aoVoltar={() => undefined} />);
+    expect(h).not.toMatch(/empresa|código/i);
+    expect(h).toContain('value="usuario@exemplo.com.br"');
+    expect(h).toContain('Enviar senha temporária');
+    expect(h).toContain('Voltar para entrar');
     const fonte = readFileSync(new URL('./formulario.tsx', import.meta.url), 'utf8');
     expect(fonte).not.toMatch(/localStorage|sessionStorage|searchParams|router\.(push|replace)|\?email=/);
   });

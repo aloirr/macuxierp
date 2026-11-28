@@ -19,11 +19,11 @@ function ambiente(armazem = armazemFalso()) {
   return a;
 }
 
-const rascunho = () => ({ empresa: 'macuxi', email: 'ana@exemplo.com.br' });
+const rascunho = () => ({ email: 'ana@exemplo.com.br' });
 const versaoNova = () => Promise.reject(new UnrecognizedActionError());
 
 describe('chamarAcao (action de um build anterior)', () => {
-  it('versão nova: recarrega uma vez, guarda só empresa e e-mail e deixa a promessa pendente', async () => {
+  it('versão nova: recarrega uma vez, guarda só o e-mail e deixa a promessa pendente', async () => {
     const a = ambiente();
     const acao = vi.fn(versaoNova);
     const r = await Promise.race([chamarAcao(acao, [], { rascunho }, a), new Promise((ok) => setTimeout(() => ok('pendente'), 20))]);
@@ -69,7 +69,7 @@ describe('chamarAcao (action de um build anterior)', () => {
 
   it('a senha nunca vai ao storage, nem se vier no rascunho', async () => {
     const a = ambiente();
-    void chamarAcao(versaoNova, [], { rascunho: () => ({ empresa: 'macuxi', email: 'a@b.co', senha: 'segredo-123' } as never) }, a);
+    void chamarAcao(versaoNova, [], { rascunho: () => ({ email: 'a@b.co', senha: 'segredo-123' } as never) }, a);
     await new Promise((ok) => setTimeout(ok, 5));
     const tudo = JSON.stringify([...a.armazem.m.entries()]);
     expect(tudo).not.toContain('segredo-123');

@@ -17,7 +17,7 @@ function BotaoLink({ texto, aoClicar, refBotao }: { texto: string; aoClicar?: ((
   return <p className="apoio"><button type="button" className="link" ref={refBotao} onClick={aoClicar}>{texto}</button></p>;
 }
 
-const CAMPOS: readonly CampoEsqueci[] = ['empresa', 'email'];
+const CAMPOS: readonly CampoEsqueci[] = ['email'];
 
 export type EstadoEsqueci = {
   fase: 'form' | 'enviando' | 'confirmado';
@@ -67,9 +67,9 @@ export function PainelEsqueciVisao({
             <span>{TEXTOS_LOGIN.rotulos[c]}</span>
             <input
               name={c}
-              type={c === 'email' ? 'email' : 'text'}
+              type="email"
               defaultValue={valores[c]}
-              autoComplete={c === 'email' ? 'username' : 'organization'}
+              autoComplete="username"
               autoCapitalize="none"
               spellCheck={false}
               aria-invalid={estado.erros[c] ? true : undefined}
@@ -89,9 +89,8 @@ export function PainelEsqueciVisao({
 }
 
 export function EsqueciSenha({
-  empresaInicial, emailInicial, aoVoltar, enviar = pedirEsqueciAction,
+  emailInicial, aoVoltar, enviar = pedirEsqueciAction,
 }: {
-  empresaInicial?: string | undefined;
   emailInicial?: string | undefined;
   aoVoltar: () => void;
   enviar?: EnviarEsqueci;
@@ -100,7 +99,7 @@ export function EsqueciSenha({
   const inputs = useRef<Partial<Record<CampoEsqueci, HTMLInputElement | null>>>({});
   const texto = useRef<HTMLParagraphElement | null>(null);
   const [resultado, chave, mostrar, limpar] = useResultado();
-  const valores: DadosEsqueci = { empresa: empresaInicial, email: emailInicial };
+  const valores: DadosEsqueci = { email: emailInicial };
 
   useEffect(() => {
     if (estado.fase === 'confirmado') texto.current?.focus();
@@ -113,7 +112,7 @@ export function EsqueciSenha({
   }, [estado.fase === 'confirmado', estado.erros, resultado]);
 
   async function aoEnviar(f: FormData) {
-    const dados = { empresa: String(f.get('empresa') ?? '').trim(), email: String(f.get('email') ?? '').trim() };
+    const dados = { email: String(f.get('email') ?? '').trim() };
     const erros = validarCampos(CAMPOS, dados);
     if (Object.keys(erros).length) return setEstado({ fase: 'form', erros });
     setEstado({ fase: 'enviando', erros: {} });
@@ -139,12 +138,11 @@ export function EsqueciSenha({
 
 /** Alterna entre o formulário de login e o painel; o link só existe se `disponivel` (a API diz que o e-mail da plataforma está configurado). */
 export function ComEsqueciSenha({
-  disponivel, ocultarLink = false, empresaInicial, emailInicial, enviar, cabecalho, children,
+  disponivel, ocultarLink = false, emailInicial, enviar, cabecalho, children,
 }: {
   disponivel: boolean;
   /** Esconde o link "Esqueci a senha" (conta bloqueada: o botão "Recuperar a senha" já abre o painel). */
   ocultarLink?: boolean;
-  empresaInicial?: string;
   /** E-mail já digitado no login: vai só por props (estado do cliente), nunca por URL ou storage. */
   emailInicial?: string;
   enviar?: EnviarEsqueci;
@@ -163,7 +161,7 @@ export function ComEsqueciSenha({
     return (
       <>
         {cabecalho?.(true)}
-        <EsqueciSenha empresaInicial={empresaInicial} emailInicial={emailInicial} enviar={enviar} aoVoltar={() => { veioDoPainel.current = true; setAberto(false); }} />
+        <EsqueciSenha emailInicial={emailInicial} enviar={enviar} aoVoltar={() => { veioDoPainel.current = true; setAberto(false); }} />
       </>
     );
   }

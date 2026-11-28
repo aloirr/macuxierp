@@ -4,10 +4,10 @@
  * Confere, no `next build` de produção servido em standalone contra uma API falsa local (sem segredo, sem banco):
  *  - "/" sem sessão mostra o login (sem redirect), em 1366 e 390 de largura;
  *  - /login, /login?destino=%2Fconfig e /config/entrar respondem 308 com Location "/";
- *  - o link do e-mail (/login#codigo=…&email=…) cai em "/" e preenche os campos;
+ *  - o link do e-mail (/login#email=…) cai em "/" e preenche o e-mail (a tela não tem campo de empresa, ADR 0021);
  *  - login de empresa de tenant (destino "bko" da API) termina em "/" já no BKO;
- *  - login da empresa MACUXI (destino "config" da API) vai ao /config.
- *  - /config sem sessão volta a "/" com MACUXI preenchida (fragmento), mesmo com outro código salvo.
+ *  - login do superadmin (destino "config" da API, pelo e-mail) vai ao /config.
+ *  - /config sem sessão volta a "/" sem fragmento e sem campo de empresa.
  *   pnpm --filter web e2e:login-raiz [--porta 3191] [--prints <pasta>] [--sem-build]
  * Sai 0 se tudo passou; 1 se algum passo falhou.
  */
@@ -45,9 +45,9 @@ const api = createServer((req, res) => {
     let corpo = '';
     req.on('data', (d) => { corpo += d; });
     req.on('end', () => {
-      const { empresa } = JSON.parse(corpo || '{}');
+      const { email } = JSON.parse(corpo || '{}');
       const expira_em = new Date(Date.now() + 15 * 60_000).toISOString();
-      if (String(empresa).toLowerCase() === 'macuxi') return json(200, { destino: 'config', expira_em }, { 'set-cookie': 'macuxierp_config=tok-config; Path=/; HttpOnly' });
+      if (String(email).startsWith('sa@')) return json(200, { destino: 'config', expira_em }, { 'set-cookie': 'macuxierp_config=tok-config; Path=/; HttpOnly' });
       return json(200, { destino: 'bko', token_acesso: 'tok-acesso', expira_em }, { 'set-cookie': 'macuxierp_refresh=tok-refresh; Path=/; HttpOnly' });
     });
     return;
@@ -81,7 +81,7 @@ try {
     const p = await novo(l, a);
     const r = await p.goto(`${BASE}/`, { waitUntil: 'networkidle' });
     confere(r.status() === 200 && new URL(p.url()).pathname === '/', `"/" sem sessão (${l}px): 200 e a URL continua "/"`);
-    confere(await p.getByLabel('Código da empresa').isVisible() && await p.getByRole('button', { name: 'Entrar', exact: true }).isVisible(), `"/" sem sessão (${l}px) mostra o login`);
+    confere(await p.getByLabel('E-mail').isVisible() && await p.getByRole('button', { name: 'Entrar', exact: true }).isVisible(), `"/" sem sessão (${l}px) mostra o login`);
     confere((await p.evaluate(() => document.documentElement.scrollWidth)) <= l, `sem rolagem horizontal em ${l}px`);
     if (PRINTS) { mkdirSync(PRINTS, { recursive: true }); await p.screenshot({ path: join(PRINTS, `raiz-sem-sessao-${l}.png`), fullPage: true }); }
     await p.context().close();
@@ -97,20 +97,20 @@ try {
   // 3. link do e-mail da temporária: o fragmento sobrevive ao 308 e preenche os campos
   {
     const p = await novo(1366, 768);
-    await p.goto(`${BASE}/login#codigo=AM2808&email=ana%40exemplo.com.br`, { waitUntil: 'networkidle' });
-    await p.getByLabel('Código da empresa').waitFor();
+    await p.goto(`${BASE}/login#email=ana%40exemplo.com.br`, { waitUntil: 'networkidle' });
+    await p.getByLabel('E-mail').waitFor();
     await pausa(300);
     confere(new URL(p.url()).pathname === '/', 'link do e-mail termina em "/"');
-    confere((await p.getByLabel('Código da empresa').inputValue()) === 'AM2808' && (await p.getByLabel('E-mail').inputValue()) === 'ana@exemplo.com.br', 'link do e-mail preenche empresa e e-mail');
+    confere((await p.getByLabel('E-mail').inputValue()) === 'ana@exemplo.com.br', 'link do e-mail preenche o e-mail');
+    confere((await p.getByLabel('Código da empresa').count()) === 0, 'a tela não tem campo de empresa');
     confere(new URL(p.url()).hash === '', 'o fragmento sai da barra depois de lido');
     await p.context().close();
   }
 
-  // 4. empresa de tenant: destino "bko" -> BKO em "/"
+  // 4. usuário de empresa: destino "bko" -> BKO em "/"
   {
     const p = await novo(1366, 768);
     await p.goto(`${BASE}/`, { waitUntil: 'networkidle' });
-    await p.getByLabel('Código da empresa').fill('AM2808');
     await p.getByLabel('E-mail').fill('ana@exemplo.com.br');
     await p.getByLabel('Senha', { exact: true }).fill('senha-do-teste-123');
     await p.getByRole('button', { name: 'Entrar', exact: true }).click();
@@ -119,29 +119,27 @@ try {
     await p.context().close();
   }
 
-  // 5. MACUXI: destino "config" -> /config
+  // 5. superadmin pelo e-mail: destino "config" -> /config
   {
     const p = await novo(1366, 768);
     await p.goto(`${BASE}/`, { waitUntil: 'networkidle' });
-    await p.getByLabel('Código da empresa').fill('MACUXI');
     await p.getByLabel('E-mail').fill('sa@exemplo.invalid');
     await p.getByLabel('Senha', { exact: true }).fill('senha-do-teste-123');
     const foiAoConfig = p.waitForRequest((r) => new URL(r.url()).pathname === '/config', { timeout: 15000 }).then(() => true, () => false);
     await p.getByRole('button', { name: 'Entrar', exact: true }).click();
-    confere(await foiAoConfig, 'login MACUXI: navegou para /config');
+    confere(await foiAoConfig, 'login do superadmin: navegou para /config');
     await p.context().close();
   }
 
-  // 5b. /config sem sessão volta a "/" com o código da plataforma preenchido (fragmento #codigo=MACUXI), mesmo com outro código salvo
+  // 5b. /config sem sessão volta a "/" sem fragmento e sem campo de empresa
   {
     const p = await novo(1366, 768);
     await p.goto(`${BASE}/`, { waitUntil: 'networkidle' });
-    await p.evaluate(() => localStorage.setItem('mx.codigo_empresa', 'AM2808'));
     await p.goto(`${BASE}/config`, { waitUntil: 'networkidle' });
-    await p.getByLabel('Código da empresa').waitFor();
+    await p.getByLabel('E-mail').waitFor();
     await pausa(300);
     confere(new URL(p.url()).pathname === '/', '/config sem sessão: termina em "/"');
-    confere((await p.getByLabel('Código da empresa').inputValue()).toLowerCase() === 'macuxi', '/config sem sessão: empresa vem preenchida com MACUXI');
+    confere(new URL(p.url()).hash === '' && (await p.getByLabel('Código da empresa').count()) === 0, '/config sem sessão: sem fragmento e sem campo de empresa');
     await p.context().close();
   }
 } finally {

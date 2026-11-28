@@ -5,7 +5,7 @@ import { ehAcaoAusente } from './sistema-atualizado';
  * Chamada única de Server Action no cliente (v0.3.26, R-20261127-172927). Uma aba aberta de um build anterior chama uma action
  * que o servidor novo não conhece: o Next responde com o cabeçalho `x-nextjs-action-not-found: 1` e o cliente lança
  * `UnrecognizedActionError` (ver `ehAcaoAusente`). Aqui isso NÃO é "Serviço indisponível" (erro de rede/API segue como estava):
- *  1. primeira vez: guarda só empresa e e-mail (a SENHA NUNCA), põe a trava e recarrega a página sozinho;
+ *  1. primeira vez: guarda só o e-mail (a SENHA NUNCA), põe a trava e recarrega a página sozinho;
  *  2. de novo com a trava posta (laço evitado): mostra o aviso de versão nova com o botão Recarregar.
  * A trava vale poucos minutos e some na primeira action que dá certo.
  */
@@ -14,7 +14,7 @@ export const CHAVE_RASCUNHO_LOGIN = 'mx.login_rascunho';
 export const EVENTO_VERSAO_NOVA = 'mx:versao-nova';
 export const VALIDADE_TRAVA_MS = 2 * 60_000;
 
-export interface Rascunho { empresa: string; email: string }
+export interface Rascunho { email: string }
 type Armazem = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 export interface Ambiente {
@@ -43,10 +43,10 @@ export function ambientePadrao(): Ambiente {
   };
 }
 
-/** Guarda só empresa e e-mail (qualquer outro campo, como a senha, é descartado aqui) para depois da recarga. */
+/** Guarda só o e-mail (qualquer outro campo, como a senha, é descartado aqui) para depois da recarga. */
 export function guardarRascunho(r: Rascunho, armazem: Armazem | undefined = armazemPadrao()): void {
   try {
-    armazem?.setItem(CHAVE_RASCUNHO_LOGIN, JSON.stringify({ empresa: String(r.empresa ?? ''), email: String(r.email ?? '') }));
+    armazem?.setItem(CHAVE_RASCUNHO_LOGIN, JSON.stringify({ email: String(r.email ?? '') }));
   } catch {
     /* armazenamento bloqueado: segue sem rascunho */
   }
@@ -58,8 +58,8 @@ export function lerRascunho(armazem: Armazem | undefined = armazemPadrao()): Ras
     const bruto = armazem?.getItem(CHAVE_RASCUNHO_LOGIN);
     armazem?.removeItem(CHAVE_RASCUNHO_LOGIN);
     if (!bruto) return undefined;
-    const o = JSON.parse(bruto) as { empresa?: unknown; email?: unknown };
-    return { empresa: typeof o.empresa === 'string' ? o.empresa : '', email: typeof o.email === 'string' ? o.email : '' };
+    const o = JSON.parse(bruto) as { email?: unknown };
+    return { email: typeof o.email === 'string' ? o.email : '' };
   } catch {
     return undefined;
   }
@@ -100,7 +100,7 @@ export class ErroVersaoNova extends Error {
 }
 
 export interface OpcoesAcao {
-  /** Empresa e e-mail a guardar antes da recarga (só o login). */
+  /** E-mail a guardar antes da recarga (só o login). */
   rascunho?: () => Rascunho;
   /** Depois do aviso, lança `ErroVersaoNova` em vez de ficar pendente (o login usa para soltar o botão). */
   lancar?: boolean;

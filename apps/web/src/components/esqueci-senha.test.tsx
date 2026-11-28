@@ -1,3 +1,4 @@
+import { MENSAGEM_ESQUECI_NEUTRA } from '@macuxierp/platform-sdk';
 import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
@@ -20,7 +21,8 @@ describe('painel Esqueci a senha (RN-CORE-13)', () => {
     const h = renderToStaticMarkup(<PainelEsqueciVisao estado={estadoDe({ tipo: 'ok' })} />);
     expect(h).toContain('role="status"');
     expect(h).toContain('aviso-sucesso');
-    expect(h).toContain('Se os dados estiverem certos, a senha temporária chega no seu e-mail em instantes. Ela vale 72 horas e desbloqueia a conta.');
+    expect(h).toContain(MENSAGEM_ESQUECI_NEUTRA);
+    expect(MENSAGEM_ESQUECI_NEUTRA).toBe('Se o e-mail estiver cadastrado, enviamos as instruções.');
     expect(h).not.toContain('<form');
     expect(h).toContain('Voltar para entrar');
   });
@@ -31,17 +33,17 @@ describe('painel Esqueci a senha (RN-CORE-13)', () => {
     expect(h).toContain('Enviar senha temporária');
   });
   it('erros de campo abaixo do campo, ligados por aria', () => {
-    const erros = validarCampos(['empresa', 'email'], { empresa: '', email: 'x' });
+    const erros = validarCampos(['email'], { email: 'x' });
     const h = renderToStaticMarkup(<PainelEsqueciVisao estado={{ fase: 'form', erros }} />);
-    expect(h).toContain('Informe o código da empresa.');
     expect(h).toContain('E-mail inválido. Confira o endereço.');
-    expect(h).toContain('aria-describedby="esqueci-erro-empresa"');
+    expect(h).toContain('aria-describedby="esqueci-erro-email"');
     expect(h).toContain('aria-invalid="true"');
   });
-  it('painel para todos: Código da empresa (preenchido se salvo) e E-mail, sem "MACUXI"', () => {
-    const h = renderToStaticMarkup(<PainelEsqueciVisao estado={form} valores={{ empresa: 'AM2808' }} />);
-    expect(h).toContain('Código da empresa');
-    expect(h).toContain('value="AM2808"');
+  it('painel (ADR 0021): só o E-mail, sem campo de empresa nem código', () => {
+    const h = renderToStaticMarkup(<PainelEsqueciVisao estado={form} valores={{ email: 'ana@exemplo.com.br' }} />);
+    expect(h).not.toMatch(/empresa|código/i);
+    expect(h).not.toContain('name="empresa"');
+    expect(h).toContain('value="ana@exemplo.com.br"');
     expect(h).toContain('name="email"');
     expect(h.toUpperCase()).not.toContain('MACUXI');
   });
@@ -79,7 +81,7 @@ describe('link na tela única', () => {
   it('ComEsqueciSenha sem disponibilidade só renderiza o filho', () => {
     expect(renderToStaticMarkup(<ComEsqueciSenha disponivel={false}><i>f</i></ComEsqueciSenha>)).toBe('<i>f</i>');
   });
-  it('o painel não usa storage, cookie nem URL (o código salvo vem do login)', () => {
+  it('o painel não usa storage, cookie nem URL', () => {
     for (const f of ['./esqueci-senha.tsx', '../lib/esqueci-resultado.ts', '../lib/esqueci-api.ts']) {
       expect(readFileSync(new URL(f, import.meta.url), 'utf8')).not.toMatch(/localStorage|sessionStorage|document\.cookie|gravarCodigo|searchParams|router\.(push|replace)|\?email=/);
     }
