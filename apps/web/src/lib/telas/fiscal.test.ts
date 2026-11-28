@@ -46,6 +46,10 @@ describe('regras fiscais no shell (T-0127)', () => {
     for (const nome of ['ncm_prefixo', 'codigo', 'mva_original']) expect(TEXTO_CAMPO[nome]?.ajuda, nome).toBeTruthy();
   });
 
+  it('catálogo: a coluna Título tem largura mínima para não quebrar em várias linhas', () => {
+    expect(LISTA_CATALOGO.colunas('fiscal', 'America/Manaus').find((c) => c.id === 'titulo')?.largura).toBe('24rem');
+  });
+
   it('catálogo: "Aplicar" só para quem edita e só no modelo aplicável; confirma e envia { confirmo: true }', () => {
     const acao = LISTA_CATALOGO.acaoDaLinha!;
     const pronta: Linha = { id: ID, chave: 'icms-sp', aplicavel: true };

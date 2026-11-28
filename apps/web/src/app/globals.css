@@ -492,8 +492,8 @@ button.link { background: none; border: 0; padding: 0; color: inherit; font: inh
 .cartao-ligacao .tabela-dados table { min-width: 0; }
 .casca-plataforma .bloco.ligacao, .casca-plataforma .bloco.envios-recentes { border: 0; padding: 0; background: none; }
 
-/* Regras fiscais (T-0127): cartão da consulta "Qual regra vale" abaixo da lista, e rótulo de duas linhas que não desalinha os campos da linha. */
+/* Regras fiscais (T-0127): cartões da consulta "Qual regra vale" abaixo da lista; o espaço entre rótulo e campo é o do `.campo span` (o mesmo dos filtros). */
 .cartao-consulta { margin: 16px 0 0; padding: 12px 16px 16px; border: 1px solid var(--mx-cor-borda-tabela); border-radius: 8px; background: var(--mx-cor-branco); }
 .cartao-consulta > .apoio { margin: 8px 0 12px; }
 .cartao-consulta .formulario { margin: 0; }
-.formulario .campo.campo-alinhado > span:first-child { min-height: 3em; }
+.cartao-consulta > .tabela-rolavel { margin-top: 8px; }

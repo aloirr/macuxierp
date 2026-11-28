@@ -91,7 +91,7 @@ function lista(pagina: Pagina, filtrosTela: readonly FiltroTela[], extra: Partia
     tipo: 'lista',
     pagina: pagina as unknown as TelaLista['pagina'],
     filtrosTela,
-    colunas: () => colunas.map((c) => ({ id: c.id, rotulo: ROTULO_COLUNA[c.id] ?? c.titulo, ...(c.tipo ? { tipo: c.tipo } : {}) })),
+    colunas: () => colunas.map((c) => ({ id: c.id, rotulo: ROTULO_COLUNA[c.id] ?? c.titulo, ...(c.tipo ? { tipo: c.tipo } : {}), ...(c.id === 'titulo' ? { largura: '24rem' } : {}) })),
     linha: (item) => Object.fromEntries(colunas.map((c) => { const v = c.valor(item); return [c.id, v === null || v === undefined ? '' : String(v)]; })),
     selos: (item) => Object.fromEntries(colunas.flatMap((c) => (c.selos ? [[c.id, c.selos(item)] as const] : []))),
     ...extra,

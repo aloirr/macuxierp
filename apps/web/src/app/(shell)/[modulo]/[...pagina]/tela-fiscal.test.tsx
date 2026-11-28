@@ -24,12 +24,15 @@ describe('"Qual regra vale" (RN-FIS-01)', () => {
     expect(h).toContain('Regime (CRT)');
     expect(h.match(/barra-bloco/g)).toHaveLength(1);
     expect(h).not.toContain('<table');
+    expect(h).not.toContain('Regra que vale<');
   });
   it('consulta completa: uma linha por tributo, com selo e fonte da regra', async () => {
     api.get.mockResolvedValue({ data_emissao: '2026-11-28', icms: ok('7'), ipi: sem, pis: ok('1'), cofins: ok('1') });
     const h = renderToStaticMarkup(await QualRegraVale({ acesso: 'x', rota: ROTA, busca: new URLSearchParams(CONSULTA) }));
     expect(api.get.mock.calls[0]?.[0]).toContain('/v1/fiscal/regras/resolver?');
-    expect(h).toContain('convenio 142/2018');
+    expect(h).toContain('142/2018');
+    expect(h).not.toContain('convenio 142');
+    expect(h).toContain('Regra que vale');
     expect(h).toContain('Nenhuma regra vigente');
     expect(h.match(/Regra encontrada/g)).toHaveLength(3);
   });

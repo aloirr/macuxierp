@@ -74,7 +74,7 @@ export async function QualRegraVale({ acesso, rota, busca }: { acesso: string; r
                     <th scope="row">{ROTULO_TRIBUTO[t]}</th>
                     <td><Selo selo={{ texto: x.ok ? 'Regra encontrada' : 'Sem regra', tom: x.ok ? 'ok' : 'erro' }} />{!x.ok && x.erros?.[0] && <span className="apoio"> {x.erros[0].mensagem}</span>}</td>
                     <td>{x.versao ?? ''}</td>
-                    <td>{x.fonte ? `${x.fonte.tipo} ${x.fonte.referencia}` : ''}</td>
+                    <td>{x.fonte ? x.fonte.referencia : ''}</td>
                   </tr>
                 );
               })}
@@ -88,7 +88,7 @@ export async function QualRegraVale({ acesso, rota, busca }: { acesso: string; r
     }
   }
   const campo = (nome: (typeof CAMPOS_VALE)[number], rotulo: string, colunas: number, opcoes?: readonly { valor: string; rotulo: string }[]) => (
-    <label className={`campo campo-alinhado campo-col-${colunas}`}>
+    <label className={`campo campo-col-${colunas}`}>
       <span>{rotulo}</span>
       {opcoes ? (
         <select name={`vale_${nome}`} defaultValue={q[nome]}><option value="">Selecione</option>{opcoes.map((o) => <option key={o.valor} value={o.valor}>{o.rotulo}</option>)}</select>
@@ -98,6 +98,7 @@ export async function QualRegraVale({ acesso, rota, busca }: { acesso: string; r
     </label>
   );
   return (
+    <>
     <section className="cartao-ficha cartao-consulta" aria-labelledby="h-vale">
       <h2 id="h-vale" className="titulo-cartao">Qual regra vale</h2>
       <p className="apoio">Informe a operação com os 8 dígitos do NCM, o CFOP de 4 e as UFs de 2 letras; a resposta é a regra que o cálculo usaria hoje.</p>
@@ -110,7 +111,13 @@ export async function QualRegraVale({ acesso, rota, busca }: { acesso: string; r
         {campo('crt', 'Regime (CRT)', 2, Object.entries(ROTULO_CRT).map(([valor, rotulo]) => ({ valor, rotulo })))}
         <div className="barra-acoes barra-bloco"><button className="mx-botao-secundario" type="submit">Consultar</button></div>
       </form>
-      {resultado}
     </section>
+    {resultado && (
+      <section className="cartao-ficha cartao-consulta" aria-labelledby="h-vale-resultado">
+        <h2 id="h-vale-resultado" className="titulo-cartao">Regra que vale</h2>
+        {resultado}
+      </section>
+    )}
+    </>
   );
 }
