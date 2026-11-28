@@ -53,3 +53,21 @@ export async function lerApoio<T>(ler: () => Promise<T>): Promise<{ valor: T | n
     return { valor: null, ...(e instanceof ConfigIndisponivel && e.requestId ? { requestId: e.requestId } : {}) };
   }
 }
+
+/** "Macuxi FDV" da lista: `tem_fdv` ausente (API ou contrato anteriores à 0080) vale falso (T-0134). */
+export const temFdv = (e: object): boolean => (e as { tem_fdv?: unknown }).tem_fdv === true;
+
+export type ChaveAcaoEmpresa = 'suspender' | 'reativar' | 'redefinir_senha';
+export interface ItemAcaoEmpresa { chave: ChaveAcaoEmpresa; rotulo: string; perigo?: boolean }
+
+/**
+ * "Ações ▾" da linha da lista (T-0134; sem "Abrir": o nome já é o link). Suspender ou Reativar pela situação (encerrada não muda);
+ * Redefinir senha do administrador só com 1º administrador. Lista vazia: a linha fica sem o menu.
+ */
+export function itensAcaoEmpresa(e: Pick<EmpresaPlataforma, 'situacao' | 'primeiro_admin'>): ItemAcaoEmpresa[] {
+  const itens: ItemAcaoEmpresa[] = [];
+  if (e.situacao === 'ativo') itens.push({ chave: 'suspender', rotulo: 'Suspender' });
+  if (e.situacao === 'suspenso') itens.push({ chave: 'reativar', rotulo: 'Reativar' });
+  if (e.situacao !== 'encerrado' && e.primeiro_admin) itens.push({ chave: 'redefinir_senha', rotulo: 'Redefinir senha do administrador' });
+  return itens;
+}

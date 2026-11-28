@@ -18,7 +18,7 @@ describe('formulário da ficha (RN-CORE-16)', () => {
   });
   it('da ficha salva: valores nos campos, contatos vazios (o salvo só existe mascarado)', () => {
     const f = formDaFicha(ficha, 'Outra');
-    expect(f).toMatchObject({ razao_social: 'Comércio Fictício Ltda', cep: '69000000', cnae_secundarios: '4712100', email: '', telefone: '' });
+    expect(f).toMatchObject({ razao_social: 'Comércio Fictício Ltda', cep: '69000000', cnae_secundarios: '4712-1/00', email: '', telefone: '' });
     expect(formDaFicha(null, 'Razão da Empresa').razao_social).toBe('Razão da Empresa');
   });
   it('"Atualizar pela Receita" só preenche: a prévia troca os dados da Receita e mantém a IE e o contato digitados', () => {

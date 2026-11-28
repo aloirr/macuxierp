@@ -41,7 +41,7 @@ describe('Ficha da Receita editável na aba Empresa (RN-CORE-16, v0.3.24)', () =
     expect(h).not.toMatch(/grade-cartoes|cartao-campos|cartao-largo|campo-ficha/);
     expect(h).toContain('<div class="campo campo-curto"><label for="ficha-ie"'); // campo curto em 2 colunas
     expect(h).toMatch(/<option value="simples" selected="">Simples Nacional<\/option>/);
-    expect(h).toContain('4712100\n4781400</textarea>');
+    expect(h).toContain('4712-1/00\n4781-4/00</textarea>');
     expect(h).toMatch(/<button[^>]*disabled=""[^>]*>Salvar<\/button>/);
     expect(h).not.toContain('>Descartar<');
     expect(h).toContain('Consultada em 24/11/2026 12:00');
@@ -109,7 +109,8 @@ describe('Ficha da Receita editável na aba Empresa (RN-CORE-16, v0.3.24)', () =
     const h = render({ ...ficha, cnae_principal_descricao: 'COMÉRCIO VAREJISTA', cnae_secundarios_descritos: [{ codigo: '4712100', descricao: 'MINIMERCADOS' }, { codigo: '4781400', descricao: null }] });
     expect(h).toContain('4711-3/02 · COMÉRCIO VAREJISTA');
     expect(h).toContain('<li>4712-1/00 · MINIMERCADOS</li>');
-    expect(h).toContain('<li>4781-4/00</li>');
+    expect(h).not.toContain('<li>4781-4/00</li>'); // sem descrição: o código já está no campo, formatado (T-0134)
+    expect(h).not.toContain('>4712100'); // o código cru não aparece
     expect(textoCnae('123', 'X')).toBe('123 · X');
   });
   it('três estados da ficha e a consulta no fuso da empresa', () => {
