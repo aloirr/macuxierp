@@ -3,12 +3,13 @@ import type { AcaoVista, ExecutorDeAcoes, Leitura, TelaDescrita, TelaDetalhe, Te
 import { UUID_PADRAO } from './uuid';
 import { TELAS_BANDEIRA } from './telas/bandeira';
 import { TELAS_CADASTROS } from './telas/cadastros';
+import { TELAS_CADASTROS_OUTROS } from './telas/cadastros-outros';
 import { TELAS_CORE } from './telas/core';
 import { TELAS_FATURAMENTO } from './telas/faturamento';
 import { TELAS_INTEGRACAO_FDV } from './telas/integracao-fdv';
 import { TELAS_PEDIDO } from './telas/pedido';
 
-const TELAS: Readonly<Record<string, TelaDescrita>> = { ...TELAS_CORE, ...TELAS_CADASTROS, ...TELAS_BANDEIRA, ...TELAS_PEDIDO, ...TELAS_INTEGRACAO_FDV, ...TELAS_FATURAMENTO };
+const TELAS: Readonly<Record<string, TelaDescrita>> = { ...TELAS_CORE, ...TELAS_CADASTROS, ...TELAS_CADASTROS_OUTROS, ...TELAS_BANDEIRA, ...TELAS_PEDIDO, ...TELAS_INTEGRACAO_FDV, ...TELAS_FATURAMENTO };
 
 export function telaDaRota(rotaDaPagina: string): TelaDescrita | undefined {
   return TELAS[rotaDaPagina];
