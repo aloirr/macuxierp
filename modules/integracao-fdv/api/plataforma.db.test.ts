@@ -8,8 +8,10 @@ import { randomUUID } from 'node:crypto';
 import { CAMINHOS_INTEGRACAO_FDV_PLATAFORMA as C, decifrarCampo, ErroApi, type Transacao } from '@macuxierp/platform-sdk';
 import { comoConfigTx, criarBancoEfemero, criarTenant, semearSessaoSuperadmin, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { lerLigacoes } from './ligacoes';
 import { criarPluginPlataformaIntegracaoFdv, repositorioPortalSql } from './plataforma';
 import { MSG_SEM_LICENCA } from '../contracts';
+import { admSql, criarCredencial } from './apoio-conector-teste';
 import { entidadesParaCargaInicial } from '../domain';
 
 const MESTRA = Buffer.alloc(32, 11);
@@ -203,5 +205,50 @@ describe.skipIf(!PG_DISPONIVEL)('plugin de plataforma da Integração FDV no Pos
     await expect(chamar('GET', C.ler, { params: { id: nenhuma } })).rejects.toMatchObject({ code: 'P0002' });
     await expect(chamar('PUT', C.credencial, { params: { id: nenhuma }, corpo: ENTRADA })).rejects.toMatchObject({ code: 'P0002' });
     await expect(chamar('POST', C.testar, { params: { id: nenhuma } })).rejects.toMatchObject({ code: 'P0002' });
+  });
+
+  it('RN-INF-13 (T-0131): a Ligação do /config tem paridade com o GET /v1/integracao-fdv/ligacoes do BKO, sem chave nem dado pessoal; empresa sem o módulo é 422 e inexistente P0002', async () => {
+    const LIG = '/empresas/:id/integracao-fdv/ligacoes';
+    const adm = admSql(b);
+    const T = await criarTenant(b.admin, 'portal-ifdv-lig', ['integracao-fdv']);
+    // hora-fixa-ok: referência só para os lotes; a comparação é entre as duas leituras no mesmo relógio
+    const agora = new Date();
+    const vazio = await chamar('GET', LIG, { params: { id: T } });
+    expect(vazio.corpo).toMatchObject({ saida: { contato: { situacao: 'desativado', conector_id: null }, contadores: { enviados: 0, aceitos: 0 }, envios: [], envios_cortados: false } });
+
+    const cred = await criarCredencial(b.admin, T, { entidades: ['produto'] });
+    await adm('INSERT INTO integracao_fdv.sinal (tenant_id, ultimo_envio_em, ultimo_aceito_em, ultimo_http) VALUES ($1, $2, $2, 200)', [T, agora]);
+    const lotes: [string, boolean, object][] = [
+      ['concluido', false, { registros: 100, hub: { recebidas: 100, com_erro: 0 } }],
+      ['concluido_com_erros', false, { registros: 50, hub: { recebidas: 50, com_erro: 5 } }],
+      ['enviando', false, { registros: 20 }],
+      ['aceito', false, { registros: 10, hub: { recebidas: 10 } }],
+      ['concluido', true, { registros: 100, hub: { recebidas: 100, com_erro: 0 } }],
+      ['falhou', false, { registros: 99 }],
+      ['montado', false, { registros: 7 }],
+    ];
+    for (const [i, [estado, repetido, contagens]] of lotes.entries()) {
+      const emVoo = ['montado', 'enviando', 'aceito'].includes(estado);
+      await adm(
+        `INSERT INTO integracao_fdv.lote_envio (tenant_id, entidade, credencial_id, modo, chave_idempotencia, estado, repetido, enviado_em, contagens, created_at, corpo, hub_lote_id, concluido_em, ultimo_erro_codigo)
+         VALUES ($1, $2, $3, 'delta', $4, $5, $6, $7, $8::jsonb, $9, $10::jsonb, $11, $12, $13)`,
+        [
+          T, ({ enviando: 'cliente', aceito: 'filial', montado: 'vendedor' } as Record<string, string>)[estado] ?? 'produto', cred, String(i).repeat(64), estado, repetido, agora,
+          JSON.stringify(contagens), new Date(agora.getTime() - (10 - i) * 1000), emVoo ? '{}' : null,
+          ['aceito', 'concluido', 'concluido_com_erros'].includes(estado) ? randomUUID() : null, emVoo ? null : agora, estado === 'falhou' ? 'rede' : null,
+        ],
+      );
+    }
+    const portal = await chamar('GET', LIG, { params: { id: T } });
+    const bko = await lerLigacoes({ consultar: async (sql: string, p?: readonly unknown[]) => (await b.admin.query(sql, p as unknown[])).rows } as Transacao, T, new Date());
+    expect(portal.corpo).toEqual(bko);
+    expect((portal.corpo as { saida: { contadores: unknown } }).saida.contadores).toEqual({ enviados: 180, aceitos: 155 });
+    expect((portal.corpo as { saida: { contato: { situacao: string } } }).saida.contato.situacao).toBe('em_dia');
+    expect(JSON.stringify(portal.corpo)).not.toMatch(/chave_cifrada|external_id|corpo/);
+    expect((await chamar('GET', LIG, { params: { id: B } })).corpo).toMatchObject({ saida: { contadores: { enviados: 0, aceitos: 0 } } });
+
+    await expect(chamar('GET', LIG, { params: { id: SEM } })).rejects.toMatchObject({ status: 422, codigo: 'RN-CORE-02' });
+    await expect(chamar('GET', LIG, { params: { id: randomUUID() } })).rejects.toMatchObject({ code: 'P0002' });
+    await expect(chamar('GET', LIG, { params: { id: T }, sessao: randomUUID() })).rejects.toMatchObject({ code: 'MXS01' });
   });
 });
