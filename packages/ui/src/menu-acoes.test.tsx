@@ -11,9 +11,9 @@ const aberto = (p: Partial<MenuAcoesProps> = {}) => render({ abertoInicial: true
 const rotulosDoMenu = (html: string) => [...html.matchAll(/role="menuitem"[^>]*>([^<]*)</g)].map((m) => m[1]);
 
 describe('MenuAcoes (T-0099): gatilho', () => {
-  it('rótulo "Ações" inteiro, com haspopup, expanded e controls', () => {
+  it('rótulo "Ações ▾" (seta aria-hidden, no token de tamanho), com haspopup, expanded e controls', () => {
     const h = render();
-    expect(h).toMatch(/<button[^>]*aria-haspopup="menu"[^>]*aria-expanded="false"[^>]*>Ações<\/button>/);
+    expect(h).toMatch(/<button[^>]*aria-haspopup="menu"[^>]*aria-expanded="false"[^>]*>Ações<span aria-hidden="true"[^>]*>▾<\/span><\/button>/);
     expect(h).not.toContain('aria-controls');
     expect(h).not.toContain('⋯');
     expect(h).not.toContain('role="menu"');
@@ -26,9 +26,9 @@ describe('MenuAcoes (T-0099): gatilho', () => {
     expect(h).toMatch(/<div[^>]*role="menu"/);
     expect(h.match(/role="menuitem"/g)?.length).toBe(2);
   });
-  it('rotuloLinha vira aria-label "Ações de <linha>" e o texto visível continua "Ações"', () => {
+  it('rotuloLinha vira aria-label "Ações de <linha>" e o texto visível é "Ações ▾"', () => {
     const h = render({ rotuloLinha: 'Pedido 123' });
-    expect(h).toMatch(/aria-label="Ações de Pedido 123"[^>]*>Ações<\/button>/);
+    expect(h).toMatch(/aria-label="Ações de Pedido 123"[^>]*>Ações<span aria-hidden="true"[^>]*>▾<\/span><\/button>/);
     expect(render()).not.toContain('aria-label=');
   });
   it('nenhum item (todos ocultos ou lista vazia) e sem principal: não renderiza o gatilho', () => {
