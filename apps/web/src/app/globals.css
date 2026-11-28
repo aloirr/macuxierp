@@ -175,9 +175,9 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 .formulario > .campo.campo-largo { grid-column: 1 / -1; }
 .formulario > .campo.campo-8 { grid-column: span 8; }
 .formulario > .campo.campo-3 { grid-column: span 3; }
-.formulario > .campo.campo-inicio-linha { grid-column-start: 1; }
-@media (max-width: 1100px) { .formulario > .campo.campo-inicio-linha { grid-column-start: auto; } .formulario > .campo { grid-column: 1 / -1; } .formulario > .campo.campo-curto { grid-column: span 3; } .formulario > .campo.campo-medio, .formulario > .campo.campo-3 { grid-column: span 6; } .formulario > .campo.campo-8 { grid-column: 1 / -1; } }
-@media (max-width: 640px) { .formulario > .campo, .formulario > .campo.campo-curto, .formulario > .campo.campo-medio, .formulario > .campo.campo-3, .formulario > .campo.campo-8 { grid-column: 1 / -1; } }
+.formulario > .campo.campo-curto.campo-inicio-linha { grid-column: 1 / span 2; }
+@media (max-width: 1100px) { .formulario > .campo { grid-column: 1 / -1; } .formulario > .campo.campo-curto, .formulario > .campo.campo-curto.campo-inicio-linha { grid-column: span 3; } .formulario > .campo.campo-medio, .formulario > .campo.campo-3 { grid-column: span 6; } .formulario > .campo.campo-8 { grid-column: 1 / -1; } }
+@media (max-width: 640px) { .formulario > .campo, .formulario > .campo.campo-curto.campo-inicio-linha, .formulario > .campo.campo-curto, .formulario > .campo.campo-medio, .formulario > .campo.campo-3, .formulario > .campo.campo-8 { grid-column: 1 / -1; } }
 /* Texto corrido: no máximo 72 caracteres por linha, só nos blocos de texto (nunca no contêiner). */
 .apoio, p.erro, .aviso-sucesso, .faixa-aviso { max-width: 72ch; }
 .painel-senha { margin-top: 16px; padding: 12px 16px; border: 1px solid var(--mx-cor-borda-tabela); border-radius: 6px; background: var(--mx-cor-perola); }
