@@ -8,6 +8,7 @@
  * `{ pagamentos, cobranca }` (ver "Pendências" do README); `transporte.revisao` conta as gravações do conteúdo (1 na emissão, +1 no reenvio)
  * e é a `versao` do XML assinado que o cobre. O XML assinado vai em `nota_xml` (tipo `nfe_assinada`, só INSERT, `UNIQUE (nota_id, versao)`).
  */
+import type { ImpostoCalculado, RegraAplicada } from '@macuxierp/fiscal/contracts';
 import { criarEvento, erros, FUSO_PADRAO, paginar, type Outbox, type Pagina, type Transacao } from '@macuxierp/platform-sdk';
 import { PedidoAprovadoV1 } from '@macuxierp/pedido/contracts';
 import type { PedidoAFaturarDetalhe, FiltroNotas, FiltroPedidosAFaturar, FiltroRejeicoes, PedidoAFaturarResumo, NotaDetalhe, NotaResumo, RejeicaoNota, StatusNota } from '../contracts';
@@ -50,11 +51,16 @@ const COLUNAS_RESUMO = `n.id, n.filial_id, n.cliente_id, n.pedido_id, n.ambiente
   ${ISO('n.emitida_em')} AS emitida_em, n.total_nota_centavos::float8 AS total_centavos, n.protocolo, n.c_stat::int AS c_stat, n.x_motivo`;
 
 async function itensDaNota(tx: Transacao, notaId: string): Promise<NotaRegistro['itens']> {
-  return tx.consultar<NotaRegistro['itens'][number]>(
-    `SELECT n_item::int AS sequencia, produto_id, quantidade::float8 AS quantidade, (valor_produto_centavos - desconto_centavos)::float8 AS valor_centavos
+  const linhas = await tx.consultar<Omit<NotaRegistro['itens'][number], 'calc_st' | 'calc_ipi' | 'regra_aplicada'> & { regra_aplicada: RegraAplicada | null; calc_st: ImpostoCalculado | null; calc_ipi: ImpostoCalculado | null }>(
+    `SELECT n_item::int AS sequencia, produto_id, quantidade::float8 AS quantidade, (valor_produto_centavos - desconto_centavos)::float8 AS valor_centavos,
+            tributos->'regra_aplicada' AS regra_aplicada,
+            CASE WHEN tributos->'regra_aplicada'->>'st' = 'true' THEN tributos->'calc_st' END AS calc_st,
+            CASE WHEN tributos->'regra_aplicada'->>'ipi' = 'true' THEN tributos->'calc_ipi' END AS calc_ipi
        FROM faturamento.nota_item WHERE nota_id = $1 AND deleted_at IS NULL ORDER BY n_item`,
     [notaId],
   );
+  // RN-FIS-05: sem regra o campo é omitido (o SQL devolve NULL), nunca `null` nem 0 inventado.
+  return linhas.map(({ regra_aplicada, calc_st, calc_ipi, ...i }) => ({ ...i, ...(regra_aplicada ? { regra_aplicada } : {}), ...(calc_st ? { calc_st } : {}), ...(calc_ipi ? { calc_ipi } : {}) }));
 }
 
 async function montarRegistro(tx: Transacao, l: Dict): Promise<NotaRegistro> {
