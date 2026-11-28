@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CalculoEntrada } from '../contracts';
+import { CalculoEntrada, CalculoSaida } from '../contracts';
 import { calcularDocumento } from './documento';
 import { item, regra } from './fixtures';
 
@@ -238,5 +238,95 @@ describe('total do FCP-ST retido (vFCPSTRet)', () => {
     expect(r).toMatchObject({ ok: true, valor: { totais: { v_fcp_st_ret: 2000, v_fcp_st: 0, v_nf: 300000 } } });
     const sem = calcularDocumento(doc([item({ id: 'a', st_retido: retido({}) })]));
     expect((sem as { valor: { totais: object } }).valor.totais).not.toHaveProperty('v_fcp_st_ret');
+  });
+
+  describe('ICMS-ST e IPI por regra: regra_aplicada, calc_st e calc_ipi (RN-FIS-05, 63 A)', () => {
+    const ind = { uf: 'AM', crt: 3, industrial_ipi: true, regime_pis_cofins: 'nao_cumulativo' };
+    const rSt = (p: Record<string, unknown> = {}) => regra({ codigo: '10', mva_original: 400000, aliquota_interna_destino: 180000, ...p });
+    const rIpi = (p: Record<string, unknown> = {}) => regra({ tributo: 'ipi', cst_ipi: '50', aliquota_ipi: 100000, cst_pis: null, cst_cofins: null, ...p });
+    it('RN-FIS-05: ST com regra: base R$ 1.000,00 × (1 + MVA 40%) = 1.400,00; × 18% − ICMS próprio 180,00 = 72,00; total igual ao item', () => {
+      const r = calcularDocumento(base({ regras: [rSt()] }));
+      expect(r).toMatchObject({ ok: true, valor: { itens: [{ regra_aplicada: { st: true, ipi: false }, calc_st: { v_bc: 140000, p_aliq: 180000, v_valor: 7200 } }], totais: { v_st: 7200, calc_st: { v_bc: 140000, v_valor: 7200 } } } });
+    });
+    it('RN-FIS-05: sem regra de ST (CST 00) o campo é omitido, nunca 0, e o v_st antigo segue 0', () => {
+      const r = calcularDocumento(base());
+      if (!r.ok) throw new Error('esperava ok');
+      expect(r.valor.itens[0]).toMatchObject({ regra_aplicada: { st: false, ipi: false } });
+      expect(r.valor.itens[0]).not.toHaveProperty('calc_st');
+      expect(r.valor.itens[0]).not.toHaveProperty('calc_ipi');
+      expect(r.valor.totais).not.toHaveProperty('calc_st');
+      expect(r.valor.totais).not.toHaveProperty('calc_ipi');
+      expect(r.valor.totais).toMatchObject({ v_st: 0, v_ipi: 0 });
+    });
+    it('RN-FIS-05: valor 0 COM regra é legítimo (redução de ST a 100%) e sai como calc_st zerado, com regra_aplicada.st = true', () => {
+      const r = calcularDocumento(base({ regras: [rSt({ reducao_bc_st: 1000000 })] }));
+      expect(r).toMatchObject({ ok: true, valor: { itens: [{ regra_aplicada: { st: true }, calc_st: { v_bc: 0, p_aliq: 180000, v_valor: 0 } }], totais: { calc_st: { v_bc: 0, v_valor: 0 } } } });
+    });
+    it('RN-FIS-05: item misto (um com regra de ST, outro sem) omite o total calc_st e mantém o calc_st do item com regra', () => {
+      const r = calcularDocumento(base({ itens: [item({ id: 'a', ncm: '22021000' }), item({ id: 'b', ncm: '33030010' })], regras: [rSt({ ncm_prefixo: '2202' }), regra({ ncm_prefixo: '3303', codigo: '00' })] }));
+      if (!r.ok) throw new Error(JSON.stringify(r.erros));
+      expect(r.valor.itens.map((i) => i.regra_aplicada?.st)).toEqual([true, false]);
+      expect(r.valor.itens[0]?.calc_st).toEqual({ v_bc: 140000, p_aliq: 180000, v_valor: 7200 });
+      expect(r.valor.itens[1]).not.toHaveProperty('calc_st');
+      expect(r.valor.totais).not.toHaveProperty('calc_st');
+      expect(r.valor.totais.v_st).toBe(7200);
+    });
+    it('RN-FIS-05: arredondamento do Manual da NF-e (meio para cima): base 1,25 × (1 + 10%) = 1,375 → 1,38; × 10% = 0,138 → 0,14; − ICMS próprio 0,13 = 0,01', () => {
+      const r = calcularDocumento(base({ itens: [item({ id: 'a', valor_unitario_centavos: 125, valor_bruto_centavos: 125 })], regras: [rSt({ aliquota_icms: 100000, mva_original: 100000, aliquota_interna_destino: 100000 })] }));
+      expect(r).toMatchObject({ ok: true, valor: { itens: [{ calc_st: { v_bc: 138, p_aliq: 100000, v_valor: 1 } }] } });
+    });
+    it('RN-FIS-05: ST retido (CST 60) é repasse da nota de compra, não cálculo: sem calc_st e sem somar no v_st', () => {
+      const r = calcularDocumento(base({ itens: [item({ id: 'a', st_retido: { v_bc_st_ret: 50000, p_st: 180000, v_icms_substituto: 0, v_icms_st_ret: 9000 } })], regras: [regra({ codigo: '60', aliquota_icms: null })] }));
+      if (!r.ok) throw new Error(JSON.stringify(r.erros));
+      expect(r.valor.itens[0]?.regra_aplicada).toEqual({ st: false, ipi: false });
+      expect(r.valor.itens[0]).not.toHaveProperty('calc_st');
+      expect(r.valor.totais).not.toHaveProperty('calc_st');
+      expect(r.valor.totais.v_st).toBe(0);
+    });
+    it('RN-FIS-05: ST retido no Simples (CSOSN 500) também é repasse: sem calc_st e v_st 0', () => {
+      const r = calcularDocumento(base({ emitente: { uf: 'AM', crt: 1 }, itens: [item({ id: 'a', st_retido: { v_bc_st_ret: 50000, p_st: 180000, v_icms_substituto: 0, v_icms_st_ret: 9000 } })], regras: [regra({ codigo: '500', aliquota_icms: null, cst_pis: '99', cst_cofins: '99', aliquota_pis: null, aliquota_cofins: null })] }));
+      if (!r.ok) throw new Error(JSON.stringify(r.erros));
+      expect(r.valor.itens[0]?.regra_aplicada).toEqual({ st: false, ipi: false });
+      expect(r.valor.itens[0]).not.toHaveProperty('calc_st');
+      expect(r.valor.itens[0]?.icms).toMatchObject({ csosn: '500', v_icms_st_ret: 9000 });
+      expect(r.valor.totais).not.toHaveProperty('calc_st');
+      expect(r.valor.totais.v_st).toBe(0);
+    });
+    it('RN-FIS-05: IPI ad valorem com regra: base 1.050,00 × 10% = 105,00 em calc_ipi do item e do total', () => {
+      const r = calcularDocumento(base({ emitente: ind, itens: [item({ id: 'a', frete_centavos: 5000 })], regras: [regra({ codigo: '00' }), rIpi()] }));
+      expect(r).toMatchObject({ ok: true, valor: { itens: [{ regra_aplicada: { st: false, ipi: true }, calc_ipi: { v_bc: 105000, p_aliq: 100000, v_valor: 10500 } }], totais: { v_ipi: 10500, calc_ipi: { v_bc: 105000, v_valor: 10500 } } } });
+    });
+    it('RN-FIS-05: IPI sem regra (emitente não industrial) omite calc_ipi no item e no total; industrial sem regra de IPI segue erro tipado (RN-FIS-01)', () => {
+      const r = calcularDocumento(base({ regras: [regra({ codigo: '00' })] }));
+      if (!r.ok) throw new Error(JSON.stringify(r.erros));
+      expect(r.valor.itens[0]).toMatchObject({ regra_aplicada: { ipi: false } });
+      expect(r.valor.itens[0]).not.toHaveProperty('calc_ipi');
+      expect(r.valor.totais).not.toHaveProperty('calc_ipi');
+    });
+    it('RN-FIS-05: industrial sem regra de IPI — prévia (pedido/FDV): sem erro e calc_ipi omitido', () => {
+      const r = calcularDocumento(base({ emitente: ind, regras: [regra({ codigo: '00' })] }), { modo: 'previa' });
+      if (!r.ok) throw new Error(JSON.stringify(r.erros));
+      expect(r.valor.itens[0]).toMatchObject({ regra_aplicada: { ipi: false } });
+      expect(r.valor.itens[0]).not.toHaveProperty('calc_ipi');
+      expect(r.valor.itens[0]).not.toHaveProperty('ipi');
+      expect(r.valor.totais).not.toHaveProperty('calc_ipi');
+      expect(r.valor.totais.v_ipi).toBe(0);
+    });
+    it('RN-FIS-01: industrial sem regra de IPI — emissão: REGRA_NAO_ENCONTRADA como antes (padrão e modo explícito)', () => {
+      const e = base({ emitente: ind, regras: [regra({ codigo: '00' })] });
+      expect(calcularDocumento(e)).toMatchObject({ ok: false, erros: [{ codigo: 'REGRA_NAO_ENCONTRADA' }] });
+      expect(calcularDocumento(e, { modo: 'emissao' })).toMatchObject({ ok: false, erros: [{ codigo: 'REGRA_NAO_ENCONTRADA' }] });
+    });
+    it('RN-FIS-05: IPI 0 com regra (CST 53, sem valor) sai calc_ipi zerado; por unidade usa o valor da regra sem alíquota inventada', () => {
+      const a = calcularDocumento(base({ emitente: ind, regras: [regra({ codigo: '00' }), rIpi({ cst_ipi: '53', aliquota_ipi: null })] }));
+      expect(a).toMatchObject({ ok: true, valor: { itens: [{ regra_aplicada: { ipi: true }, calc_ipi: { v_bc: 0, p_aliq: 0, v_valor: 0 } }] } });
+      const u = calcularDocumento(base({ emitente: ind, itens: [item({ id: 'a', quantidade: 10 })], regras: [regra({ codigo: '00' }), rIpi({ aliquota_ipi: null, valor_unidade_ipi: 25000 })] }));
+      expect(u).toMatchObject({ ok: true, valor: { itens: [{ calc_ipi: { v_bc: 0, p_aliq: 0, v_valor: 2500 } }], totais: { v_ipi: 2500, calc_ipi: { v_valor: 2500 } } } });
+    });
+    it('RN-FIS-05: a saída do motor passa no CalculoSaida (63 A) em todos os cenários', () => {
+      const r = calcularDocumento(base({ emitente: ind, regras: [rSt(), rIpi()] }));
+      if (!r.ok) throw new Error(JSON.stringify(r.erros));
+      expect(CalculoSaida.safeParse(r.valor).success).toBe(true);
+    });
   });
 });

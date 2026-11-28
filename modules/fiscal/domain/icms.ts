@@ -1,4 +1,4 @@
-import type { IcmsItem, ItemCalculo, RegraTributaria } from '../contracts';
+import type { IcmsItem, ImpostoCalculado, ItemCalculo, RegraTributaria } from '../contracts';
 import type { CodigoErroCalculo } from './erros';
 import { ehCsosn } from './regra';
 import { aplicarPercentual, BASE_PERCENTUAL, divArredonda, valorOperacao } from './dinheiro';
@@ -166,12 +166,18 @@ export function calcularIcmsItem(c: ContextoIcmsItem): ResultadoIcmsItem {
   const comSt = COM_ST.includes(cod) || (COM_ALIQ_OPCIONAL.includes(cod) && regra.aliquota_interna_destino !== null);
   if (comSt) {
     if (regra.aliquota_interna_destino === null) return { ok: false, codigo: 'REGRA_INCOMPLETA', mensagem: `A regra ${regra.id} (código ${cod}) exige a alíquota interna do destino para o ST.` };
+    // Só o ST por MVA (modBCST 4, ou não informado) é calculado. Pauta/preço tabelado/lista (0..3 e 5) ainda não existem: recusar é melhor que errar a BC-ST.
+    if (regra.mod_bc_st !== null && regra.mod_bc_st !== 4) return { ok: false, codigo: 'CODIGO_NAO_SUPORTADO', mensagem: `A regra ${regra.id} usa modBCST ${regra.mod_bc_st} (pauta, preço tabelado ou lista): o motor calcula o ST só por MVA (modBCST 4).` };
+    // O campo `ajustar_mva` é booleano com padrão false, então "não ajusta" explícito não se distingue de "não informado" depois do parse do contrato:
+    // a recusa vale só para regra sem o campo (nulo/ausente, chamador que não passou pelo schema). Com false vale a MVA original, como antes.
+    if (c.interestadual && (regra.ajustar_mva as boolean | null | undefined) == null && regra.mva_ajustada === null) return { ok: false, codigo: 'REGRA_INCOMPLETA', mensagem: `A regra ${regra.id} (ST interestadual) não diz se ajusta a MVA (ajustar_mva).` };
     let mva = regra.mva_original;
     if (regra.mva_ajustada !== null && c.interestadual) mva = regra.mva_ajustada;
     else if (regra.ajustar_mva && c.interestadual && mva !== null) {
       if (aliqRegra === null) return { ok: false, codigo: 'REGRA_INCOMPLETA', mensagem: `A regra ${regra.id} precisa da alíquota interestadual para ajustar a MVA.` };
       mva = mvaAjustada(mva, aliqRegra, regra.aliquota_interna_destino);
     }
+    if (mva === null) return { ok: false, codigo: 'REGRA_INCOMPLETA', mensagem: `A regra ${regra.id} (código ${cod}) calcula ST por MVA mas não traz a MVA (original nem ajustada).` };
     const baseSt = baseIcms(item, false) + item.ipi_centavos;
     // Simples: abate o ICMS nominal da operação (alíquota da regra), pois o grupo CSOSN não destaca vICMS.
     const abate = simples && regra.aliquota_icms !== null ? calcularIcms({ base_centavos: baseIcms(item, c.ipi_na_bc), reducao_bc: regra.reducao_bc, aliquota: aliqRegra ?? regra.aliquota_icms }).v_icms : vIcmsProprio;
@@ -198,4 +204,14 @@ export function calcularIcmsItem(c: ContextoIcmsItem): ResultadoIcmsItem {
     icms.v_cred_icms_sn = aplicarPercentual(baseIcms(item, false), regra.p_cred_sn);
   }
   return { ok: true, icms };
+}
+
+/**
+ * RN-FIS-05 (63 A): ICMS-ST calculado por regra (modBC ST, redução, MVA e alíquota interna do destino). Só existe quando o motor calculou o ST da
+ * operação (grupo com `p_icms_st`); sem regra de ST, ou CST/CSOSN sem ST, devolve undefined e o campo sai omitido. O ST retido (60/500) é repasse
+ * da nota de compra, não cálculo: não gera `calc_st`. O FCP-ST segue em `icms.v_fcp_st`.
+ */
+export function calcStDoIcms(icms: IcmsItem): ImpostoCalculado | undefined {
+  if (icms.p_icms_st === undefined || icms.v_bc_st === undefined || icms.v_icms_st === undefined) return undefined;
+  return { v_bc: icms.v_bc_st, p_aliq: icms.p_icms_st, v_valor: icms.v_icms_st };
 }
