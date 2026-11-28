@@ -38,6 +38,21 @@ describe('"Qual regra vale" (RN-FIS-01)', () => {
     expect(h).toContain('Nenhuma regra vigente');
     expect(h.match(/Regra encontrada/g)).toHaveLength(3);
   });
+  it('a resposta mostra o CST como "código – nome" e a alíquota da regra escolhida; UF e CRT são listas', async () => {
+    api.get.mockResolvedValue({ data_emissao: '2026-11-28', icms: { ...ok('7'), regra_id: 'r1' }, ipi: sem, pis: sem, cofins: sem });
+    api.registro.mockResolvedValue({ codigo: '00', aliquota_icms: 180000 });
+    const h = renderToStaticMarkup(await QualRegraVale({ acesso: 'x', rota: ROTA, busca: new URLSearchParams(CONSULTA) }));
+    expect(api.registro).toHaveBeenCalledTimes(1);
+    expect(api.registro.mock.calls[0]?.[0]).toBe('/v1/fiscal/regras/r1');
+    expect(h).toContain('00 – Tributada integralmente');
+    expect(h).toContain('18%');
+    expect(h).toContain('>CST<');
+    expect(h).toContain('>Alíquota<');
+    expect(h).toContain('Informe a operação para ver a regra que o cálculo usa hoje.');
+    expect(h).toMatch(/<select name="vale_uf_origem"[^>]*>.*<option value="AM"/);
+    expect(h).toMatch(/<select name="vale_uf_destino"/);
+    expect(h).not.toMatch(/<input name="vale_uf_/);
+  });
   it('dado inválido vira orientação em português', async () => {
     api.get.mockRejectedValue(new DadosInvalidos('x'));
     const h = renderToStaticMarkup(await QualRegraVale({ acesso: 'x', rota: ROTA, busca: new URLSearchParams(CONSULTA) }));

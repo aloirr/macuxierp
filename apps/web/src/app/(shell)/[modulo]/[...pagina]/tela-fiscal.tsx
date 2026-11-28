@@ -1,7 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 import { z } from 'zod';
 import { RegraDetalhe, FonteRegra } from '@macuxierp/fiscal/contracts';
-import { ROTULO_CRT, ROTULO_TRIBUTO, paginaRegras, valoresDaRegra } from '@macuxierp/fiscal/web';
+import { CAMPOS_REGRA, ROTULO_TRIBUTO, opcoesDoCampo, paginaRegras, textoPercentual, valoresDaRegra } from '@macuxierp/fiscal/web';
 import type { Perfil } from '@macuxierp/platform-sdk';
 import { ApiIndisponivel, DadosInvalidos, NaoAutenticado, SemPermissao, buscarRegistro, getValidado } from '@/lib/api';
 import { ROTA_SENHA, TrocarSenhaPendente } from '@/lib/troca-pendente';
@@ -41,6 +41,7 @@ const UUID_PADRAO_COMPLETO = new RegExp(`^${UUID_PADRAO}$`);
 
 const Tributo = z.object({
   ok: z.boolean(),
+  regra_id: z.string().optional(),
   versao: z.string().optional(),
   fonte: FonteRegra.nullable().optional(),
   erros: z.array(z.object({ mensagem: z.string() }).passthrough()).optional(),
@@ -50,6 +51,18 @@ const Resolucao = z.object({ data_emissao: z.string(), icms: Tributo, ipi: Tribu
 /** Tipo da fonte em português: o mesmo texto da coluna "Tipo da fonte" da lista do fiscal (uma montagem só, a do módulo). */
 const colunaTipoFonte = paginaRegras.colunas.find((c) => c.id === 'fonte_tipo');
 const tipoDaFonte = (fonte: { tipo: string; referencia: string } | null | undefined): string => (fonte && colunaTipoFonte ? String((colunaTipoFonte.valor as (l: unknown) => unknown)({ fonte })) : '');
+
+/** Campos do formulário da regra que dizem o CST e a alíquota de cada tributo (a mesma lista de opções do formulário, com "código – nome"). */
+const CAMPO_CST = { icms: 'codigo', ipi: 'cst_ipi', pis: 'cst_pis', cofins: 'cst_cofins' } as const;
+const CAMPO_ALIQUOTA = { icms: 'aliquota_icms', ipi: 'aliquota_ipi', pis: 'aliquota_pis', cofins: 'aliquota_cofins' } as const;
+const campoDaRegra = (nome: string) => CAMPOS_REGRA.find((c) => c.nome === nome);
+/** Opções de um campo de seleção do formulário, sem a vazia (a consulta tem o próprio "Selecione"). */
+const opcoesSemVazia = (nome: string) => (campoDaRegra(nome)?.opcoes ?? []).filter((o) => o.valor !== '');
+const textoDoCst = (tributo: keyof typeof CAMPO_CST, codigo: string | null | undefined): string => {
+  const campo = campoDaRegra(CAMPO_CST[tributo]);
+  if (!campo || !codigo) return '';
+  return opcoesDoCampo(campo, codigo).find((o) => o.valor === codigo)?.rotulo ?? codigo;
+};
 
 const CAMPOS_VALE = ['ncm', 'cfop', 'uf_origem', 'uf_destino', 'tipo_cliente', 'crt'] as const;
 const TIPOS_CLIENTE = [{ valor: 'contribuinte', rotulo: 'Contribuinte' }, { valor: 'isento', rotulo: 'Isento' }, { valor: 'nao_contribuinte', rotulo: 'Não contribuinte' }];
@@ -65,11 +78,16 @@ export async function QualRegraVale({ acesso, rota, busca }: { acesso: string; r
   if (preenchida) {
     try {
       const r = await getValidado(`/v1/fiscal/regras/resolver?${new URLSearchParams(q).toString()}`, Resolucao, acesso, 'qual regra vale', true);
+      // CST e alíquota vêm da própria regra escolhida (a resposta do resolver só traz o id, a versão e a fonte).
+      const detalhe = Object.fromEntries(await Promise.all((['icms', 'ipi', 'pis', 'cofins'] as const).map(async (t) => {
+        const id = r[t].regra_id;
+        return [t, id && r[t].ok ? await buscarRegistro(API_REGRA.replace(':id', id), RegraDetalhe, acesso, 'regra fiscal') : null] as const;
+      })));
       resultado = (
         <div className="tabela-rolavel">
           <table>
             <caption className="pular">Regra que vale para cada tributo</caption>
-            <thead><tr><th scope="col">Tributo</th><th scope="col">Situação</th><th scope="col">Versão</th><th scope="col">Tipo da fonte</th><th scope="col">Fonte</th></tr></thead>
+            <thead><tr><th scope="col">Tributo</th><th scope="col">Situação</th><th scope="col">CST</th><th scope="col">Alíquota</th><th scope="col">Versão</th><th scope="col">Tipo da fonte</th><th scope="col">Fonte</th></tr></thead>
             <tbody>
               {(['icms', 'ipi', 'pis', 'cofins'] as const).map((t) => {
                 const x = r[t];
@@ -77,6 +95,8 @@ export async function QualRegraVale({ acesso, rota, busca }: { acesso: string; r
                   <tr key={t}>
                     <th scope="row">{ROTULO_TRIBUTO[t]}</th>
                     <td><Selo selo={{ texto: x.ok ? 'Regra encontrada' : 'Sem regra', tom: x.ok ? 'ok' : 'erro' }} />{!x.ok && x.erros?.[0] && <span className="apoio"> {x.erros[0].mensagem}</span>}</td>
+                    <td>{textoDoCst(t, (detalhe[t] as Record<string, unknown> | null)?.[CAMPO_CST[t]] as string | null | undefined)}</td>
+                    <td>{textoPercentual((detalhe[t] as Record<string, unknown> | null)?.[CAMPO_ALIQUOTA[t]] as number | null | undefined)}</td>
                     <td>{x.versao ?? ''}</td>
                     <td>{tipoDaFonte(x.fonte)}</td>
                     <td>{x.fonte ? x.fonte.referencia : ''}</td>
@@ -98,7 +118,7 @@ export async function QualRegraVale({ acesso, rota, busca }: { acesso: string; r
       {opcoes ? (
         <select name={`vale_${nome}`} defaultValue={q[nome]}><option value="">Selecione</option>{opcoes.map((o) => <option key={o.valor} value={o.valor}>{o.rotulo}</option>)}</select>
       ) : (
-        <input name={`vale_${nome}`} defaultValue={q[nome]} maxLength={nome === 'ncm' ? 8 : nome === 'cfop' ? 4 : 2} autoComplete="off" />
+        <input name={`vale_${nome}`} defaultValue={q[nome]} maxLength={nome === 'ncm' ? 8 : 4} autoComplete="off" />
       )}
     </label>
   );
@@ -106,14 +126,14 @@ export async function QualRegraVale({ acesso, rota, busca }: { acesso: string; r
     <>
     <section className="cartao-ficha cartao-consulta" aria-labelledby="h-vale">
       <h2 id="h-vale" className="titulo-cartao">Qual regra vale</h2>
-      <p className="apoio">Informe a operação com os 8 dígitos do NCM, o CFOP de 4 e as UFs de 2 letras; a resposta é a regra que o cálculo usaria hoje.</p>
+      <p className="apoio">Informe a operação para ver a regra que o cálculo usa hoje.</p>
       <form method="get" action={rota} className="formulario">
         {campo('ncm', 'NCM (produto)', 2)}
         {campo('cfop', 'CFOP', 2)}
-        {campo('uf_origem', 'UF origem', 2)}
-        {campo('uf_destino', 'UF destino', 2)}
+        {campo('uf_origem', 'UF origem', 2, opcoesSemVazia('uf_origem'))}
+        {campo('uf_destino', 'UF destino', 2, opcoesSemVazia('uf_destino'))}
         {campo('tipo_cliente', 'Cliente', 2, TIPOS_CLIENTE)}
-        {campo('crt', 'Regime (CRT)', 2, Object.entries(ROTULO_CRT).map(([valor, rotulo]) => ({ valor, rotulo })))}
+        {campo('crt', 'Regime (CRT)', 2, opcoesSemVazia('crt'))}
         <div className="barra-acoes barra-bloco"><button className="mx-botao-secundario" type="submit">Consultar</button></div>
       </form>
     </section>
