@@ -77,19 +77,27 @@ const linha = (p, rotulo) => p.getByRole('row').filter({ hasText: new RegExp(`^\
 const seloDe = async (p, rotulo) => ((await linha(p, rotulo).locator('.selo').first().textContent()) ?? '').trim();
 const htmlSemChave = async (p, onde) => exigir(!(await p.content()).includes(CHAVE), `a chave aparece no HTML de ${onde}`);
 
-// v0.3.24 (#840): a aba Integração tem as duas ligações; a do FDV é "ERP → Força de vendas" (a seta é só visual: o leitor
-// ouve "ERP para a Força de vendas"), com o formulário ou a ficha "Chave do Macuxi FDV". A tabela dos cadastros enviados
-// (Ligar/Desligar) foi para a aba Dados.
-const TITULO_SAIDA = /^ERP para a Força de vendas$/;
+// Config v4 (#922, v0.3.30): a empresa tem só as abas "Empresa" e "Integrações". Em Integrações ficam as duas ligações; a do
+// FDV é "ERP → Macuxi FDV" (#952; a seta é só visual: o leitor ouve "ERP para o Macuxi FDV"), com o formulário ou a ficha
+// "Chave do Macuxi FDV" e, no mesmo cartão (`CartaoLigacao` da saída, envio-fdv.tsx), a tabela "Cadastros enviados" com
+// Ligar/Desligar no "Ações ▾" de cada linha. A tabela dos recebidos fica no cartão da entrada, de fora.
+const TITULO_SAIDA = /^ERP\s+para o\s+Macuxi FDV$/;
 const formChave = portal.getByRole('form', { name: 'Chave do Macuxi FDV' });
 const fichaChave = portal.locator('dl.ficha[aria-label="Chave do Macuxi FDV"]');
-/** A seção "ERP → Força de vendas" da aba Dados: a tabela "Cadastros enviados" (a de recebidos fica de fora). */
-const SEL_ENVIADOS = 'section[aria-labelledby="h-dados-saida"]';
+/** O cartão "ERP → Macuxi FDV" da aba Integrações: a chave e a tabela "Cadastros enviados" (a de recebidos fica de fora). */
+const SEL_ENVIADOS = 'section[aria-labelledby="h-ligacao-saida"]';
 const enviados = portal.locator(SEL_ENVIADOS);
-/** Abre a aba da empresa pelo link e espera o `?aba=` dela. */
+const ABAS = portal.getByRole('navigation', { name: 'Abas da empresa' });
+/**
+ * Abre a aba da empresa pelo link e espera o `?aba=` dela. Se a aba já é a atual (`aria-current="page"`), não clica de novo
+ * (o clique recarregaria a página no meio do passo); confere só que é ela.
+ */
 async function abrirAba(nome, aba) {
-  await portal.getByRole('navigation', { name: 'Abas da empresa' }).getByRole('link', { name: nome, exact: true }).click();
+  const link = ABAS.getByRole('link', { name: nome, exact: true });
+  if ((await link.getAttribute('aria-current')) !== 'page') await link.click();
   await portal.waitForURL((u) => new URL(u).searchParams.get('aba') === aba);
+  exigir((await link.getAttribute('aria-current')) === 'page', `a aba "${nome}" não ficou marcada como atual`);
+  exigir((await ABAS.getByRole('link').allInnerTexts()).join('|') === 'Empresa|Integrações', 'as abas da empresa não são "Empresa" e "Integrações"');
 }
 
 /**
@@ -140,7 +148,8 @@ async function bkoConfere(esperado) {
   await bko.reload();
   await bko.getByTestId('sinal').waitFor();
   const sinal = (await bko.getByTestId('sinal').textContent()) ?? '';
-  exigir(sinal.includes('ainda sem sinal do conector'), `sinal do BKO: ${sinal}`);
+  // #920 (v0.3.30): a frase do sinal começa com maiúscula; com conector e sem envio, é exatamente esta.
+  exigir(sinal.trim() === 'Ainda sem sinal do conector.', `sinal do BKO: ${sinal}`);
   const selo = await seloDe(bko, ROTULO);
   exigir(selo === esperado, `BKO mostra ${ROTULO} "${selo}", esperado "${esperado}"`);
   const noBko = await selos(bko);
@@ -166,32 +175,36 @@ try {
     await portal.getByRole('row').filter({ hasText: dados.empresa.nome }).first().waitFor();
   });
 
-  await passo('(b) abre a empresa pela lista e a aba Integração: sem chave, o formulário da chave e sem Testar; na aba Dados, Ligar desabilitado', async () => {
+  await passo('(b) abre a empresa pela lista e a aba Integrações: sem chave, o formulário da chave e sem Testar; nos Cadastros enviados, Ligar desabilitado', async () => {
     await portal.getByRole('row').filter({ hasText: dados.empresa.nome }).getByRole('link').click();
     await portal.getByRole('heading', { level: 1, name: dados.empresa.nome }).waitFor();
-    await abrirAba('Integração', 'integracao');
-    await portal.getByRole('heading', { name: TITULO_SAIDA }).waitFor();
+    await abrirAba('Integrações', 'integracao');
+    await enviados.getByRole('heading', { name: TITULO_SAIDA }).waitFor();
     await formChave.waitFor();
+    exigir((await enviados.locator('form[aria-label="Chave do Macuxi FDV"]').count()) === 1, 'o formulário da chave não está no cartão "ERP → Macuxi FDV"');
     exigir((await portal.getByRole('button', { name: 'Testar conexão' }).count()) === 0, 'Testar conexão aparece sem chave');
     await print(portal, '01-portal-integracao-sem-chave.png');
-    await abrirAba('Dados', 'dados');
+    // Os Cadastros enviados estão no mesmo cartão da aba Integrações (antes, na aba Dados): sem trocar de aba.
     exigir(await itemDesabilitado(await itemDoMenu(ROTULO, 'Ligar')), 'Ligar habilitado sem chave');
     await fecharMenu(portal);
     exigir((await seloDe(enviados, ROTULO)) === 'Desligado', 'Produtos não começou desligado');
   });
 
   await passo('(c) grava a chave fictícia: "Chave salva." e a ficha no lugar do formulário; "Trocar chave" pede confirmação; só o prefixo na tela e na API; nenhum cadastro ligado', async () => {
-    await abrirAba('Integração', 'integracao');
+    await abrirAba('Integrações', 'integracao');
     await formChave.getByLabel('Código', { exact: true }).fill(CONECTOR);
     await formChave.getByLabel('Chave', { exact: true }).fill(CHAVE);
     await formChave.getByLabel('Ambiente').selectOption('teste');
-    await formChave.getByRole('button', { name: 'Salvar chave' }).click();
+    // O "Salvar chave" fica na barra do rodapé do cartão (regra 12), fora do <form>, ligado a ele pelo atributo `form`.
+    const salvarChave = enviados.getByRole('button', { name: 'Salvar chave', exact: true });
+    exigir((await salvarChave.getAttribute('form')) === (await formChave.getAttribute('id')), 'o "Salvar chave" não envia o formulário da chave');
+    await salvarChave.click();
     await portal.getByRole('status').filter({ hasText: 'Chave salva.' }).waitFor();
     // Salva, o formulário dá lugar à ficha da ligação (a chave sai da tela) e ao "Trocar chave".
     await fichaChave.waitFor();
     exigir((await formChave.count()) === 0, 'o formulário da chave ficou depois de salvar');
     // Trocar a chave que existe pede confirmação (36 A), com Nova chave e Ambiente; grava de novo a mesma chave fictícia.
-    await portal.getByRole('button', { name: 'Trocar chave', exact: true }).click();
+    await enviados.getByRole('button', { name: 'Trocar chave', exact: true }).click();
     const dialogo = portal.getByRole('dialog');
     await dialogo.getByRole('heading', { name: 'Trocar a chave do Macuxi FDV?' }).waitFor();
     await dialogo.getByLabel('Nova chave').fill(CHAVE);
@@ -206,7 +219,7 @@ try {
     await fichaChave.waitFor();
     exigir((await portal.locator('input[name="chave"]').count()) === 0, 'um campo de chave voltou depois de recarregar');
     await htmlSemChave(portal, '/config depois de salvar e recarregar');
-    await abrirAba('Dados', 'dados');
+    await abrirAba('Integrações', 'integracao');
     // "Ligar um por um" (R-20261123-150400, 0042): a primeira chave nasce sem cadastro ligado e sem carga inicial;
     // os 10 da tela "Desligado", com Ligar habilitado. A carga inicial sai ao ligar (evento no banco; a tela e a API não a mostram).
     const tela = await selos(enviados);
