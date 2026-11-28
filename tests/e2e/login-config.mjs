@@ -82,7 +82,7 @@ try {
     await campo(pagina, 'email').waitFor();
     exigir(caminho(pagina) === '/', `a raiz sem sessão saiu para ${caminho(pagina)}`);
     await entrar(pagina, BASE, adm);
-    await pagina.getByText('Boas-vindas ao Macuxi ERP').waitFor({ timeout: 30_000 });
+    await pagina.getByRole('heading', { name: 'Início' }).waitFor({ timeout: 30_000 });
     exigir(caminho(pagina) === '/', `BKO em ${caminho(pagina)}`);
     const salvo = await pagina.evaluate((k) => localStorage.getItem(k), CHAVE_CODIGO);
     exigir(salvo === CODIGO_EMPRESA, `código salvo: ${salvo}`);
