@@ -1,3 +1,4 @@
+import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { EU_FALSO, EU_FALSO_MEI, RAZAO_MEI_FALSA } from '@/lib/falso';
@@ -5,8 +6,9 @@ import { nomeDoTopo } from '@/lib/nome-topo';
 
 const ctx = vi.hoisted(() => ({ valor: null as unknown }));
 vi.mock('@/lib/sessao', () => ({ contexto: async () => ctx.valor }));
-vi.mock('next/navigation', () => ({ redirect: vi.fn() }));
+vi.mock('next/navigation', () => ({ redirect: vi.fn(), usePathname: () => '/' }));
 vi.mock('./(shell)/nav-lateral', () => ({ NavLateral: () => null }));
+vi.mock('./(shell)/botao-menu', () => ({ BotaoMenu: () => null }));
 vi.mock('./(shell)/botao-sair', () => ({ BotaoSair: () => null }));
 vi.mock('./(shell)/link-trocar-senha', () => ({ LinkTrocarSenha: () => null }));
 vi.mock('./(shell)/aviso-senha-trocada', () => ({ AvisoSenhaTrocada: () => null }));
@@ -45,5 +47,21 @@ describe('topo do BKO (A0)', () => {
   it('comparação: aparada, espaços colapsados e sem caixa; acento diferente conta como outro nome', () => {
     expect(nomeDoTopo('  Açaí   Ltda ', 'açaí ltda')).toBe('Açaí Ltda');
     expect(nomeDoTopo('Acai Ltda', 'Açaí Ltda')).toBe('Acai Ltda · Açaí Ltda');
+  });
+});
+
+describe('menu recolhido no celular (MC-0209) e "Sair" em link (MC-0210)', () => {
+  it('o botão Menu nasce fechado, ligado ao menu principal', async () => {
+    const { BotaoMenu } = await vi.importActual<typeof import('./(shell)/botao-menu')>('./(shell)/botao-menu');
+    const h = renderToStaticMarkup(createElement(BotaoMenu));
+    expect(h).toContain('aria-expanded="false"');
+    expect(h).toContain('aria-controls="menu-principal"');
+  });
+  it('o CSS recolhe o menu em 800 px e só abre com data-menu-aberto; Sair usa bordaCinza', async () => {
+    const { readFileSync } = await import('node:fs');
+    const css = readFileSync(`${__dirname}/globals.css`, 'utf8');
+    expect(css).toMatch(/\.casca > \.lateral \{ display: none; \}/);
+    expect(css).toMatch(/\.casca\[data-menu-aberto\] > \.lateral \{ display: block; \}/);
+    expect(css).toMatch(/\.topo button\.link \{ color: var\(--mx-cor-borda-cinza\); \}/);
   });
 });

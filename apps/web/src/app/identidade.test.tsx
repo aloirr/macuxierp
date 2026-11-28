@@ -22,7 +22,7 @@ describe('identidade do shell (T-0021, ajustes B)', () => {
   });
   it('o CSS do shell não define .btn próprio nem usa borda-cinza em campo', () => {
     expect(css).not.toMatch(/\.btn\b/);
-    expect(css).toMatch(/\.campo input \{[^}]*borda-campo/);
+    expect(css).toMatch(/\.campo input, \.campo select \{[^}]*borda-campo/);
     expect(css).toMatch(/\.entrada[^{]*\{[^}]*borda-campo/);
   });
   it('o foco no topo, no menu e no cartão é branco pela .mx-fundo-escuro do ui', () => {

@@ -36,14 +36,18 @@ export default async function Empresas({ searchParams }: { searchParams: Promise
     <>
       <div className="titulo-linha">
         <h1>Empresas</h1>
-        <a className="mx-botao" href="/config/empresas/nova">Criar empresa</a>
+        <form method="get" action="/config" className="busca-slug" role="search">
+          <label className="campo"><span>Buscar por código</span><input name="busca" defaultValue={busca} maxLength={80} autoComplete="off" /></label>
+          <button className="mx-botao-secundario" type="submit">Buscar</button>
+          {busca && <a href="/config">Limpar</a>}
+        </form>
       </div>
-      <form method="get" action="/config" className="busca-slug" role="search">
-        <label className="campo"><span>Buscar por código</span><input name="busca" defaultValue={busca} maxLength={80} autoComplete="off" /></label>
-        <button className="mx-botao-secundario" type="submit">Buscar</button>
-        {busca && <a href="/config">Limpar</a>}
-      </form>
+      <div className="cartao-tabela">
       <ListaEmpresas key={busca} empresas={pagina.itens} vazio={vazio} proximo={pagina.proximo_cursor} busca={busca} />
+      <div className="barra-acoes">
+        <a className="mx-botao" href="/config/empresas/nova">+ Criar empresa</a>
+      </div>
+      </div>
     </>
   );
 }

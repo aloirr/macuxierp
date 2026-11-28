@@ -21,7 +21,7 @@ const TOM: Readonly<Record<StatusPedido, 'ok' | 'aviso' | 'erro' | 'neutro'>> = 
 };
 
 /** Colunas numéricas da lista: à direita, com algarismos tabulares (ColunaLista ainda não traz o tipo). */
-const TIPO_DA_COLUNA: Readonly<Record<string, 'numero' | 'dinheiro'>> = { numero: 'numero', total_centavos: 'dinheiro', pendencias: 'numero' };
+const TIPO_DA_COLUNA: Readonly<Record<string, 'numero' | 'dinheiro' | 'data'>> = { numero: 'numero', total_centavos: 'dinheiro', pendencias: 'numero', emitido_em: 'data' };
 
 export const LISTA_PEDIDOS: TelaLista = {
   tipo: 'lista',
