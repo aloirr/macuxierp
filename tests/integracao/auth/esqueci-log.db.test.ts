@@ -2,13 +2,15 @@
  * T-0102 (plano da v0.3.13, S-1 a S-3): o motivo do não envio do "Esqueci a senha" vai ao log da API, sem dado pessoal,
  * conferido de fora: a API de produção (`appPgDeTeste`, módulos de produção, `RepositorioCoreSql`) sobre o PostgreSQL
  * efêmero, o pino capturado em memória e a porta de e-mail em memória (a única dublê: o SMTP).
- * - S-1: cada caminho que lê o banco grava uma linha `esqueci.sem_envio` com o motivo fixo (empresa inexistente ou
- *   suspensa, conta inexistente ou inativa) ou o `email.enviado` do aceite do SMTP; a linha não leva outro campo além do
+ * - S-1: cada caminho que lê o banco grava uma linha `esqueci.sem_envio` com o motivo fixo (empresa suspensa, conta
+ *   inexistente ou inativa) ou o `email.enviado` do aceite do SMTP; a linha não leva outro campo além do
  *   evento, do motivo (ou do `envio_id` aleatório) e dos campos do pino. Conta travada (bloqueado_ate) não é motivo de
  *   não envio: a temporária é o caminho para destravar. E-mail desligado, falha do SMTP e limite por conta não leem o
  *   banco e ficam no unitário do dono (apps/api/src/esqueci-senha.test.ts e email/envio-apos-resposta.test.ts).
  * - S-2: o log inteiro não contém o e-mail digitado, a parte local, o domínio, o código da empresa nem a temporária.
  * - S-3: todos os motivos respondem o mesmo 202 neutro, com o mesmo corpo (RN-CORE-13).
+ * T-0133 (ADR 0021): o pedido vai só com o e-mail; a conta sai do e-mail (usuário de empresa antes do superadmin) e o
+ * e-mail só de superadmin segue pelo pedido do `/config`. O campo `empresa` antigo é aceito e ignorado por uma versão.
  * Dados fictícios (domínios .invalid). Sem Postgres pula; com MACUXI_PG_EXIGIR=1 falha.
  */
 import { randomUUID } from 'node:crypto';
@@ -64,8 +66,9 @@ describe.skipIf(!PG_DISPONIVEL)('T-0102: log do motivo do "Esqueci a senha" na A
     await envio.esperar();
     return { r, novas: linhas(fonte.slice(inicio)) };
   };
-  const esqueci = (a: AppPortal, empresa: string, email: string) =>
-    a.inject({ method: 'POST', url: '/v1/auth/esqueci', headers: { 'cf-connecting-ip': novoIp() }, payload: { empresa, email } });
+  /** Tela única só com o e-mail; `empresa` = o campo antigo (aceito e ignorado na v0.3.30, ADR 0021 §6). */
+  const esqueci = (a: AppPortal, email: string, empresa?: string) =>
+    a.inject({ method: 'POST', url: '/v1/auth/esqueci', headers: { 'cf-connecting-ip': novoIp() }, payload: { email, ...(empresa ? { empresa } : {}) } });
   const esqueciConfig = (a: AppPortal, email: string) =>
     a.inject({ method: 'POST', url: '/v1/plataforma/auth/esqueci', remoteAddress: novoIp(), headers: { [CABECALHO_CSRF_CONFIG]: '1' }, payload: { email } });
   const doEsqueci = (novas: Linha[]) => novas.filter((o) => o.evento === 'esqueci.sem_envio' || o.evento === 'email.enviado' || o.evento === 'email.falha');
@@ -106,24 +109,23 @@ describe.skipIf(!PG_DISPONIVEL)('T-0102: log do motivo do "Esqueci a senha" na A
     await b?.remover();
   });
 
-  it('S-1 tenant: empresa inexistente e suspensa = empresa_inexistente_ou_suspensa; conta inexistente e inativa = conta_inexistente_ou_inativa; nada sai', async () => {
-    for (const [empresa, email, motivo] of [
-      [INEXISTENTE.toUpperCase(), EMAIL_ATIVO, 'empresa_inexistente_ou_suspensa'],
-      [SUSPENSA.toUpperCase(), EMAIL_SUSPENSA, 'empresa_inexistente_ou_suspensa'],
-      [ATIVA.toUpperCase(), EMAIL_NINGUEM, 'conta_inexistente_ou_inativa'],
-      [ATIVA.toUpperCase(), EMAIL_INATIVO, 'conta_inexistente_ou_inativa'],
+  it('S-1 tenant: empresa suspensa = empresa_inexistente_ou_suspensa; conta inexistente e inativa = conta_inexistente_ou_inativa; nada sai', async () => {
+    for (const [email, motivo] of [
+      [EMAIL_SUSPENSA, 'empresa_inexistente_ou_suspensa'],
+      [EMAIL_NINGUEM, 'conta_inexistente_ou_inativa'],
+      [EMAIL_INATIVO, 'conta_inexistente_ou_inativa'],
     ] as const) {
-      const { r, novas } = await comLog(logs, () => esqueci(app, empresa, email));
+      const { r, novas } = await comLog(logs, () => esqueci(app, email));
       neutro(r);
       umaLinha(novas, 'esqueci.sem_envio', motivo);
     }
     expect(envio.enviados).toEqual([]);
   });
 
-  it('S-1 superadmin (MACUXI na tela única e /config): inexistente e inativo = conta_inexistente_ou_inativa; nada sai', async () => {
+  it('S-1 superadmin (tela única e /config): inexistente e inativo = conta_inexistente_ou_inativa; nada sai', async () => {
     for (const pedido of [
-      () => esqueci(app, 'MACUXI', EMAIL_NINGUEM),
-      () => esqueci(app, 'MACUXI', EMAIL_SA_INATIVO),
+      () => esqueci(app, EMAIL_NINGUEM, 'MACUXI'),
+      () => esqueci(app, EMAIL_SA_INATIVO),
       () => esqueciConfig(app, EMAIL_NINGUEM),
       () => esqueciConfig(app, EMAIL_SA_INATIVO),
     ]) {
@@ -135,7 +137,8 @@ describe.skipIf(!PG_DISPONIVEL)('T-0102: log do motivo do "Esqueci a senha" na A
   });
 
   it('S-1 aceite do SMTP: conta ativa (tenant, superadmin e superadmin travado) = email.enviado com envio_id, sem sem_envio', async () => {
-    const pedidos = [() => esqueci(app, ATIVA.toUpperCase(), EMAIL_ATIVO), () => esqueci(app, 'MACUXI', EMAIL_SA), () => esqueciConfig(app, EMAIL_SA_TRAVADO)];
+    // o tenant com o código antigo de outra empresa (ignorado, ADR 0021 §6) e o superadmin pela tela única só com o e-mail
+    const pedidos = [() => esqueci(app, EMAIL_ATIVO, INEXISTENTE.toUpperCase()), () => esqueci(app, EMAIL_SA), () => esqueciConfig(app, EMAIL_SA_TRAVADO)];
     for (const pedido of pedidos) {
       const { r, novas } = await comLog(logs, pedido);
       neutro(r);
@@ -156,10 +159,12 @@ describe.skipIf(!PG_DISPONIVEL)('T-0102: log do motivo do "Esqueci a senha" na A
   });
 
   it('S-3 (RN-CORE-13): todos os 202 têm o mesmo corpo, seja qual for o motivo', () => {
-    // 4 do tenant, 4 do superadmin e 3 aceites
-    expect(respostas).toHaveLength(11);
+    // 3 do tenant, 4 do superadmin e 3 aceites
+    expect(respostas).toHaveLength(10);
     const corpos = new Set(respostas.map((r) => r.body));
     expect(corpos.size).toBe(1);
     expect(Object.keys(respostas[0]!.json<object>())).toEqual(['mensagem']);
+    // texto travado pelo PO (ADR 0021, seção Textos), literal: o teste confere o valor, não a constante do SDK
+    expect(respostas[0]!.json<{ mensagem: string }>().mensagem).toBe('Se o e-mail estiver cadastrado, enviamos as instruções.');
   });
 });

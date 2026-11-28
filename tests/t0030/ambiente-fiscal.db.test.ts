@@ -58,7 +58,7 @@ describe.skipIf(!PG_DISPONIVEL)('T-0030: ambiente fiscal pela API no PostgreSQL 
     await inserirFilialDeTeste(b.admin, tenant, { id: filial, cnpj: '11222333000181', nome: 'Matriz E2E' });
     await inserirAdministradorDeTeste(b.admin, tenant, { id: usuario, email: 'adm@e2e-t0030.teste', nome: 'Administradora E2E', filialIds: [filial] });
     ({ app } = await appPgDeTeste({ b }));
-    const login = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa: SLUG, email: 'adm@e2e-t0030.teste', senha: SENHA_DE_TESTE } });
+    const login = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { email: 'adm@e2e-t0030.teste', senha: SENHA_DE_TESTE } });
     expect(login.statusCode).toBe(200);
     token = login.json<{ token_acesso: string }>().token_acesso;
     // Script do operador (.mjs, sem tipos): import dinâmico pelo caminho.
