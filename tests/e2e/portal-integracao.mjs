@@ -184,7 +184,7 @@ try {
     await portal.getByRole('row').filter({ hasText: dados.empresa.nome }).first().waitFor();
   });
 
-  await passo('(b) abre a empresa pela lista e a aba Integrações: sem chave, o formulário da chave e sem Testar; nos Cadastros enviados, Ligar desabilitado', async () => {
+  await passo('(b) abre a empresa pela lista e a aba Integrações: sem chave, o formulário da chave e sem Testar; os Cadastros enviados dão lugar ao aviso da chave (RD-2423)', async () => {
     await portal.getByRole('row').filter({ hasText: dados.empresa.nome }).getByRole('link').click();
     await portal.getByRole('heading', { level: 1, name: dados.empresa.nome }).waitFor();
     await abrirAba('Integrações', 'integracao');
@@ -193,10 +193,10 @@ try {
     exigir((await enviados.locator('form[aria-label="Chave do Macuxi FDV"]').count()) === 1, 'o formulário da chave não está no cartão "ERP → Macuxi FDV"');
     exigir((await portal.getByRole('button', { name: 'Testar conexão' }).count()) === 0, 'Testar conexão aparece sem chave');
     await print(portal, '01-portal-integracao-sem-chave.png');
-    // Os Cadastros enviados estão no mesmo cartão da aba Integrações (antes, na aba Dados): sem trocar de aba.
-    exigir(await itemDesabilitado(await itemDoMenu(ROTULO, 'Ligar')), 'Ligar habilitado sem chave');
-    await fecharMenu(portal);
-    exigir((await seloDe(enviados, ROTULO)) === 'Desligado', 'Produtos não começou desligado');
+    // RD-2423 (#973): sem chave salva nada é enviado; no lugar das 10 linhas "Desligado" (e do Ligar desabilitado), uma frase só.
+    await enviados.getByRole('status').filter({ hasText: 'Salve a chave para enviar os cadastros ao Macuxi FDV.' }).waitFor();
+    exigir((await enviados.locator('table').count()) === 0, 'a tabela dos Cadastros enviados aparece sem chave');
+    exigir((await enviados.getByRole('button', { name: /Ligar|Ações de/ }).count()) === 0, 'botão de ligar cadastro sem chave');
   });
 
   await passo('(c) grava a chave fictícia: "Chave salva." e a ficha no lugar do formulário; "Trocar chave" pede confirmação; só o prefixo na tela e na API; nenhum cadastro ligado', async () => {
