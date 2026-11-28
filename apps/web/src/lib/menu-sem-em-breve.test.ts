@@ -11,7 +11,7 @@ import { ROTA_AMBIENTE_FISCAL, ROTA_PERFIS } from './telas/core';
 /** Rotas com componente próprio na página `[modulo]/[...pagina]` (quadros e o monitor do FDV): não passam pelo renderizador genérico. */
 const COM_COMPONENTE_PROPRIO = new Set<string>([ROTA_PERFIS, ROTA_AMBIENTE_FISCAL, ROTA_BANDEIRA, ...PAGINAS_INTEGRACAO_FDV.filter((p) => p.tipo === 'monitor').map((p) => p.rota)]);
 
-const TODOS = MANIFESTOS.map((m) => ({ id: m.id, menus: [...m.web.menus] })) as EuResposta['modulos'];
+const TODOS = MANIFESTOS.map((m) => ({ id: m.id, menus: [...(m.web?.menus ?? [])] })) as EuResposta['modulos'];
 
 describe('menu sem páginas "em breve" (decisão do PO, v0.3.28)', () => {
   it('nenhum item visível do menu, de nenhum perfil, abre numa tela sem componente (cai em "Disponível em breve")', () => {
