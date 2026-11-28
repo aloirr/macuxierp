@@ -60,10 +60,10 @@ export function validarRegraParaCadastro(r: RegraEntrada): ProblemaRegra[] {
   return p;
 }
 
-/** RN-FIS-05 e RN-FIS-04: o modelo do catálogo só pode ser aplicado se o fiscal o validou, tem fonte e não é ST interestadual. */
+/** RN-FIS-05 e RN-FIS-04: o modelo do catálogo (carga versionada que o fiscal validou) só pode ser aplicado se tem fonte e vigência coerentes e não é ST interestadual (o CHECK do banco também recusa). */
 export function catalogoAplicavel(c: CatalogoRegra): ProblemaRegra[] {
   const p = semFonte(c);
-  if (c.validada_em === null) p.push({ rn: 'RN-FIS-04', codigo: 'REGRA_INCOMPLETA', campo: 'validada_em', mensagem: 'O fiscal ainda não validou este modelo do catálogo.' });
+  if (c.vigencia_fim !== null && c.vigencia_fim < c.vigencia_inicio) p.push({ rn: 'RN-FIS-04', codigo: 'REGRA_FORA_DA_VIGENCIA', campo: 'vigencia_fim', mensagem: 'A vigência do modelo é inválida.' });
   if (ehRegraSt(c) && podeSerInterestadual(c)) {
     p.push({ rn: 'RN-FIS-05', codigo: 'CODIGO_NAO_SUPORTADO', campo: 'uf_destino', mensagem: 'O catálogo não carrega regra de ST interestadual: cadastre a regra à mão, com a UF de origem e de destino.' });
   }

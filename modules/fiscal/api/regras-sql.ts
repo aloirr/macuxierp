@@ -54,7 +54,7 @@ async function executar<L = Linha>(tx: Transacao, sql: string, p: readonly unkno
     return await tx.consultar<L>(sql, p);
   } catch (e) {
     const pg = e as { code?: string };
-    if (pg.code === '23505') throw erros.conflito('Já existe uma regra com os mesmos filtros e o mesmo início de vigência');
+    if (pg.code === '23505') throw erros.conflito('Já existe uma regra com os mesmos filtros e o mesmo início de vigência, ou este modelo do catálogo já foi aplicado');
     if (pg.code === '23514') throw erros.regra('RN-FIS-01', 'A regra não passou nas conferências do banco: confira os campos do tributo e o CST/CSOSN do CRT.');
     throw e;
   }
@@ -104,8 +104,13 @@ export function repositorioRegrasSql(tx: Transacao): RepositorioRegras {
       return l.map((x) => linhaDe(detalheDe(x, f.hoje)));
     },
     obter: lerUma,
-    async inserir(r, hoje) {
-      const l = await executar(tx, `INSERT INTO fiscal.regra_tributaria (tenant_id, ${colunas}) VALUES (plataforma.tenant_atual(), ${marcas(1).join(', ')}) RETURNING ${SELECAO}`, ESCRITA.map((c) => valorDe(r, c)));
+    async inserir(r, hoje, regraBaseId) {
+      const n = ESCRITA.length + 1;
+      const l = await executar(
+        tx,
+        `INSERT INTO fiscal.regra_tributaria (tenant_id, regra_base_id, ${colunas}) VALUES (plataforma.tenant_atual(), $${n}::uuid, ${marcas(1).join(', ')}) RETURNING ${SELECAO}`,
+        [...ESCRITA.map((c) => valorDe(r, c)), regraBaseId ?? null],
+      );
       return detalheDe(l[0] as Linha, hoje);
     },
     async atualizar(id, r, ifMatch, hoje) {
@@ -128,12 +133,12 @@ export function repositorioRegrasSql(tx: Transacao): RepositorioRegras {
   };
 }
 
-// ---- Catálogo (`fiscal.regra_base`): colunas = as da regra, sem tenant e sem vigência, mais chave, descricao e validada_em (desenho do banco-dados, 0082) ----
+// ---- Catálogo (`fiscal.regra_base`, 0082): no tenant de referência, lido por todo tenant (RLS libera o SELECT); colunas da regra mais chave, titulo e descricao ----
 
 const SELECAO_CATALOGO = [
   'id',
   ...CAMPOS.map((c) => (FLOAT8.has(c) ? `${c}::float8 AS ${c}` : INT.has(c) ? `${c}::int AS ${c}` : c)),
-  'fonte_tipo', 'fonte_referencia', 'versao', 'chave', 'descricao', `${ISO('validada_em')} AS validada_em`,
+  'fonte_tipo', 'fonte_referencia', `${D('vigencia_inicio')} AS vigencia_inicio`, `${D('vigencia_fim')} AS vigencia_fim`, 'chave', 'titulo', 'descricao',
 ].join(', ');
 
 function catalogoDe(l: Linha): CatalogoRegra {
@@ -147,9 +152,9 @@ export function repositorioCatalogoSql(tx: Transacao): RepositorioCatalogo {
       const params: unknown[] = [];
       const w: string[] = ['deleted_at IS NULL'];
       if (f.tributo) { params.push(f.tributo); w.push(`tributo = $${params.length}`); }
-      if (f.busca) { params.push(f.busca); w.push(`(strpos(lower(chave), lower($${params.length})) > 0 OR strpos(lower(descricao), lower($${params.length})) > 0)`); }
+      if (f.busca) { params.push(f.busca); w.push(`(strpos(lower(chave), lower($${params.length})) > 0 OR strpos(lower(titulo), lower($${params.length})) > 0)`); }
       if (f.cursor) { params.push(f.cursor); w.push(`id > $${params.length}::uuid`); }
-      const l = await executar(tx, `SELECT ${SELECAO_CATALOGO} FROM fiscal.regra_base WHERE ${w.join(' AND ')} ORDER BY id LIMIT ${Math.trunc(f.limite) + 1}`, params);
+      const l = await executar(tx, `SELECT ${SELECAO_CATALOGO} FROM fiscal.regra_base WHERE ${w.join(' AND ')} ORDER BY chave, vigencia_inicio, id LIMIT ${Math.trunc(f.limite) + 1}`, params);
       return l.map(catalogoDe);
     },
     async obter(id) {

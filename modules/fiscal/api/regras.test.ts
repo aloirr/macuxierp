@@ -165,12 +165,12 @@ describe('lista, CSV e resolução', () => {
   });
 });
 
-describe('catálogo base: o fiscal valida e o administrador aplica', () => {
-  const { id: _i, vigencia_inicio: _a, vigencia_fim: _b, ...campos } = regra({ ncm_prefixo: '2202' });
-  const modelo = (p: Partial<CatalogoRegra> = {}): CatalogoRegra => ({ ...campos, id: '00000000-0000-4000-8000-0000000000c1', chave: 'icms-2202', descricao: 'ICMS 18% bebidas', validada_em: '2026-11-27T12:00:00Z', ...p });
-  const corpoAplicar = { vigencia_inicio: '2026-12-01', vigencia_fim: null, confirmo: true };
+describe('catálogo base: carga validada pelo fiscal, aplicada pelo administrador', () => {
+  const campos = regra({ ncm_prefixo: '2202', vigencia_inicio: '2026-12-01' });
+  const modelo = (p: Partial<CatalogoRegra> = {}): CatalogoRegra => ({ ...campos, id: '00000000-0000-4000-8000-0000000000c1', chave: 'icms-2202', titulo: 'ICMS 18% bebidas', descricao: null, ...p });
+  const corpoAplicar = { confirmo: true };
 
-  it('RN-FIS-04: aplicar copia o modelo com a vigência escolhida, publica "aplicada_do_catalogo" com o id do modelo; listar nunca grava', async () => {
+  it('RN-FIS-04: aplicar copia o modelo com a vigência dele, publica "aplicada_do_catalogo" com o id do modelo; listar nunca grava', async () => {
     const m = modelo();
     const { deps, itens } = memoria([], [m]);
     const { c, eventos } = ctx('administrador');
@@ -181,8 +181,8 @@ describe('catálogo base: o fiscal valida e o administrador aplica', () => {
     expect(r.corpo).toMatchObject({ ncm_prefixo: '2202', vigencia_inicio: '2026-12-01', situacao: 'futura' });
     expect(RegraAlteradaV1.parse(eventos[0]?.payload)).toMatchObject({ acao: 'aplicada_do_catalogo', catalogo_id: m.id });
   });
-  it('RN-FIS-04: sem "confirmo" o corpo é recusado; modelo não validado pelo fiscal é 422', async () => {
-    const m = modelo({ validada_em: null });
+  it('RN-FIS-04: sem "confirmo" o corpo é recusado; modelo sem fonte é 422', async () => {
+    const m = modelo({ fonte: null });
     const { deps } = memoria([], [m]);
     const { c } = ctx('administrador');
     await expect(chamar(deps, 'POST', '/catalogo/:id/aplicar', { c, params: { id: m.id }, corpo: { ...corpoAplicar, confirmo: false } })).rejects.toThrow();

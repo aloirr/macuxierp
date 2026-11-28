@@ -146,8 +146,8 @@ export function criarRotasRegras(deps: DependenciasRegras): RotaModulo[] {
         const itens = linhas.map((m): CatalogoLinha => {
           const p = catalogoAplicavel(m);
           return {
-            id: m.id, chave: m.chave, descricao: m.descricao, tributo: m.tributo, codigo: m.codigo, crt: m.crt, uf_origem: m.uf_origem, uf_destino: m.uf_destino,
-            ncm_prefixo: m.ncm_prefixo, fonte: m.fonte, versao: m.versao, validada_em: m.validada_em, aplicavel: p.length === 0, motivo_nao_aplicavel: p[0]?.mensagem ?? null,
+            id: m.id, chave: m.chave, titulo: m.titulo, tributo: m.tributo, codigo: m.codigo, crt: m.crt, uf_origem: m.uf_origem, uf_destino: m.uf_destino,
+            ncm_prefixo: m.ncm_prefixo, fonte: m.fonte, versao: m.versao, vigencia_inicio: m.vigencia_inicio, vigencia_fim: m.vigencia_fim, aplicavel: p.length === 0, motivo_nao_aplicavel: p[0]?.mensagem ?? null,
           };
         });
         return { corpo: paginar(itens, limite) };
@@ -159,7 +159,7 @@ export function criarRotasRegras(deps: DependenciasRegras): RotaModulo[] {
         const linhas = await deps.catalogo(c.tx).listar({ busca: e.consulta.busca, tributo: e.consulta.tributo, limite: MAXIMO_LINHAS_CSV });
         const itens = linhas.slice(0, MAXIMO_LINHAS_CSV).map((m) => {
           const p = catalogoAplicavel(m);
-          return { id: m.id, chave: m.chave, descricao: m.descricao, tributo: m.tributo, codigo: m.codigo, crt: m.crt, uf_origem: m.uf_origem, uf_destino: m.uf_destino, ncm_prefixo: m.ncm_prefixo, fonte: m.fonte, versao: m.versao, validada_em: m.validada_em, aplicavel: p.length === 0, motivo_nao_aplicavel: p[0]?.mensagem ?? null };
+          return { id: m.id, chave: m.chave, titulo: m.titulo, tributo: m.tributo, codigo: m.codigo, crt: m.crt, uf_origem: m.uf_origem, uf_destino: m.uf_destino, ncm_prefixo: m.ncm_prefixo, fonte: m.fonte, versao: m.versao, vigencia_inicio: m.vigencia_inicio, vigencia_fim: m.vigencia_fim, aplicavel: p.length === 0, motivo_nao_aplicavel: p[0]?.mensagem ?? null };
         });
         return csvDaLista(paginaCatalogo, c.sessao.perfil, itens);
       },
@@ -172,12 +172,12 @@ export function criarRotasRegras(deps: DependenciasRegras): RotaModulo[] {
         if (!modelo) throw erros.naoEncontrado('Modelo do catálogo');
         const bloqueios = catalogoAplicavel(modelo);
         if (bloqueios.length > 0) recusar(bloqueios);
-        const { id: _id, chave: _ch, descricao: _de, validada_em: _va, ...campos } = modelo;
-        const entrada = RegraEntrada.parse({ ...campos, vigencia_inicio: e.corpo.vigencia_inicio, vigencia_fim: e.corpo.vigencia_fim });
+        const { id: _id, chave: _ch, titulo: _ti, descricao: _de, ...campos } = modelo;
+        const entrada = RegraEntrada.parse(campos);
         // A regra aplicada passa pelas mesmas conferências do cadastro à mão (vigência, código do CRT, ST).
         const problemas = validarRegraParaCadastro(entrada);
         if (problemas.length > 0) recusar(problemas);
-        const criada = await deps.regras(c.tx).inserir(entrada, hoje(c));
+        const criada = await deps.regras(c.tx).inserir(entrada, hoje(c), modelo.id);
         await efeito(c, 'aplicada_do_catalogo', criada, null, modelo.id);
         return { status: 201, corpo: criada };
       },

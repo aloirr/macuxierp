@@ -69,7 +69,7 @@ export type ItemListaRegra = RegraLinha;
 
 const colunasCatalogo: readonly ColunaFiscal<CatalogoLinha>[] = [
   { id: 'chave', titulo: 'Chave', valor: (c) => c.chave },
-  { id: 'descricao', titulo: 'Descrição', valor: (c) => c.descricao },
+  { id: 'titulo', titulo: 'Título', valor: (c) => c.titulo },
   { id: 'tributo', titulo: 'Tributo', valor: (c) => ROTULO_TRIBUTO[c.tributo] },
   { id: 'ncm_prefixo', titulo: 'NCM', valor: (c) => ou(c.ncm_prefixo) },
   { id: 'uf_destino', titulo: 'UF destino', valor: (c) => ou(c.uf_destino) },
@@ -77,6 +77,8 @@ const colunasCatalogo: readonly ColunaFiscal<CatalogoLinha>[] = [
   { id: 'codigo', titulo: 'CST/CSOSN', tipo: 'numero', valor: (c) => vazio(c.codigo) },
   { id: 'fonte', titulo: 'Fonte', valor: (c) => (c.fonte ? `${c.fonte.tipo} ${c.fonte.referencia}` : '') },
   { id: 'versao', titulo: 'Versão', valor: (c) => c.versao },
+  { id: 'vigencia_inicio', titulo: 'Início', tipo: 'data', valor: (c) => formatarDataCivil(c.vigencia_inicio) },
+  { id: 'vigencia_fim', titulo: 'Fim', tipo: 'data', valor: (c) => (c.vigencia_fim ? formatarDataCivil(c.vigencia_fim) : '') },
   {
     id: 'aplicavel', titulo: 'Situação', tipo: 'status', valor: (c) => (c.aplicavel ? 'Pronta para aplicar' : (c.motivo_nao_aplicavel ?? 'Não aplicável')),
     selos: (c) => [c.aplicavel ? { texto: 'Pronta', tom: 'ok' as const } : { texto: 'Bloqueada', tom: 'erro' as const }],
@@ -91,7 +93,7 @@ export const paginaCatalogo = definirPaginaLista({
   filtros: { tributo: TributoRegra.optional() },
   colunas: colunasCatalogo,
   csv: { arquivo: 'catalogo-fiscal.csv' },
-  vazio: { semFiltro: 'O catálogo base ainda não tem modelos validados.', comFiltro: 'Nenhum modelo com esses filtros.' },
+  vazio: { semFiltro: 'O catálogo base ainda não tem modelos.', comFiltro: 'Nenhum modelo com esses filtros.' },
 });
 
 export type TipoPaginaFiscal = 'lista' | 'catalogo' | 'nova' | 'detalhe';

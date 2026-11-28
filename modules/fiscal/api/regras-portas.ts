@@ -20,7 +20,7 @@ export interface RepositorioRegras {
   listar(f: FiltroListaRegras): Promise<RegraLinha[]>;
   listarTodos(f: Omit<FiltroListaRegras, 'cursor' | 'limite'>, maximo: number): Promise<RegraLinha[]>;
   obter(id: string, hoje: string): Promise<RegraDetalhe | null>;
-  inserir(r: RegraEntrada, hoje: string): Promise<RegraDetalhe>;
+  inserir(r: RegraEntrada, hoje: string, regraBaseId?: string): Promise<RegraDetalhe>;
   /** `ifMatch` = o `updated_at` lido. `'conflito'` = a regra mudou depois; `null` = não existe. */
   atualizar(id: string, r: RegraEntrada, ifMatch: string, hoje: string): Promise<RegraDetalhe | 'conflito' | null>;
   /** Exclusão lógica (`deleted_at`); devolve a regra como estava, para o evento e a auditoria. */

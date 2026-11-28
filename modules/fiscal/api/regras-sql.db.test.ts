@@ -1,13 +1,13 @@
 /**
  * Cadastro de regras contra o PostgreSQL real (papel macuxierp_app, RLS por tenant). Sem Postgres o teste pula (falha com `MACUXI_PG_EXIGIR=1`).
- * O trecho do `ajustar_mva` nulo depende da migração 0082 (banco-dados): sem ela a coluna ainda é NOT NULL e o teste daquele trecho pula.
+ * Exige a migração 0082 (catálogo `fiscal.regra_base`, `regra_base_id` e `ajustar_mva` sem padrão).
  */
 import type { BancoPg } from '@macuxierp/platform-sdk/pg';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { RegraEntrada } from '../contracts';
 import { regra } from '../domain/fixtures';
-import { repositorioRegrasSql } from './regras-sql';
+import { repositorioCatalogoSql, repositorioRegrasSql } from './regras-sql';
 
 const entrada = (p: Partial<RegraEntrada> = {}): RegraEntrada => {
   const { id: _id, ...r } = regra();
@@ -19,7 +19,7 @@ describe.skipIf(!PG_DISPONIVEL)('cadastro de regras fiscais (PostgreSQL real)', 
   let app: BancoPg;
   let A: string;
   let B: string;
-  let ajusteNulavel = false;
+  let REF: string;
   const HOJE = '2026-11-28';
 
   beforeAll(async () => {
@@ -27,8 +27,7 @@ describe.skipIf(!PG_DISPONIVEL)('cadastro de regras fiscais (PostgreSQL real)', 
     app = efemero.banco('macuxierp_app');
     A = await criarTenant(efemero.admin, 'reg-a', ['fiscal']);
     B = await criarTenant(efemero.admin, 'reg-b', ['fiscal']);
-    const nulo = await efemero.admin.query(`SELECT is_nullable FROM information_schema.columns WHERE table_schema = 'fiscal' AND table_name = 'regra_tributaria' AND column_name = 'ajustar_mva'`);
-    ajusteNulavel = nulo.rows[0]?.is_nullable === 'YES';
+    REF = (await efemero.admin.query('SELECT plataforma.tenant_referencia() AS id')).rows[0].id as string;
   }, 120_000);
   afterAll(async () => {
     await efemero?.remover();
@@ -67,8 +66,50 @@ describe.skipIf(!PG_DISPONIVEL)('cadastro de regras fiscais (PostgreSQL real)', 
     const fut = await app.comTenant(A, (tx) => repositorioRegrasSql(tx).listar({ limite: 50, hoje: '2026-01-01', situacao: 'futura' }));
     expect(fut.length).toBeGreaterThan(0);
   });
-  it.skipIf(!ajusteNulavel)('RN-FIS-05: ajustar_mva nulo grava e volta nulo (migração 0082, sem default)', async () => {
+  it('RN-FIS-05: ajustar_mva nulo grava e volta nulo (0082, sem default)', async () => {
     const c = await app.comTenant(A, (tx) => repositorioRegrasSql(tx).inserir(entrada({ ncm_prefixo: '6606', ajustar_mva: null, vigencia_inicio: '2026-05-01' }), HOJE));
     expect(c.ajustar_mva).toBeNull();
+  });
+
+  describe('catálogo regra_base (0082)', () => {
+    let baseId: string;
+    const base = async (chave: string, extra = '') => {
+      const r = await efemero.admin.query(
+        `INSERT INTO fiscal.regra_base (tenant_id, chave, titulo, tributo, codigo, aliquota_icms, ajustar_mva, fonte_tipo, fonte_referencia, versao, vigencia_inicio ${extra ? ', ' + extra.split('|')[0] : ''})
+         VALUES ($1, $2, 'ICMS interno 18%', 'icms', '00', 180000, null, 'convenio', 'Convênio ICMS 142/2018', '2026.1', '2026-01-01' ${extra ? ', ' + extra.split('|')[1] : ''}) RETURNING id`,
+        [REF, chave],
+      );
+      return r.rows[0].id as string;
+    };
+    beforeAll(async () => {
+      baseId = await base('icms-interno-18');
+    });
+    it('RN-FIS-04: todo tenant lê o catálogo e vê a vigência e a fonte', async () => {
+      for (const t of [A, B]) {
+        const l = await app.comTenant(t, (tx) => repositorioCatalogoSql(tx).listar({ limite: 10 }));
+        expect(l).toHaveLength(1);
+        expect(l[0]).toMatchObject({ id: baseId, chave: 'icms-interno-18', titulo: 'ICMS interno 18%', descricao: null, vigencia_inicio: '2026-01-01', fonte: { tipo: 'convenio' } });
+      }
+      expect((await app.comTenant(A, (tx) => repositorioCatalogoSql(tx).obter(baseId)))?.id).toBe(baseId);
+    });
+    it('RN-FIS-04: aplicar guarda regra_base_id e uma só regra viva por base no tenant (409 na segunda)', async () => {
+      const modelo = (await app.comTenant(A, (tx) => repositorioCatalogoSql(tx).obter(baseId)))!;
+      const { id: _i, chave: _c, titulo: _t, descricao: _d, ...campos } = modelo;
+      const criada = await app.comTenant(A, (tx) => repositorioRegrasSql(tx).inserir(campos, HOJE, baseId));
+      const origem = await efemero.admin.query('SELECT regra_base_id FROM fiscal.regra_tributaria WHERE id = $1', [criada.id]);
+      expect(origem.rows[0].regra_base_id).toBe(baseId);
+      await expect(app.comTenant(A, (tx) => repositorioRegrasSql(tx).inserir(campos, HOJE, baseId))).rejects.toMatchObject({ status: 409 });
+    });
+    it('RN-FIS-05: o banco recusa ST interestadual no catálogo; o tenant não grava no catálogo', async () => {
+      await expect(
+        efemero.admin.query(
+          `INSERT INTO fiscal.regra_base (tenant_id, chave, titulo, tributo, codigo, mva_original, aliquota_interna_destino, uf_origem, uf_destino, fonte_tipo, fonte_referencia, versao, vigencia_inicio)
+           VALUES ($1, 'st-inter', 'ST', 'icms', '10', 400000, 180000, 'AM', 'SP', 'convenio', 'x', '1', '2026-01-01')`,
+          [REF],
+        ),
+      ).rejects.toThrow();
+      await expect(app.comTenant(A, (tx) => tx.consultar(`UPDATE fiscal.regra_base SET titulo = 'x'`))).rejects.toThrow(/permission denied/);
+      expect((await efemero.admin.query('SELECT titulo FROM fiscal.regra_base WHERE id = $1', [baseId])).rows[0].titulo).toBe('ICMS interno 18%');
+    });
   });
 });

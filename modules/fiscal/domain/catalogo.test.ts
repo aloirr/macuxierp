@@ -8,8 +8,7 @@ const entrada = (p: Partial<RegraEntrada> = {}): RegraEntrada => {
   return { ...r, ...p };
 };
 const modelo = (p: Partial<CatalogoRegra> = {}): CatalogoRegra => {
-  const { id: _i, vigencia_inicio: _a, vigencia_fim: _b, ...r } = regra();
-  return { ...r, id: '00000000-0000-4000-8000-0000000000c1', chave: 'icms-interno-18', descricao: 'ICMS interno 18%', validada_em: '2026-11-28T10:00:00Z', ...p };
+  return { ...regra(), chave: 'icms-interno-18', titulo: 'ICMS interno 18%', descricao: null, ...p };
 };
 const ST = { codigo: '10', mva_original: 400000, aliquota_interna_destino: 180000 } as const;
 
@@ -52,8 +51,8 @@ describe('catalogoAplicavel', () => {
     expect(catalogoAplicavel(modelo({ ...ST, uf_origem: 'AM', uf_destino: 'SP', ajustar_mva: true }))[0]).toMatchObject({ rn: 'RN-FIS-05', codigo: 'CODIGO_NAO_SUPORTADO', campo: 'uf_destino' });
     expect(catalogoAplicavel(modelo({ ...ST, ajustar_mva: true }))[0]).toMatchObject({ codigo: 'CODIGO_NAO_SUPORTADO' });
   });
-  it('RN-FIS-04: modelo sem validação do fiscal ou sem fonte não é aplicável', () => {
-    expect(catalogoAplicavel(modelo({ validada_em: null }))[0]).toMatchObject({ campo: 'validada_em' });
+  it('RN-FIS-04: modelo sem fonte ou com vigência invertida não é aplicável', () => {
+    expect(catalogoAplicavel(modelo({ vigencia_inicio: '2026-05-01', vigencia_fim: '2026-04-30' }))[0]).toMatchObject({ campo: 'vigencia_fim' });
     expect(catalogoAplicavel(modelo({ fonte: null }))[0]).toMatchObject({ codigo: 'REGRA_SEM_FONTE' });
   });
   it('RN-FIS-05: ehRegraSt reconhece pelo código, pela alíquota interna de destino ou pela MVA', () => {

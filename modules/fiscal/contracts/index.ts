@@ -545,9 +545,8 @@ export const RegraLinha = z.object({
 });
 export type RegraLinha = z.infer<typeof RegraLinha>;
 
-/** Item do catálogo (`fiscal.regra_base`): regra-modelo global, com a chave e a descrição. Sem tenant, sem vigência própria (o administrador informa ao aplicar). */
-export const CatalogoRegra = CamposRegra.omit({ id: true, vigencia_inicio: true, vigencia_fim: true })
-  .extend({ id: z.string().uuid(), chave: z.string().min(1).max(80), descricao: z.string().min(1).max(200), validada_em: z.string().nullable() })
+/** Item do catálogo (`fiscal.regra_base`, 0082): linha no tenant de referência, lida por todo tenant, com as colunas de negócio da regra (inclusive a vigência) mais chave, título e descrição. Vigência nova = linha nova com a mesma chave. */
+export const CatalogoRegra = CamposRegra.extend({ chave: z.string().min(1).max(80), titulo: z.string().min(1).max(120), descricao: z.string().min(1).max(1000).nullable() })
   .refine(codigoDoIcms, MSG_CODIGO);
 export type CatalogoRegra = z.infer<typeof CatalogoRegra>;
 
@@ -555,7 +554,7 @@ export type CatalogoRegra = z.infer<typeof CatalogoRegra>;
 export const CatalogoLinha = z.object({
   id: z.string().uuid(),
   chave: z.string(),
-  descricao: z.string(),
+  titulo: z.string(),
   tributo: TributoRegra,
   codigo: z.string().nullable(),
   crt: Crt.nullable(),
@@ -564,14 +563,15 @@ export const CatalogoLinha = z.object({
   ncm_prefixo: z.string().nullable(),
   fonte: FonteRegra.nullable(),
   versao: z.string(),
-  validada_em: z.string().nullable(),
+  vigencia_inicio: z.string(),
+  vigencia_fim: z.string().nullable(),
   aplicavel: z.boolean(),
   motivo_nao_aplicavel: z.string().nullable(),
 });
 export type CatalogoLinha = z.infer<typeof CatalogoLinha>;
 
-/** Aplicar uma regra do catálogo ao tenant: copia a regra com a vigência escolhida; `confirmo` evita aplicação por engano. */
-export const AplicarCatalogoEntrada = z.object({ vigencia_inicio: DataCivil, vigencia_fim: DataCivil.nullable().default(null), confirmo: z.literal(true) });
+/** Aplicar uma regra do catálogo ao tenant: copia a linha (com a vigência dela) e guarda `regra_base_id`; `confirmo` evita aplicação por engano. */
+export const AplicarCatalogoEntrada = z.object({ confirmo: z.literal(true) });
 export type AplicarCatalogoEntrada = z.infer<typeof AplicarCatalogoEntrada>;
 
 /** `fiscal.regra.alterada@1`: sem dado pessoal; o consumidor relê a regra pela API se precisar do conteúdo. */
