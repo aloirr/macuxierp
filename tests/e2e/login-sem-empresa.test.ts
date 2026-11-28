@@ -5,23 +5,21 @@
  * Duas partes:
  * 1. Estática: nenhum formulário de acesso tem o campo empresa. São eles a entrada "/" (sem sessão, vai ao /login), o
  *    "Esqueci a senha" (painel do /login), a troca de senha (/senha e /config/senha) e o primeiro acesso (/senha com
- *    `deve_trocar_senha` ou com a temporária). O detector roda já, contra trechos fictícios; a varredura das telas
- *    liga com `TELA_T0133_ENTROU = true` no PR casado do web (regra 5 da revisão casada), e daí falha se o campo voltar.
- * 2. Roteiro das telas com o Playwright, em `it.todo` até a tela da T-0133 entrar.
+ *    `deve_trocar_senha` ou com a temporária). O detector roda contra trechos fictícios e contra as telas reais (a tela
+ *    da T-0133 entrou no #919): falha se o campo voltar.
+ * 2. As telas com o Playwright, contra o web (next dev) e a API real (`tests/e2e/api-login-config.ts`, Postgres local):
+ *    `bash tests/e2e/rodar-login-sem-empresa.sh`. Sem `MACUXI_E2E_BASE` e `MACUXI_E2E_DADOS` (o `pnpm test:tests`), pulam.
  *
  * Só dado fictício; nenhum e-mail em log (LGPD).
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join, relative } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { MENSAGEM_EMPRESA_SUSPENSA, MENSAGEM_ESQUECI_NEUTRA } from '../../packages/platform-sdk/src/index';
+import { entrar } from './apoio-e2e.mjs';
 
 const RAIZ = join(__dirname, '../..');
-
-/**
- * Liga a varredura das telas reais. Fica `false` enquanto o web ainda pede a empresa (v0.3.29); o testes troca para
- * `true` no PR da tela da T-0133, revisado junto com o da API.
- */
-const TELA_T0133_ENTROU = false;
 
 /** Fontes dos formulários de acesso, sem os testes. Pasta ou arquivo, relativos à raiz. */
 const FORMULARIOS_DE_ACESSO = [
@@ -94,21 +92,108 @@ describe('T-0133: nenhum formulário de acesso tem o campo empresa (ADR 0021)', 
     expect(faltam).toEqual([]);
   });
 
-  it.runIf(TELA_T0133_ENTROU)('entrada "/", esqueci, troca de senha e primeiro acesso: só e-mail e senha', () => {
+  it('entrada "/", esqueci, troca de senha e primeiro acesso: só e-mail e senha', () => {
     const arquivos = FORMULARIOS_DE_ACESSO.flatMap(fontes).map((f) => ({ arquivo: relative(RAIZ, f), texto: readFileSync(f, 'utf8') }));
     expect(arquivos.length).toBeGreaterThan(5);
     expect(camposEmpresa(arquivos)).toEqual([]);
   });
 });
 
+/** Web e dados da API do e2e (`rodar-login-sem-empresa.sh`); sem eles, as telas pulam. */
+const BASE = process.env.MACUXI_E2E_BASE ?? '';
+const DADOS = process.env.MACUXI_E2E_DADOS ?? '';
+
+interface Conta {
+  email: string;
+  senha: string;
+}
+interface DadosE2e {
+  administrador: Conta;
+  superadmin: Conta;
+  suspensa: Conta;
+}
+/** O que o roteiro usa da página do Playwright (o pacote não tem tipos na raiz). */
+interface Pagina {
+  goto(url: string): Promise<unknown>;
+  url(): string;
+  waitForURL(f: (u: URL) => boolean, o?: { timeout: number }): Promise<void>;
+  setDefaultTimeout(ms: number): void;
+  locator(s: string): { count(): Promise<number>; waitFor(o?: { timeout: number }): Promise<void> };
+  getByLabel(t: string, o?: { exact: boolean }): { count(): Promise<number>; fill(v: string): Promise<void> };
+  getByRole(r: string, o: { name: string; exact?: boolean }): { click(): Promise<void>; waitFor(o?: { timeout: number }): Promise<void> };
+  getByText(t: string, o?: { exact: boolean }): { waitFor(o?: { timeout: number }): Promise<void> };
+  context(): { close(): Promise<void> };
+}
+interface Navegador {
+  newContext(o: object): Promise<{ newPage(): Promise<Pagina> }>;
+  close(): Promise<void>;
+}
+
 /**
- * Roteiro das telas com o Playwright (`tests/e2e/`), em `it.todo` até a tela da T-0133 entrar; a API fica em
- * tests/integracao/auth/login-email.db.test.ts e no apps/api/src/login-email.db.test.ts. Dados fictícios
- * (`@exemplo.invalid`); o `entrar` de `tests/e2e/apoio-e2e.mjs` deixa de preencher a Empresa.
+ * As telas do login sem empresa (ADR 0021), com o Chromium já instalado (`require('playwright')`). Dados fictícios
+ * (`@exemplo.invalid`). A API fica em tests/integracao/auth/login-email.db.test.ts e no apps/api/src/login-email.db.test.ts.
  */
-describe('T-0133: roteiro das telas do login sem empresa (Playwright)', () => {
-  it.todo('/login só com E-mail e Senha: o usuário de empresa entra e a tela abre o BKO da empresa dele');
-  it.todo('/login: o e-mail só de superadmin entra e a tela abre o /config');
-  it.todo('/login: a empresa suspensa, com a senha certa, mostra a mensagem MENSAGEM_EMPRESA_SUSPENSA do SDK e não abre sessão');
-  it.todo('"Esqueci a senha" só com o E-mail mostra a MENSAGEM_ESQUECI_NEUTRA do SDK');
+describe.runIf(BASE !== '' && DADOS !== '')('T-0133: as telas do login sem empresa (Playwright, API real)', () => {
+  let navegador: Navegador;
+  let dados: DadosE2e;
+  const caminho = (p: Pagina) => new URL(p.url()).pathname;
+  const novaPagina = async (): Promise<Pagina> => {
+    const ctx = await navegador.newContext({ viewport: { width: 1366, height: 800 }, locale: 'pt-BR', timezoneId: 'America/Manaus' });
+    const p = await ctx.newPage();
+    p.setDefaultTimeout(90_000); // o next dev compila cada página no primeiro acesso
+    return p;
+  };
+  /** Nenhuma tela de acesso pede a empresa: nem `name="empresa"` nem o rótulo Empresa. */
+  const semEmpresa = async (p: Pagina) => {
+    await p.locator('form input[name="email"]').waitFor();
+    expect((await p.locator('input[name="empresa"]').count()) + (await p.getByLabel('Empresa').count())).toBe(0);
+  };
+
+  beforeAll(async () => {
+    const { chromium } = createRequire(import.meta.url)('playwright') as { chromium: { launch(): Promise<Navegador> } };
+    navegador = await chromium.launch();
+    dados = JSON.parse(readFileSync(DADOS, 'utf8')) as DadosE2e;
+  }, 120_000);
+  afterAll(async () => {
+    await navegador?.close();
+  });
+
+  it('usuário de empresa: só e-mail e senha, e a tela abre o BKO', async () => {
+    const p = await novaPagina();
+    await p.goto(`${BASE}/`);
+    await semEmpresa(p);
+    await entrar(p, BASE, dados.administrador);
+    await p.getByRole('heading', { name: 'Início' }).waitFor({ timeout: 60_000 });
+    expect(caminho(p)).toBe('/');
+    await p.context().close();
+  }, 180_000);
+
+  it('o e-mail só de superadmin: só e-mail e senha, e a tela abre o /config', async () => {
+    const p = await novaPagina();
+    await entrar(p, BASE, dados.superadmin);
+    await p.waitForURL((u) => u.pathname.startsWith('/config'), { timeout: 60_000 });
+    expect(caminho(p).startsWith('/config')).toBe(true);
+    await p.context().close();
+  }, 180_000);
+
+  it('empresa suspensa, senha certa: a tela mostra a mensagem do SDK e fica no login', async () => {
+    const p = await novaPagina();
+    await entrar(p, BASE, dados.suspensa);
+    await p.getByText(MENSAGEM_EMPRESA_SUSPENSA, { exact: true }).waitFor({ timeout: 60_000 });
+    expect(caminho(p)).toBe('/');
+    await semEmpresa(p);
+    await p.context().close();
+  }, 180_000);
+
+  it('"Esqueci a senha" só com o e-mail: a tela mostra a confirmação neutra do SDK', async () => {
+    const p = await novaPagina();
+    await p.goto(`${BASE}/`);
+    await semEmpresa(p);
+    await p.getByRole('button', { name: 'Esqueci a senha' }).click();
+    expect((await p.locator('input[name="empresa"]').count()) + (await p.getByLabel('Empresa').count())).toBe(0);
+    await p.getByLabel('E-mail').fill(`ninguem-e2e-login@exemplo.invalid`);
+    await p.getByRole('button', { name: 'Enviar senha temporária' }).click();
+    await p.getByText(MENSAGEM_ESQUECI_NEUTRA, { exact: true }).waitFor({ timeout: 60_000 });
+    await p.context().close();
+  }, 180_000);
 });
