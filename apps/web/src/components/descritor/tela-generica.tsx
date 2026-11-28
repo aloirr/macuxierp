@@ -57,12 +57,26 @@ export async function TelaGenerica({ tela, titulo, rotaDaPagina, rota, params, b
       }
       return <DetalheGenerico vista={vista} rota={rota} rotaDaPagina={rotaDaPagina} voltar={tela.voltar} />;
     }
-    const campos = tela.campos.filter((c) => c.tipo === 'cadastro' && c.fonte);
+    const todos = tela.camposDoPerfil?.(perfil) ?? tela.campos;
+    const campos = todos.filter((c) => c.tipo === 'cadastro' && c.fonte);
+    // Edição: abre com o registro (valores iniciais e original para o diff do PATCH); sem registro, 404.
+    let aberto: { valores: Readonly<Record<string, string>>; original: unknown; id: string } | undefined;
+    if (tela.edicao) {
+      const id = params.id ?? '';
+      if (!UUID.safeParse(id).success) notFound();
+      const dados = await buscarRegistro(tela.edicao.ler(id), z.unknown(), acesso, 'detalhe');
+      if (dados === null) notFound();
+      try {
+        aberto = { ...tela.edicao.abrir(dados), id };
+      } catch {
+        throw new ApiIndisponivel('registro fora do contrato');
+      }
+    }
     const [listas, produtos] = await Promise.all([
       Promise.all(campos.map((c) => opcoes(c.fonte ?? '', acesso, perfil))),
       tela.itens ? opcoes(tela.itens.fonte, acesso, perfil) : Promise.resolve([]),
     ]);
-    return <FormularioGenerico rota={rotaDaPagina} opcoes={Object.fromEntries(campos.map((c, i) => [c.nome, listas[i] ?? []]))} produtos={produtos} />;
+    return <FormularioGenerico rota={rotaDaPagina} opcoes={Object.fromEntries(campos.map((c, i) => [c.nome, listas[i] ?? []]))} produtos={produtos} perfil={perfil} campos={todos} aberto={aberto} />;
   } catch (e) {
     if (e instanceof NaoAutenticado) redirect('/sessao/renovar');
     if (e instanceof TrocarSenhaPendente) redirect(ROTA_SENHA);

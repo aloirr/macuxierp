@@ -1,4 +1,4 @@
-import { PAGINAS } from '@macuxierp/cadastros/web';
+import { PAGINAS, PAGINAS_EDICAO } from '@macuxierp/cadastros/web';
 import { PAGINAS_CORE } from '@macuxierp/core/web';
 import { PAGINAS_FATURAMENTO } from '@macuxierp/faturamento/web';
 import { PAGINAS_INTEGRACAO_FDV } from '@macuxierp/integracao-fdv/web';
@@ -25,6 +25,8 @@ export const PAGINAS_REGISTRADAS: readonly PaginaRegistrada[] = [
   // Usuário novo (T-0087): formulário fora do menu, aberto pelo botão "Novo usuário" da lista (só quem gerencia usuários).
   registrar('core', { menu: 'Usuários e perfis', titulo: 'Novo usuário', rota: ROTA_USUARIO_NOVO, ver: 'core.usuario.gerir' }, { ocultaNoMenu: true }),
   ...PAGINAS.map((p) => registrar('cadastros', p)),
+  // Clientes (v0.3.28): novo e edição ligados; as demais telas de edição do cadastros entram com a T-0123 (v0.3.29).
+  ...PAGINAS_EDICAO.filter((p) => p.menu === 'Clientes').map((p) => registrar('cadastros', p)),
   // Carga de cadastros (T-0058): saiu do BKO; é feita na aba Cargas do /config (superadmin). A API /v1/cadastros/cargas continua.
   // Pedido (T-0015): detalhe `/:id` e "novo" abrem pela URL sem item de menu; `/novo` vence `/:id` por ser rota exata (casarRota).
   // O módulo já marca `ocultaNoMenu` em novo e detalhe (#135), mas não no editar; até marcar, o shell aplica a ponte (o campo do módulo vence).

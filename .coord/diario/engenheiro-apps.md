@@ -60,3 +60,4 @@
 2026-11-27 — v0.3.18 — ResultadoAcao logo abaixo do botão em todas as telas do apps/web (36 A): /config, login, esqueci/troca de senha, formulário e ações do BKO; pendências do #758 (licença)
 2026-11-27 — v0.3.19 — sobras da aba Integração: RD-2338/2339, respiro Log/Ações, textos de retorno no formato do README
 2026-11-27 — v0.3.28 — web: shell no padrão da marca (MC-0201 a MC-0210, decisão 54); MC-0212 sem tabela a converter
+2026-11-27 — v0.3.28 — tela de Clientes ligada no BKO (lista, novo, edição por PATCH) e h1 a 4 px da saudação (MC-0216)
