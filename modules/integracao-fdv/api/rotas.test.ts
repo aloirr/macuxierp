@@ -12,6 +12,8 @@ describe('plugin de rotas do integracao-fdv (BKO só leitura, ADR 0013 seção 6
       [
         'GET /monitor integracao-fdv.ver',
         'GET /status integracao-fdv.ver',
+        // T-0131: contadores, histórico de envios e Contato da ligação ERP → Macuxi FDV
+        'GET /ligacoes integracao-fdv.ver',
         'GET /clientes-recebidos integracao-fdv.ver',
         'GET /clientes-recebidos/exportar integracao-fdv.ver',
         'GET /lotes integracao-fdv.ver',

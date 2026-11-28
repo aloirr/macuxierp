@@ -5,7 +5,7 @@
  * sem "Excluir". Também gera os prints (deviceScaleFactor 2, 1366 e 390) da aba Empresa, da aba Integrações e do BKO Usuários.
  * A API falsa aplica a RN-CORE-01 e a RN-CORE-17 só para devolver `acoes` e `ultimo_admin_ativo`, como o core; a tela não recalcula.
  * Fora do vitest (não é *.test.ts). Playwright já instalado. Sobe `next dev` na porta pedida.
- *   node e2e/config-usuarios.mjs [--porta 3192] [--api 4012] [--prints <pasta>]
+ *   node --experimental-transform-types --no-warnings e2e/config-usuarios.mjs [--porta 3192] [--api 4012] [--prints <pasta>]
  * Sai 0 se tudo passou; 1 se algum passo falhou.
  */
 import { spawn } from 'node:child_process';
@@ -14,6 +14,7 @@ import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { CODIGO_EMAIL_EM_USO, MENSAGEM_EMAIL_EM_USO } from '@macuxierp/platform-sdk/erros';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -61,7 +62,7 @@ const usadas = new Set();
 const enviar = (res, status, corpo) => { res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(corpo)); };
 const erro = (res, status, codigo, mensagem) => enviar(res, status, { codigo, mensagem });
 const MSG_ULTIMO = 'A empresa precisa de ao menos um administrador ativo';
-const MSG_EMAIL = 'Este e-mail já está em uso em outra empresa. Use outro e-mail.'; // MENSAGEM_EMAIL_EM_USO do SDK (ADR 0021)
+const MSG_EMAIL = MENSAGEM_EMAIL_EM_USO; // texto do contrato do SDK (ADR 0021 §1), não copiado à mão
 const api = createServer((req, res) => {
   let corpo = '';
   req.on('data', (d) => { corpo += d; });
@@ -82,7 +83,7 @@ const api = createServer((req, res) => {
         if (!chave || usadas.has(chave)) return erro(res, 409, 'CONFLITO', 'Requisição já concluída');
         usadas.add(chave);
         const c = JSON.parse(corpo || '{}');
-        if (c.email === 'ana@exemplo.com') return enviar(res, 409, { codigo: 'CONFLITO', mensagem: MSG_EMAIL, detalhes: { codigo: 'email_em_uso' } });
+        if (c.email === 'ana@exemplo.com') return enviar(res, 409, { codigo: 'CONFLITO', mensagem: MSG_EMAIL, detalhes: { codigo: CODIGO_EMAIL_EM_USO } });
         novos += 1;
         const u = base(`7d8e9f0a-4b52-4d6e-9f0a-3b4c5d6e7f${String(novos).padStart(2, '0')}`, c.nome, c.perfil, { ultimo_acesso_em: null, deve_trocar_senha: true });
         usuarios.push(u);
@@ -175,7 +176,7 @@ try {
   const consoleDoNavegador = []; // regra 9: a senha provisória nunca passa pelo console
   p.on('console', (m) => consoleDoNavegador.push(m.text()));
   await abrir(p, `/config/empresas/${EMP}`);
-  if ((await p.locator('#h-usuarios').count()) === 0) console.log(`pagina: ${p.url()} :: ${(await p.locator('body').innerText()).slice(0, 600)}`);
+  if ((await p.locator('#h-usuarios').count()) === 0) console.log(`pagina: ${new URL(p.url()).pathname} sem o bloco Usuários`); // sem o corpo da página no log
   confere((await p.locator('#h-usuarios').count()) === 1, 'a aba Empresa mostra o bloco Usuários');
   confere((await p.getByText('último administrador').count()) === 1, 'a etiqueta "último administrador" aparece uma vez (Ana)');
   await menu(p, 'Ana Exemplo');
@@ -193,12 +194,12 @@ try {
   await p.getByRole('button', { name: 'Adicionar usuário' }).click();
   await p.getByRole('dialog').getByLabel('Nome', { exact: true }).fill('Diego Exemplo');
   await p.getByRole('dialog').getByLabel('E-mail', { exact: true }).fill('ana@exemplo.com');
-  await p.getByRole('button', { name: 'Criar usuário' }).click();
+  await p.getByRole('button', { name: 'Criar', exact: true }).click();
   await p.getByText(MSG_EMAIL).waitFor();
   confere(true, '409 email_em_uso: o texto do SDK no diálogo, que continua aberto');
   await p.getByRole('dialog').locator('input[type="email"]').fill('diego@exemplo.com');
   await p.getByRole('dialog').getByLabel('Perfil').selectOption('vendedor');
-  await p.getByRole('button', { name: 'Criar usuário' }).click();
+  await p.getByRole('button', { name: 'Criar', exact: true }).click();
   await p.getByTestId('senha-provisoria').waitFor();
   confere((await p.getByTestId('senha-provisoria').innerText()) === SENHA, 'a senha provisória aparece no diálogo');
   if (PRINTS) await p.screenshot({ path: join(PRINTS, 'empresa-usuarios-senha-1366.png') });

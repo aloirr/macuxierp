@@ -26,6 +26,12 @@ describe('T-0135: um botão por bloco', () => {
     expect(render(dados({}, false))).not.toMatch(/>Salvar<\/button>/);
     expect(render()).toMatch(/>Salvar<\/button>/);
   });
+  it('RD-2423: sem chave salva, uma frase no lugar da tabela de "Desligado"; com chave, a tabela', () => {
+    const sem = render(dados({}, false));
+    expect(sem).toContain('Salve a chave para enviar os cadastros ao Macuxi FDV.');
+    expect(sem).not.toContain('Desligado');
+    expect(render()).not.toContain('Salve a chave');
+  });
   it('sem último envio a linha "Último envio: —" não sobe para sob o nome', () => {
     expect(render()).not.toContain('Último envio: —');
   });

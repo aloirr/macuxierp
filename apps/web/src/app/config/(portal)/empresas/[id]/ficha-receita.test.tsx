@@ -107,7 +107,8 @@ describe('Ficha da Receita editável na aba Empresa (RN-CORE-16, v0.3.24)', () =
   });
   it('CNAE: a descrição oficial aparece sob o campo enquanto o código é o salvo; sem descrição, só a dica', () => {
     const h = render({ ...ficha, cnae_principal_descricao: 'COMÉRCIO VAREJISTA', cnae_secundarios_descritos: [{ codigo: '4712100', descricao: 'MINIMERCADOS' }, { codigo: '4781400', descricao: null }] });
-    expect(h).toContain('4711-3/02 · COMÉRCIO VAREJISTA');
+    expect(h).toContain('COMÉRCIO VAREJISTA</span>'); // RD-2425: o código só no campo, formatado
+    expect(valorDe(h, 'cnae_principal')).toBe('4711-3/02');
     expect(h).toContain('<li>4712-1/00 · MINIMERCADOS</li>');
     expect(h).not.toContain('<li>4781-4/00</li>'); // sem descrição: o código já está no campo, formatado (T-0134)
     expect(h).not.toContain('>4712100'); // o código cru não aparece

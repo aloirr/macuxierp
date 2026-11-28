@@ -17,7 +17,8 @@ import { NOME_CSV_RECEBIDOS_LOG, csvDeRecebidosLog, nomeDoCsvDoLog, textoRecebid
 import { paginaLotes, paginaLotesNoFuso } from '../web/paginas';
 import { MAXIMO_LINHAS_CSV, contarClientesRecebidos, lerLinhasClientesRecebidos, lerRecebidosParaExportar, listarClientesRecebidos } from './clientes-recebidos';
 import { entidadeDaRota, lerInsumosLog } from './operacao';
-import { lerMonitor, listarErrosDoLote, listarLotes, loteExiste } from './monitor';
+import { lerLigacoes } from './ligacoes';
+import { lerMonitor,listarErrosDoLote, listarLotes, loteExiste } from './monitor';
 import { lerStatus } from './status';
 
 const Uuid = z.string().uuid();
@@ -59,6 +60,13 @@ export function criarRotas(): RotaModulo[] {
       metodo: 'GET', caminho: '/monitor', acao: 'integracao-fdv.ver',
       async executar(c) {
         return { corpo: await lerMonitor(c.tx, tenant(c)) };
+      },
+    }),
+    // T-0131 (RN-INF-13): contadores Enviados/Aceitos, histórico de envios e cabeçalho do Contato da ligação ERP → Macuxi FDV.
+    definirRota({
+      metodo: 'GET', caminho: '/ligacoes', acao: 'integracao-fdv.ver',
+      async executar(c) {
+        return { corpo: await lerLigacoes(c.tx, tenant(c), c.agora) };
       },
     }),
     definirRota({

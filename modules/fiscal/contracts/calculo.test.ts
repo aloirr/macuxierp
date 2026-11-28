@@ -20,6 +20,10 @@ describe('contrato fiscal.calculo@1', () => {
     const r = CalculoEntrada.parse(entradaOk);
     expect(r.itens[0]).toMatchObject({ desconto_centavos: 0, frete_centavos: 0, ipi_centavos: 0 });
     expect(r.regras[0]).toMatchObject({ mod_bc: 3, mva_original: null, ajustar_mva: false });
+    // RN-FIS-05: ajustar_mva não tem default (nulo = não informado; ausente é recusado).
+    const { ajustar_mva: _a, ...semAjuste } = regraOk;
+    expect(RegraTributaria.safeParse(semAjuste).success).toBe(false);
+    expect(RegraTributaria.safeParse({ ...regraOk, ajustar_mva: null }).success).toBe(true);
   });
   it('RN-FIS-01: entrada inválida (NCM curto, CRT 5, valor fracionado, sem itens, UF minúscula)', () => {
     expect(ItemCalculo.safeParse({ ...itemOk, ncm: '2202' }).success).toBe(false);

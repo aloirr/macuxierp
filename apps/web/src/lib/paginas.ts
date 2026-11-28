@@ -4,6 +4,7 @@ import { PAGINAS_FATURAMENTO } from '@macuxierp/faturamento/web';
 import { PAGINAS_INTEGRACAO_FDV } from '@macuxierp/integracao-fdv/web';
 import { PAGINAS_PEDIDO } from '@macuxierp/pedido/web';
 import { ROTA_BANDEIRA } from './telas/bandeira';
+import { PAGINAS_CADASTROS_OUTROS, ROTAS_DO_ADAPTADOR } from './telas/cadastros-outros';
 import { ROTA_USUARIO_NOVO } from './telas/core';
 import { paginaVisivel, type ModuloId, type PaginaBase, type Perfil } from '@macuxierp/platform-sdk';
 
@@ -26,7 +27,7 @@ function registrar(modulo: ModuloId, p: PaginaBase, extra: { ocultaNoMenu?: bool
  * Para voltar ao menu, tire a rota da lista no dia em que a tela entrar.
  */
 export const ROTAS_SEM_TELA: ReadonlySet<string> = new Set([
-  '/cadastros/estoque', '/cadastros/condicoes-pagamento', '/cadastros/equipe', '/cadastros/oficiais', // cadastros: sem descritor de lista no shell
+  '/cadastros/condicoes-pagamento', '/cadastros/equipe', // cadastros: sem descritor de lista no shell (Estoque e Tabelas oficiais entraram na T-0123, lote A)
   '/core/empresa/certificado', '/core/empresa/exportacao', // core: a Empresa (com o Ambiente fiscal) fica; certificado e exportação ainda sem tela
   '/fiscal/regras-fiscais', // fiscal: o módulo ainda não declara páginas
 ]);
@@ -40,7 +41,9 @@ export const PAGINAS_REGISTRADAS: readonly PaginaRegistrada[] = [
   ...PAGINAS_CORE.map((p) => registrar('core', p, oculta(p) ? { ocultaNoMenu: true } : {})),
   // Usuário novo (T-0087): formulário fora do menu, aberto pelo botão "Novo usuário" da lista (só quem gerencia usuários).
   registrar('core', { menu: 'Usuários e perfis', titulo: 'Novo usuário', rota: ROTA_USUARIO_NOVO, ver: 'core.usuario.gerir' }, { ocultaNoMenu: true }),
-  ...PAGINAS.map((p) => registrar('cadastros', p, semTela(p) ? { ocultaNoMenu: true } : {})),
+  ...PAGINAS.filter((p) => !ROTAS_DO_ADAPTADOR.has(p.rota)).map((p) => registrar('cadastros', p, semTela(p) ? { ocultaNoMenu: true } : {})),
+  // Estoque e Tabelas oficiais (T-0123, lote A): só leitura; o adaptador em lib/telas/cadastros-outros declara as páginas (Oficiais tem 4 seções).
+  ...PAGINAS_CADASTROS_OUTROS.map((p) => registrar('cadastros', p)),
   // Regras fiscais: o módulo fiscal ainda não declara páginas; o item sai do menu até a tela existir.
   registrar('fiscal', { menu: 'Regras fiscais', titulo: 'Regras fiscais', rota: '/fiscal/regras-fiscais' }, { ocultaNoMenu: true }),
   // Clientes, Produtos, Filiais e Tabelas de preço (v0.3.28): novo e edição ligados; as demais telas de edição do cadastros entram com a T-0123 (v0.3.29).

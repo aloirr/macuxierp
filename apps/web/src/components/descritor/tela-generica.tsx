@@ -76,7 +76,7 @@ export async function TelaGenerica({ tela, titulo, rotaDaPagina, rota, params, b
       Promise.all(campos.map((c) => opcoes(c.fonte ?? '', acesso, perfil))),
       tela.itens ? opcoes(tela.itens.fonte, acesso, perfil) : Promise.resolve([]),
     ]);
-    return <FormularioGenerico rota={rotaDaPagina} opcoes={Object.fromEntries(campos.map((c, i) => [c.nome, listas[i] ?? []]))} produtos={produtos} perfil={perfil} campos={todos.map(({ mostrarSe: _m, ...c }) => c)} aberto={aberto} />;
+    return <FormularioGenerico rota={rotaDaPagina} opcoes={Object.fromEntries(campos.map((c, i) => [c.nome, listas[i] ?? []]))} produtos={produtos} perfil={perfil} campos={todos.map(({ mostrarSe: _m, colunasSe: _c, ...c }) => c)} aberto={aberto} />;
   } catch (e) {
     if (e instanceof NaoAutenticado) redirect('/sessao/renovar');
     if (e instanceof TrocarSenhaPendente) redirect(ROTA_SENHA);
