@@ -44,7 +44,9 @@ describe('menu sem páginas "em breve" (decisão do PO, v0.3.28)', () => {
     expect(PAGINAS_REGISTRADAS.find((p) => p.rota === ROTA_AMBIENTE_FISCAL)?.ocultaNoMenu).not.toBe(true);
   });
 
-  it('nenhuma tela linka para "Editar pedido": a rota /pedido/pedidos/:id/editar não está registrada', () => {
-    expect(PAGINAS_REGISTRADAS.find((p) => p.rota.endsWith('/:id/editar'))).toBeUndefined();
+  it('"Editar pedido" (T-0126) está registrada, oculta no menu e com tela: não cai em "Disponível em breve"', () => {
+    const editar = PAGINAS_REGISTRADAS.filter((p) => p.rota.endsWith('/:id/editar') && p.modulo === 'pedido');
+    expect(editar.map((p) => [p.rota, p.ocultaNoMenu])).toEqual([['/pedido/pedidos/:id/editar', true]]);
+    expect(ROTAS_SEM_TELA.has('/pedido/pedidos/:id/editar')).toBe(false);
   });
 });
