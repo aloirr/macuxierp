@@ -34,8 +34,8 @@ export async function novoContexto(navegador, opcoes = {}) {
  *    "Cadastro manual" sem data de carga.
  *  - singularRegistroCarregado: o anúncio da TabelaDensa com 1 linha diz "1 registro carregado." (designer-ux).
  */
-// carregadoSoComData ligada: a decisão B entrou no main pelo #952 (a55ca9a). singularRegistroCarregado espera o designer-ux.
-const LIGADAS = { carregadoSoComData: true, singularRegistroCarregado: false };
+// carregadoSoComData ligada: a decisão B entrou no main pelo #952 (a55ca9a). singularRegistroCarregado ligada: #958 (f8eb502).
+const LIGADAS = { carregadoSoComData: true, singularRegistroCarregado: true };
 const LIGADAS_POR_ENV = new Set((process.env.MX_LIGAR ?? '').split(',').map((s) => s.trim()).filter(Boolean));
 export const assercaoLigada = (nome) => {
   if (!(nome in LIGADAS)) throw new Error(`asserção desconhecida: ${nome}`);
