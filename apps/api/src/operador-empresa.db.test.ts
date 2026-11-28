@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ACOES_PLATAFORMA, CODIGO_TROCAR_SENHA, MODULOS } from '@macuxierp/platform-sdk';
+import { ACOES_PLATAFORMA, CODIGO_TROCAR_SENHA, MENSAGEM_EMAIL_EM_USO, MODULOS } from '@macuxierp/platform-sdk';
 import { criarBancoEfemero, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -88,7 +88,8 @@ describe.skipIf(!PG_DISPONIVEL)('empresa.mjs (operador.sh criar-empresa) no Post
   const licencas = async (t: string) =>
     um<{ modulo: string; ativo: boolean }>('SELECT modulo, ativo FROM plataforma.tenant_modulo WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY modulo', [t]);
   const auditoria = async (t: string) => um<{ acao: string; usuario_id: string | null; depois: Record<string, unknown> }>('SELECT acao, usuario_id, depois FROM plataforma.auditoria WHERE tenant_id = $1 ORDER BY acao, entidade_id', [t]);
-  const entrar = (s: string) => app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa: 'AM2808', email: 'ADMIN@exemplo.invalid', senha: s } });
+  // ADR 0021: a tela manda só e-mail e senha
+  const entrar = (s: string) => app.inject({ method: 'POST', url: '/v1/auth/login', payload: { email: 'ADMIN@exemplo.invalid', senha: s } });
 
   it('sem --confirmar: simulação READ ONLY, nada gravado', () => {
     const r = empresa([]);
@@ -203,7 +204,8 @@ describe.skipIf(!PG_DISPONIVEL)('empresa.mjs (operador.sh criar-empresa) no Post
   });
 
   it('empresa suspensa: recusa sem gravar nada (saída 1)', async () => {
-    const r1 = empresa(['--confirmar'], { senha: senhaProvisoria(), codigo: 'rr0001' });
+    // ADR 0021 §1: o e-mail de cada empresa é outro (o EMAIL já é do administrador da AM2808)
+    const r1 = empresa(['--confirmar'], { senha: senhaProvisoria(), codigo: 'rr0001', email: 'rr@exemplo.invalid' });
     expect(r1.status).toBe(0);
     const t = (await tenantId('rr0001'))!;
     await b.admin.query("UPDATE plataforma.tenant SET situacao = 'suspenso' WHERE id = $1", [t]);
@@ -217,7 +219,7 @@ describe.skipIf(!PG_DISPONIVEL)('empresa.mjs (operador.sh criar-empresa) no Post
   });
 
   it('nome legal de MEI (acento e pontuação): gravado em plataforma.tenant.nome; fora da saída e da auditoria', async () => {
-    const r = empresa(['--confirmar'], { senha: senhaProvisoria(), codigo: 'SP1234', nome: NOME_MEI });
+    const r = empresa(['--confirmar'], { senha: senhaProvisoria(), codigo: 'SP1234', nome: NOME_MEI, email: 'mei@exemplo.invalid' });
     expect(r.status).toBe(0);
     expect(r.estado).toBe('estado: usuario-criado');
     expect(r.saida).not.toMatch(/José|Ávila|ME\/EPP/); // nem pedaço do nome
@@ -229,6 +231,27 @@ describe.skipIf(!PG_DISPONIVEL)('empresa.mjs (operador.sh criar-empresa) no Post
     const criar = aud.find((a) => a.acao === 'plataforma.empresa.criar')!;
     expect(Object.keys(criar.depois as object).sort()).toEqual(['motivo', 'operador', 'situacao', 'slug']);
     expect(criar.depois).toMatchObject({ slug: 'sp1234', situacao: 'ativo' });
+  });
+
+  it('ADR 0021 §1: e-mail já usado (vivo) em outra empresa: saída 1 com a mensagem do SDK, nada gravado e sem o e-mail; o excluído não conta', async () => {
+    const total = (await um('SELECT 1 FROM plataforma.tenant')).length;
+    for (const forma of [EMAIL, ' Admin@Exemplo.INVALID ']) {
+      for (const args of [[], ['--confirmar']]) {
+        const r = empresa(args, { ...(args.length ? { senha: senhaProvisoria() } : {}), codigo: 'MT0001', email: forma });
+        expect(r.status, r.saida).toBe(1);
+        expect(r.saida).toContain(MENSAGEM_EMAIL_EM_USO);
+        expect(r.saida.toLowerCase()).not.toContain(EMAIL);
+        expect(r.saida).not.toContain('estado:');
+      }
+    }
+    expect(await tenantId('mt0001')).toBeUndefined();
+    expect(await um('SELECT 1 FROM plataforma.tenant')).toHaveLength(total);
+    // o e-mail de um usuário excluído (deleted_at) fica livre para outra empresa
+    const t = (await tenantId('rr0001'))!;
+    await b.admin.query("UPDATE plataforma.usuario SET deleted_at = now() WHERE tenant_id = $1 AND email = 'rr@exemplo.invalid'", [t]);
+    const livre = empresa(['--confirmar'], { senha: senhaProvisoria(), codigo: 'MT0002', email: 'rr@exemplo.invalid' });
+    expect(livre.status, livre.saida).toBe(0);
+    expect(livre.estado).toBe('estado: usuario-criado');
   });
 
   it('--nome no argv é recusado (o nome só vai pelo ambiente)', async () => {

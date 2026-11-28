@@ -48,18 +48,23 @@ export const CABECALHO_IP_CLIENTE = 'x-macuxierp-ip-cliente';
 /** CHECK de `plataforma.tenant.slug` (0002). `referencia` é o slug do tenant das tabelas oficiais: nunca se cria. */
 export const PADRAO_SLUG_EMPRESA = /^[a-z0-9][a-z0-9-]{1,39}$/;
 /**
- * Código reservado do superadmin no campo "empresa" do login e do "esqueci" (T-0076): fonte única. Sem diferenciar
- * maiúsculas; nunca vira empresa (está em `SLUGS_RESERVADOS`, em minúsculas).
+ * Slug reservado da plataforma (T-0076): nunca vira empresa (está em `SLUGS_RESERVADOS`). Desde a ADR 0021 (§5) não é
+ * mais caminho de login: o superadmin entra com e-mail e senha na mesma tela.
+ */
+export const SLUG_RESERVADO_SUPERADMIN = 'macuxi';
+/**
+ * @deprecated Transição da v0.3.30 (ADR 0021 §5): o login não tem mais o campo empresa. Fica só porque a apps/web
+ * (RD-2413) e os e2e de `tests/` ainda importam; sai quando eles deixarem. Use `SLUG_RESERVADO_SUPERADMIN`.
  */
 export const CODIGO_SUPERADMIN_LOGIN = 'MACUXI';
 /**
  * Slugs que a criação de empresa recusa. Espelho no banco: 0033 e 0037 (`referencia`, `config`, `plataforma`) e o CHECK
  * do código reservado (`macuxi`, T-0076: 23514 com DETAIL `DETALHE_CODIGO_RESERVADO`); mudou aqui, muda lá (migração nova).
  */
-export const SLUGS_RESERVADOS: readonly string[] = Object.freeze(['referencia', 'config', 'plataforma', CODIGO_SUPERADMIN_LOGIN.toLowerCase()]);
+export const SLUGS_RESERVADOS: readonly string[] = Object.freeze(['referencia', 'config', 'plataforma', SLUG_RESERVADO_SUPERADMIN]);
 /** DETAIL do 23514 do CHECK do código reservado: a API repassa em `detalhes.codigo`, com `MENSAGEM_CODIGO_RESERVADO`. */
 export const DETALHE_CODIGO_RESERVADO = 'codigo_reservado_superadmin';
-export const MENSAGEM_CODIGO_RESERVADO = `O código ${CODIGO_SUPERADMIN_LOGIN} é reservado e não pode ser usado por uma empresa.`;
+export const MENSAGEM_CODIGO_RESERVADO = `O código ${SLUG_RESERVADO_SUPERADMIN.toUpperCase()} é reservado e não pode ser usado por uma empresa.`;
 
 /**
  * Código da empresa (RN-CORE-11, T-0053): o MESMO código da licença do Macuxi FDV, UF + 4 dígitos (ex.: AM2808). Único
@@ -226,8 +231,8 @@ export type SituacaoEmpresaEntrada = z.infer<typeof SituacaoEmpresaEntrada>;
 
 /**
  * Corpo do `POST /v1/plataforma/auth/entrar` (o `/config/entrar`).
- * @deprecated Login único (RN-CORE-12, ADR 0018): use `LoginEntrada` com `empresa` = `CODIGO_SUPERADMIN_LOGIN` em
- * `POST /v1/auth/login`. Fica até a rota antiga sair.
+ * @deprecated Login único (RN-CORE-12, ADR 0018 e 0021): use `LoginEntrada` (e-mail e senha) em `POST /v1/auth/login`.
+ * Fica até a rota antiga sair.
  */
 export const EntrarPlataformaEntrada = z.object({ email: EmailUsuario, senha: SenhaInformada });
 export type EntrarPlataformaEntrada = z.infer<typeof EntrarPlataformaEntrada>;

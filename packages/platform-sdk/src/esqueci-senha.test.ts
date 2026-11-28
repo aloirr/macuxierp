@@ -23,28 +23,18 @@ import {
   urlEntrarPreenchida,
 } from './esqueci-senha';
 import { CODIGO_TROCAR_SENHA } from './eu';
-import { CodigoEmpresaLogin } from './login';
-import { CODIGO_SUPERADMIN_LOGIN, CriarEmpresaEntrada, DETALHE_CODIGO_RESERVADO, MENSAGEM_CODIGO_RESERVADO, SLUGS_RESERVADOS } from './portal-config';
+import { CriarEmpresaEntrada, DETALHE_CODIGO_RESERVADO, MENSAGEM_CODIGO_RESERVADO, SLUG_RESERVADO_SUPERADMIN, SLUGS_RESERVADOS } from './portal-config';
 
 describe('RN-CORE-13: pedido da senha temporária (POST /v1/auth/esqueci e /v1/plataforma/auth/esqueci)', () => {
-  it('entrada do tenant: código da empresa (RN-CORE-11, trim, sem diferenciar maiúsculas) e e-mail normalizado', () => {
-    expect(PedirSenhaTemporariaEntrada.parse({ empresa: ' AM2808 ', email: ' Ana@Exemplo.COM ' })).toEqual({ empresa: 'AM2808', email: 'ana@exemplo.com' });
-    expect(() => PedirSenhaTemporariaEntrada.parse({ empresa: '   ', email: 'a@b.co' })).toThrow();
+  it('entrada da tela de login (ADR 0021): só o e-mail normalizado; `empresa` opcional e ignorado', () => {
+    expect(PedirSenhaTemporariaEntrada.parse({ email: ' Ana@Exemplo.COM ' })).toEqual({ email: 'ana@exemplo.com' });
+    for (const empresa of [' AM2808 ', '   ', 'MACUXI']) expect(PedirSenhaTemporariaEntrada.safeParse({ empresa, email: 'a@b.co' }).success, empresa).toBe(true);
     expect(() => PedirSenhaTemporariaEntrada.parse({ empresa: 'AM2808', email: 'sem-arroba' })).toThrow();
-    expect(PedirSenhaTemporariaEntrada.parse({ empresa: 'AM2808', email: 'a@b.co', senha: 'x' })).not.toHaveProperty('senha');
-  });
-
-  it('CodigoEmpresaLogin: formato do slug da 0002 (UF + 4 dígitos, slug antigo ou o código reservado), em maiúsculas', () => {
-    expect(CODIGO_SUPERADMIN_LOGIN).toBe('MACUXI');
-    expect(CodigoEmpresaLogin.parse('AM2808')).toBe('AM2808');
-    expect(CodigoEmpresaLogin.parse('am2808')).toBe('AM2808');
-    expect(CodigoEmpresaLogin.parse('MACUXI')).toBe(CODIGO_SUPERADMIN_LOGIN);
-    expect(CodigoEmpresaLogin.parse(' macuxi ')).toBe(CODIGO_SUPERADMIN_LOGIN);
-    for (const c of ['a', '-abc', 'a b', '', 'á1']) expect(() => CodigoEmpresaLogin.parse(c), c).toThrow();
+    expect(PedirSenhaTemporariaEntrada.parse({ email: 'a@b.co', senha: 'x' })).not.toHaveProperty('senha');
   });
 
   it('o código reservado do superadmin não vira empresa: SLUGS_RESERVADOS e o DETAIL do CHECK do banco', () => {
-    expect(SLUGS_RESERVADOS).toContain(CODIGO_SUPERADMIN_LOGIN.toLowerCase());
+    expect(SLUGS_RESERVADOS).toContain(SLUG_RESERVADO_SUPERADMIN);
     expect(Object.isFrozen(SLUGS_RESERVADOS)).toBe(true);
     for (const slug of ['macuxi', 'MACUXI']) expect(() => CriarEmpresaEntrada.parse({ slug, nome: 'ACME' }), slug).toThrow();
     expect(DETALHE_CODIGO_RESERVADO).toBe('codigo_reservado_superadmin');
@@ -56,11 +46,8 @@ describe('RN-CORE-13: pedido da senha temporária (POST /v1/auth/esqueci e /v1/p
     expect(() => PedirSenhaTemporariaPlataformaEntrada.parse({})).toThrow();
   });
 
-  it('resposta 202 neutra: o literal aprovado no #466 (BKO e /config), tenha ou não a conta', () => {
-    expect(MENSAGEM_ESQUECI_NEUTRA).toBe(
-      'Se o e-mail estiver cadastrado nesta empresa, você vai receber uma senha temporária em alguns minutos. Ela vale por 72 horas.',
-    );
-    expect(MENSAGEM_ESQUECI_NEUTRA).toContain(`${VALIDADE_SENHA_TEMPORARIA_HORAS} horas`);
+  it('resposta 202 neutra: o texto travado pelo PO (ADR 0021), sem empresa, tenha ou não a conta', () => {
+    expect(MENSAGEM_ESQUECI_NEUTRA).toBe('Se o e-mail estiver cadastrado, enviamos as instruções.');
     expect(PedidoSenhaTemporariaResposta.parse({ mensagem: MENSAGEM_ESQUECI_NEUTRA })).toEqual({ mensagem: MENSAGEM_ESQUECI_NEUTRA });
     expect(() => PedidoSenhaTemporariaResposta.parse({ mensagem: 'Conta não encontrada' })).toThrow();
   });
@@ -125,55 +112,63 @@ describe('RN-CORE-13: rótulo da tela de troca depois do esqueci', () => {
 });
 
 describe('RN-CORE-13: e-mail da senha temporária', () => {
-  const base = { senha: 'Tmp#2026ab', validade_horas: VALIDADE_SENHA_TEMPORARIA_HORAS, codigo_empresa: 'AM2808', email: 'ana@exemplo.invalid' };
+  const base = { senha: 'Tmp#2026ab', validade_horas: VALIDADE_SENHA_TEMPORARIA_HORAS, email: 'ana@exemplo.invalid' };
 
-  it('T-0111: os textos exatos do design (#705), em texto e HTML; desbloqueia a conta; botão e rodapé; sem nome', () => {
+  it('T-0111 e ADR 0021 §6 (RD-2403): os textos do design, sem o código da empresa, em texto e HTML; botão e rodapé', () => {
     const e = emailSenhaTemporaria(base);
     expect(e.assunto).toBe('Sua senha temporária do Macuxi ERP');
-    // o docs/design/emails/redefinir-senha/email.txt (#705), com os campos preenchidos
+    // o docs/design/emails/redefinir-senha/email.txt (#705), sem a linha do código da empresa
     expect(e.texto).toBe(
       [
         'Sua senha temporária',
         '',
         'Recebemos um pedido de senha temporária para entrar no Macuxi ERP. Se não foi você, ignore este e-mail.',
         '',
-        'Código da empresa: AM2808',
         'E-mail: ana@exemplo.invalid',
         'Senha temporária: Tmp#2026ab',
         '',
         'Vale por 72 horas e serve para entrar uma vez só. Ela também desbloqueia a conta.',
         '',
-        'Abrir o Macuxi ERP: https://erp.macuxifdv.com.br/#codigo=AM2808&email=ana%40exemplo.invalid',
+        'Abrir o Macuxi ERP: https://erp.macuxifdv.com.br/#email=ana%40exemplo.invalid',
         '',
         '--',
         'Equipe Macuxi ERP · Boa Vista, RR · erp.macuxifdv.com.br',
       ].join('\n'),
     );
     expect(e.html).toContain('<title>Sua senha temporária do Macuxi ERP</title>');
-    expect(e.html).toContain('>AM2808</td>');
+    // o recorte das duas linhas do código tem de achar o modelo do design: se o design mudar, este teste avisa
+    expect(MODELO_HTML_SENHA_TEMPORARIA).toContain('{{codigo_empresa}}');
+    expect(e.html).not.toContain('Código da empresa');
+    expect(e.html).not.toContain('MACUXI');
     expect(e.html).toContain('>ana@exemplo.invalid</td>');
     expect(e.html).toContain('>Tmp#2026ab</td>');
-    expect(e.html).toContain(`href="${URL_MACUXI_ERP}/#codigo=AM2808&amp;email=ana%40exemplo.invalid"`);
+    expect(e.html).toContain(`href="${URL_MACUXI_ERP}/#email=ana%40exemplo.invalid"`);
     expect(e.html).not.toContain('Tmp#2026ab"');
     expect(e.html).not.toMatch(/\{\{/);
+    expect(e.texto).not.toMatch(/c[oó]digo/i);
   });
 
-  it('T-0111: o modelo HTML (cópia do design #705) tem os 5 placeholders; os campos vão escapados', () => {
-    for (const p of ['assunto', 'codigo_empresa', 'email', 'senha_temporaria', 'url_entrar']) expect(MODELO_HTML_SENHA_TEMPORARIA).toContain(`{{${p}}}`);
+  it('o parâmetro codigo_empresa saiu: o que vier a mais não entra no e-mail', () => {
+    const e = emailSenhaTemporaria({ ...base, codigo_empresa: 'MACUXI' } as typeof base);
+    expect(e.texto).not.toContain('MACUXI');
+    expect(e.html).not.toContain('MACUXI');
+  });
+
+  it('T-0111: o modelo HTML (cópia do design #705) tem os placeholders; os campos vão escapados', () => {
+    for (const p of ['assunto', 'email', 'senha_temporaria', 'url_entrar']) expect(MODELO_HTML_SENHA_TEMPORARIA).toContain(`{{${p}}}`);
     expect(MODELO_HTML_SENHA_TEMPORARIA.startsWith('<!DOCTYPE html>')).toBe(true);
-    const e = emailSenhaTemporaria({ ...base, codigo_empresa: 'A<B>&"\'', senha: 'x<y' });
-    expect(e.html).toContain('A&lt;B&gt;&amp;&quot;&#39;');
+    const e = emailSenhaTemporaria({ ...base, email: 'a<b>&"\'@x.co', senha: 'x<y' });
+    expect(e.html).toContain('a&lt;b&gt;&amp;&quot;&#39;@x.co');
     expect(e.html).toContain('x&lt;y');
-    expect(e.html).not.toContain('A<B>');
+    expect(e.html).not.toContain('a<b>');
     expect(e.texto).toContain('Senha temporária: x<y'); // texto puro, sem escape
     expect(emailSenhaTemporaria({ ...base, validade_horas: 48 }).html).toContain('Vale por 48 horas e serve');
   });
 
-  it('recusa senha vazia, validade fora de inteiro ≥ 1 e código ou e-mail vazios', () => {
+  it('recusa senha vazia, validade fora de inteiro ≥ 1 e e-mail vazio', () => {
     expect(() => emailSenhaTemporaria({ ...base, senha: '' })).toThrow(RangeError);
     expect(() => emailSenhaTemporaria({ ...base, senha: '   ' })).toThrow(RangeError);
     expect(() => emailSenhaTemporaria({ ...base, validade_horas: 0 })).toThrow(RangeError);
-    expect(() => emailSenhaTemporaria({ ...base, codigo_empresa: ' ' })).toThrow(RangeError);
     expect(() => emailSenhaTemporaria({ ...base, email: '' })).toThrow(RangeError);
     expect(() => emailSenhaTemporaria({ ...base, senha: 'a\nb' })).toThrow(RangeError);
   });
@@ -190,27 +185,34 @@ describe('RN-CORE-15 (T-0111): 423 CONTA_BLOQUEADA', () => {
   });
 });
 
-describe('44 B: o botão abre o login com o código e o e-mail preenchidos (fragmento, nunca a senha)', () => {
-  it('o link leva código e e-mail no fragmento (#), não na query, e nunca a senha', () => {
-    const url = urlEntrarPreenchida('AM2808', 'ana+teste@exemplo.invalid');
-    expect(url).toBe('https://erp.macuxifdv.com.br/#codigo=AM2808&email=ana%2Bteste%40exemplo.invalid');
+describe('44 B e ADR 0021 §6 (RD-2404): o botão abre o login com o e-mail preenchido (fragmento, sem código, token nem senha)', () => {
+  it('o link leva só o e-mail no fragmento (#), não na query, e nunca a senha', () => {
+    const url = urlEntrarPreenchida('ana+teste@exemplo.invalid');
+    expect(url).toBe('https://erp.macuxifdv.com.br/#email=ana%2Bteste%40exemplo.invalid');
     const u = new URL(url);
     expect(u.search).toBe('');
     expect(u.pathname).toBe(ROTA_TELA_LOGIN);
-    const e = emailSenhaTemporaria({ senha: 'Segredo123', validade_horas: 72, codigo_empresa: 'AM2808', email: 'ana@exemplo.invalid' });
+    expect([...new URLSearchParams(u.hash.slice(1)).keys()]).toEqual(['email']);
+    const e = emailSenhaTemporaria({ senha: 'Segredo123', validade_horas: 72, email: 'ana@exemplo.invalid' });
     for (const parte of [e.texto, e.html]) expect(parte.match(/https:\/\/\S+/g)!.join(' ')).not.toContain('Segredo123');
   });
 
-  it('ida e volta: lerPreenchimentoLogin devolve o código e o e-mail do link, normalizados como no login', () => {
-    const url = urlEntrarPreenchida('am2808', 'Ana+Teste@Exemplo.invalid');
-    expect(lerPreenchimentoLogin(new URL(url).hash)).toEqual({ codigo: 'AM2808', email: 'ana+teste@exemplo.invalid' });
-    expect(lerPreenchimentoLogin(url.slice(url.indexOf('#') + 1))).toEqual({ codigo: 'AM2808', email: 'ana+teste@exemplo.invalid' });
+  it('transição da v0.3.30: a forma antiga com o código ignora o código', () => {
+    expect(urlEntrarPreenchida('AM2808', 'a@b.co')).toBe(`${URL_MACUXI_ERP}/#email=a%40b.co`);
+    expect(urlEntrarPreenchida(null, 'a@b.co')).toBe(`${URL_MACUXI_ERP}/#email=a%40b.co`);
   });
 
-  it('o inválido fica de fora sem erro; senha e outros campos no fragmento são ignorados', () => {
+  it('ida e volta: lerPreenchimentoLogin devolve só o e-mail do link, normalizado como no login', () => {
+    const url = urlEntrarPreenchida('Ana+Teste@Exemplo.invalid');
+    expect(lerPreenchimentoLogin(new URL(url).hash)).toEqual({ email: 'ana+teste@exemplo.invalid' });
+    expect(lerPreenchimentoLogin(url.slice(url.indexOf('#') + 1))).toEqual({ email: 'ana+teste@exemplo.invalid' });
+  });
+
+  it('o inválido fica de fora sem erro; o #codigo de link antigo, a senha e outros campos são ignorados', () => {
     expect(lerPreenchimentoLogin('')).toEqual({});
-    expect(lerPreenchimentoLogin('#codigo=%3Cx%3E&email=nao-e-email')).toEqual({});
+    expect(lerPreenchimentoLogin('#codigo=AM2808&email=nao-e-email')).toEqual({});
+    expect(lerPreenchimentoLogin('#codigo=AM2808&email=ana%40exemplo.invalid')).toEqual({ email: 'ana@exemplo.invalid' });
     expect(lerPreenchimentoLogin('#email=ana%40exemplo.invalid&senha=abc')).toEqual({ email: 'ana@exemplo.invalid' });
-    expect(PreenchimentoLogin.keyof().options).toEqual(['codigo', 'email']);
+    expect(PreenchimentoLogin.keyof().options).toEqual(['email']);
   });
 });

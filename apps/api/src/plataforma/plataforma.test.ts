@@ -1,9 +1,9 @@
 /** Peças puras do portal `/config` na API (T-0050, ADR 0012 §4 e §6; cargas da T-0058): SQLSTATE → HTTP e limite de login por IP. */
-import { CODIGOS_ESTADO_MUDOU_ZERAR, ErroApi, MENSAGEM_SEM_CREDENCIAL_FDV, MENSAGENS_CARGA_PORTAL } from '@macuxierp/platform-sdk';
+import { CODIGO_EMAIL_EM_USO, CODIGOS_ESTADO_MUDOU_ZERAR, ErroApi, MENSAGEM_EMAIL_EM_USO, MENSAGEM_SEM_CREDENCIAL_FDV, MENSAGENS_CARGA_PORTAL } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { MSG_SEM_LICENCA } from '@macuxierp/integracao-fdv/contracts';
 import { erroDaPlataforma } from './erros';
-import { chaveEmpresaEmail, EMPRESA_PLATAFORMA, LimitePorChave, novosLimitesEsqueci } from './limite-ip';
+import { chaveEmail, LimitePorChave, novosLimitesEsqueci } from './limite-ip';
 
 const pg = (code: string, message = 'empresa "Fulano de Tal" não encontrada') => Object.assign(new Error(message), { code });
 
@@ -18,6 +18,14 @@ describe('erroDaPlataforma (ADR 0012 §4)', () => {
     expect(e).toBeInstanceOf(ErroApi);
     expect(e).toMatchObject({ status, codigo });
     expect((e as ErroApi).message).not.toContain('Fulano');
+  });
+
+  it('ADR 0021 §1: o 23505 do e-mail já usado (exigir_email_livre da 0079 ou o índice usuario_email_global_uq) vira o email_em_uso do SDK', () => {
+    const esperado = { status: 409, codigo: 'CONFLITO', message: MENSAGEM_EMAIL_EM_USO, campos: { email: MENSAGEM_EMAIL_EM_USO }, detalhes: { codigo: CODIGO_EMAIL_EM_USO } };
+    expect(erroDaPlataforma(pg('23505', 'email_em_uso'))).toMatchObject(esperado);
+    expect(erroDaPlataforma(Object.assign(pg('23505', 'duplicate key value violates unique constraint'), { constraint: 'usuario_email_global_uq' }))).toMatchObject(esperado);
+    // outro 23505 (slug, administrador já existente) segue o conflito genérico
+    expect(erroDaPlataforma(Object.assign(pg('23505'), { constraint: 'tenant_slug_key' }))).toMatchObject({ status: 409, codigo: 'CONFLITO', message: 'Conflito com um registro existente' });
   });
 
   it.each([
@@ -151,11 +159,11 @@ describe('LimitePorChave do pedido de senha temporária (T-0076)', () => {
 
   it('a chave é o SHA-256 (hex): o e-mail em claro nunca fica no Map', () => {
     const l = new LimitePorChave(3, 60_000);
-    l.registrar(chaveEmpresaEmail(EMPRESA_PLATAFORMA, 'Pessoa@Exemplo.com'), t0);
+    l.registrar(chaveEmail('Pessoa@Exemplo.com'), t0);
     const [chave] = l.chaves();
     expect(chave).toMatch(/^[0-9a-f]{64}$/);
     expect(l.chaves().join()).not.toMatch(/exemplo|pessoa|@/i);
-    expect(chaveEmpresaEmail(EMPRESA_PLATAFORMA, ' pessoa@exemplo.com')).toBe(chave);
+    expect(chaveEmail(' pessoa@exemplo.com')).toBe(chave);
   });
 
   it('excedido consulta sem contar (o login da tela única conta só as falhas)', () => {

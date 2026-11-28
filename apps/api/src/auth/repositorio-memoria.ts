@@ -1,13 +1,15 @@
 /** `RepositorioAuth` em memória, para os testes de unidade (no banco: `RepositorioAuthPg`). */
 import { tenantDaTx } from '@macuxierp/platform-sdk/testes';
 import type { Transacao } from '@macuxierp/platform-sdk';
-import type { FilialAuth, RepositorioAuth, SessaoRefresh, TenantAuth, UsuarioAuth } from './portas';
+import type { ContaPorEmail, FilialAuth, RepositorioAuth, SessaoRefresh, TenantAuth, UsuarioAuth } from './portas';
 
 export class RepositorioAuthMemoria implements RepositorioAuth {
   readonly tenants: TenantAuth[] = [];
   readonly usuarios: UsuarioAuth[] = [];
   readonly filiais: FilialAuth[] = [];
   readonly sessoes: SessaoRefresh[] = [];
+  /** E-mails dos superadmins (a `conta_por_email` só os devolve sem usuário de empresa com o mesmo e-mail, ADR 0021 §7). */
+  readonly superadmins: string[] = [];
 
   /** O `now()` do banco no consumo da temporária; os testes ligam ao `RelogioFixo`. */
   constructor(readonly agora: () => Date = () => new Date()) {}
@@ -25,8 +27,16 @@ export class RepositorioAuthMemoria implements RepositorioAuth {
     return u;
   }
 
-  async tenantIdPorSlug(_tx: Transacao, slug: string) {
-    return this.tenants.find((t) => t.slug === slug && t.situacao === 'ativo')?.id ?? null;
+  /** Como a `conta_por_email` da 0079: usuário primeiro (empresa encerrada = nada), senão o superadmin. */
+  async contaPorEmail(tx: Transacao, email: string): Promise<ContaPorEmail | null> {
+    if (tenantDaTx(tx) !== null) throw new Error('conta_por_email fora de semTenant');
+    const u = this.usuarios.find((x) => x.email.trim().toLowerCase() === email);
+    if (u) {
+      const t = this.tenants.find((x) => x.id === u.tenant_id);
+      if (!t || t.situacao === 'encerrado') return null;
+      return { tipo: 'usuario', tenant_id: u.tenant_id, suspensa: t.situacao === 'suspenso' };
+    }
+    return this.superadmins.some((e) => e.trim().toLowerCase() === email) ? { tipo: 'superadmin', tenant_id: null, suspensa: false } : null;
   }
   async tenantPorId(tx: Transacao, id: string) {
     return tenantDaTx(tx) === id ? (this.tenants.find((t) => t.id === id) ?? null) : null;

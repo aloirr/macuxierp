@@ -3,9 +3,9 @@
  * continua o mesmo 202 neutro: o motivo só vai ao log do servidor, para a operação saber na VM por que nada saiu.
  * Um `info` "esqueci.sem_envio" com um código fixo. LGPD: sem e-mail, empresa, temporária, IP ou id de conta.
  * - `conta_inexistente_ou_inativa`: e-mail sem conta, ou conta inativa (tenant ou superadmin);
- * - `empresa_inexistente_ou_suspensa`: código de empresa sem tenant ativo (inexistente, suspensa ou encerrada);
+ * - `empresa_inexistente_ou_suspensa`: e-mail de usuário de empresa sem tenant ativo (suspensa ou encerrada);
  * - `email_desligado`: API sem a porta de e-mail (`esqueciSemEnvio`);
- * - `plataforma_indisponivel`: pedido MACUXI com o portal `/config` não montado na API.
+ * - `plataforma_indisponivel`: e-mail só de superadmin com o portal `/config` não montado na API.
  */
 import type { FastifyBaseLogger } from 'fastify';
 
