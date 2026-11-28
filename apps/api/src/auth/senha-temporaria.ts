@@ -51,8 +51,8 @@ export function lerMarcaTemporaria(segmento: string | undefined): TrocaPendente 
 
 /**
  * O e-mail da temporária (`emailSenhaTemporaria` do contrato): o único lugar em que ela existe em claro além da memória do
- * pedido. `codigoEmpresa` = o código digitado no login (maiúsculo); no superadmin, `CODIGO_SUPERADMIN_LOGIN`.
+ * pedido. Sem o código da empresa (ADR 0021 §6): o login é só por e-mail, no tenant e no superadmin.
  */
-export function mensagemSenhaTemporaria(para: string, senhaTemporaria: string, codigoEmpresa: string): MensagemEmail {
-  return { para, ...emailSenhaTemporaria({ senha: senhaTemporaria, validade_horas: VALIDADE_SENHA_TEMPORARIA_HORAS, codigo_empresa: codigoEmpresa, email: para }) };
+export function mensagemSenhaTemporaria(para: string, senhaTemporaria: string): MensagemEmail {
+  return { para, ...emailSenhaTemporaria({ senha: senhaTemporaria, validade_horas: VALIDADE_SENHA_TEMPORARIA_HORAS, email: para }) };
 }

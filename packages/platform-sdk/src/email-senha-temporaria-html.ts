@@ -1,7 +1,8 @@
 /**
  * Modelo HTML do e-mail da senha temporária (T-0111): cópia fiel de `docs/design/emails/redefinir-senha/email.html`
  * (designer-ux, #705): muda lá, muda aqui (a igualdade é conferida em `tests/`, que pode ler `docs/`).
- * Placeholders: {{assunto}}, {{codigo_empresa}}, {{email}}, {{senha_temporaria}}, {{url_entrar}}.
+ * Placeholders: {{assunto}}, {{codigo_empresa}} (removido em runtime até o designer-ux tirar a linha do modelo,
+ * ADR 0021 §6), {{email}}, {{senha_temporaria}}, {{url_entrar}}.
  */
 export const MODELO_HTML_SENHA_TEMPORARIA = `<!DOCTYPE html>
 <html lang="pt-BR" xmlns="http://www.w3.org/1999/xhtml">

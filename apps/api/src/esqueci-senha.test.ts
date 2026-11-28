@@ -1,5 +1,5 @@
 /**
- * T-0076 (v0.3.10): "Esqueci a senha" com a senha temporária e a tela única de login com o código da empresa.
+ * T-0076 (v0.3.10): "Esqueci a senha" com a senha temporária e a tela única de login (desde a T-0133, ADR 0021, só e-mail e senha).
  * Tenant pelo `RepositorioAuthMemoria`; superadmin por um dublê das funções da 0033 e da 0048 (pelo nome da função no SQL,
  * com as assinaturas combinadas); nada de Postgres aqui (o consumo concorrente no banco fica no esqueci-senha.db.test.ts).
  */
@@ -18,6 +18,7 @@ import {
   TAMANHO_SENHA_TEMPORARIA,
   LoginResposta,
   MENSAGEM_ESQUECI_NEUTRA,
+  MENSAGEM_LOGIN_INVALIDO,
   MuitasTentativasResposta,
   SenhaATrocarResposta,
   textoMuitasTentativas,
@@ -54,7 +55,7 @@ const TEMPORARIA = 'Temp-Abc23xyz!Q';
 const SENHA_NOVA = 'Nova-senha-789';
 const INICIO = new Date('2026-11-23T15:00:00Z');
 const H72 = 72 * 3_600_000;
-const NEUTRO_401 = { codigo: 'NAO_AUTENTICADO', mensagem: 'Empresa, e-mail ou senha inválidos' };
+const NEUTRO_401 = { codigo: 'NAO_AUTENTICADO', mensagem: MENSAGEM_LOGIN_INVALIDO };
 /** Rota do tenant e rota do portal só para ver o 403 `TROCAR_SENHA` do bloqueio (o guard para antes de executar). */
 const ROTA_TENANT = '/v1/cadastros/fuso';
 const ROTA_PORTAL = '/v1/plataforma/empresas-teste';
@@ -180,6 +181,8 @@ async function montar(o: { semEmail?: boolean; semPlataforma?: boolean } = {}) {
   const sa: Superadmin = { id: SA, email: EMAIL_SA, nome: 'Operação', senha_hash: hash, ativo: true, falhas_login: 0, bloqueado_ate: null, deve_trocar_senha: false, senha_temporaria_hash: null, senha_temporaria_expira_em: null };
   const saInativo: Superadmin = { ...sa, id: SA_INATIVO, email: 'antigo@exemplo.com', ativo: false };
   const plataforma = new BancoSuperadminDuble([sa, saInativo], relogio);
+  // a `conta_por_email` (0079) acha os superadmins pelo e-mail (ADR 0021 §5)
+  repo.superadmins.push(sa.email, saInativo.email);
   const banco = new BancoMemoria();
   let respondido = false;
   const envio = new EnvioEmailMemoria(() => respondido);
@@ -224,10 +227,11 @@ async function montar(o: { semEmail?: boolean; semPlataforma?: boolean } = {}) {
 type Montado = Awaited<ReturnType<typeof montar>>;
 const csrf = { [CABECALHO_CSRF_CONFIG]: '1' };
 /** Login pela tela única, como a web manda: sempre com o `CABECALHO_CSRF_CONFIG` (ADR 0018 §5). */
-const login = (m: Montado, empresa: string, email: string, s: string, ip = '203.0.113.1', headers: Record<string, string> = csrf) =>
-  m.chamar({ method: 'POST', url: '/v1/auth/login', headers: { ...headers, 'cf-connecting-ip': ip }, payload: { empresa, email, senha: s } });
-const esqueci = (m: Montado, empresa: string, email: string, ip = '203.0.113.7') =>
-  m.chamar({ method: 'POST', url: '/v1/auth/esqueci', headers: { 'cf-connecting-ip': ip }, payload: { empresa, email } });
+/** Desde a ADR 0021 a tela manda só e-mail e senha: a conta (usuário de empresa ou superadmin) sai do e-mail. */
+const login = (m: Montado, email: string, s: string, ip = '203.0.113.1', headers: Record<string, string> = csrf) =>
+  m.chamar({ method: 'POST', url: '/v1/auth/login', headers: { ...headers, 'cf-connecting-ip': ip }, payload: { email, senha: s } });
+const esqueci = (m: Montado, email: string, ip = '203.0.113.7') =>
+  m.chamar({ method: 'POST', url: '/v1/auth/esqueci', headers: { 'cf-connecting-ip': ip }, payload: { email } });
 const esqueciConfig = (m: Montado, email: string, ip = '203.0.113.7') =>
   m.chamar({ method: 'POST', url: '/v1/plataforma/auth/esqueci', headers: { ...csrf, 'cf-connecting-ip': ip }, payload: { email } });
 const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
@@ -257,7 +261,7 @@ describe('T-0076: login do tenant com a temporária', () => {
   it('a senha atual vale com a temporária pendente (200, destino bko) e não a consome', async () => {
     const m = await montar();
     await comTemporaria(m.adm);
-    const r = await login(m, 'am2808', 'adm@exemplo.com', SENHA_DE_TESTE);
+    const r = await login(m, 'adm@exemplo.com', SENHA_DE_TESTE);
     expect(r.statusCode).toBe(200);
     expect(r.json()).toEqual({ token_acesso: expect.any(String), expira_em: expect.any(String), destino: 'bko' });
     expect(LoginResposta.parse(r.json())).toMatchObject({ destino: 'bko' });
@@ -268,7 +272,7 @@ describe('T-0076: login do tenant com a temporária', () => {
     const m = await montar();
     await comTemporaria(m.adm);
     const fim = m.adm.senha_temporaria_expira_em!.toISOString();
-    const r = await login(m, ' am2808 ', 'adm@exemplo.com', TEMPORARIA, '203.0.113.1', {});
+    const r = await login(m, 'adm@exemplo.com', TEMPORARIA, '203.0.113.1', {});
     expect(r.statusCode).toBe(200);
     expect(r.json()).toEqual({ destino: 'bko', token_acesso: expect.any(String), expira_em: expect.any(String) });
     expect(LoginResposta.parse(r.json())).toMatchObject({ destino: 'bko' });
@@ -281,17 +285,17 @@ describe('T-0076: login do tenant com a temporária', () => {
     expect(bloqueada.statusCode).toBe(403);
     expect(bloqueada.json()).toEqual({ codigo: CODIGO_TROCAR_SENHA, mensagem: expect.any(String), motivo: 'temporaria', expira_em: fim });
     expect(SenhaATrocarResposta.parse(bloqueada.json())).toEqual(bloqueada.json());
-    const segundo = await login(m, 'am2808', 'adm@exemplo.com', TEMPORARIA);
+    const segundo = await login(m, 'adm@exemplo.com', TEMPORARIA);
     expect(segundo.statusCode).toBe(401);
     expect(segundo.json()).toEqual(NEUTRO_401);
-    expect((await login(m, 'am2808', 'adm@exemplo.com', SENHA_DE_TESTE)).statusCode).toBe(200);
+    expect((await login(m, 'adm@exemplo.com', SENHA_DE_TESTE)).statusCode).toBe(200);
   });
 
   it('temporária vencida: 401 neutro, conta como falha e não liga a troca', async () => {
     const m = await montar();
     await comTemporaria(m.adm, 60_000);
     m.relogio.avancar(60_000);
-    const r = await login(m, 'am2808', 'adm@exemplo.com', TEMPORARIA);
+    const r = await login(m, 'adm@exemplo.com', TEMPORARIA);
     expect(r.statusCode).toBe(401);
     expect(r.json()).toEqual(NEUTRO_401);
     expect(m.adm).toMatchObject({ falhas_login: 1, deve_trocar_senha: false });
@@ -300,7 +304,7 @@ describe('T-0076: login do tenant com a temporária', () => {
   it('temporária errada conta em falhas_login e na trava, igual à senha errada', async () => {
     const m = await montar();
     await comTemporaria(m.adm);
-    for (let i = 0; i < 5; i++) expect((await login(m, 'am2808', 'adm@exemplo.com', 'Temp-errada-9!')).statusCode).toBe(401);
+    for (let i = 0; i < 5; i++) expect((await login(m, 'adm@exemplo.com', 'Temp-errada-9!')).statusCode).toBe(401);
     expect(m.adm.bloqueado_ate).not.toBeNull();
   });
 
@@ -310,7 +314,7 @@ describe('T-0076: login do tenant com a temporária', () => {
     const consumir = m.repo.consumirTemporaria.bind(m.repo);
     // a outra sessão consome entre a leitura e o UPDATE
     m.repo.consumirTemporaria = async (tx, id) => (await consumir(tx, id), consumir(tx, id));
-    const r = await login(m, 'am2808', 'adm@exemplo.com', TEMPORARIA);
+    const r = await login(m, 'adm@exemplo.com', TEMPORARIA);
     expect(r.statusCode).toBe(401);
     expect(r.json()).toEqual(NEUTRO_401);
     expect(m.repo.sessoes).toHaveLength(0);
@@ -320,7 +324,7 @@ describe('T-0076: login do tenant com a temporária', () => {
   it('troca com o motivo temporaria sem a senha atual (também depois do refresh); depois só a nova e a antiga não valem', async () => {
     const m = await montar();
     await comTemporaria(m.adm);
-    const r = await login(m, 'am2808', 'adm@exemplo.com', TEMPORARIA);
+    const r = await login(m, 'adm@exemplo.com', TEMPORARIA);
     const renovado = await m.app.inject({ method: 'POST', url: '/v1/auth/refresh', cookies: { [COOKIE_REFRESH]: cookie(r, COOKIE_REFRESH)! } });
     expect(renovado.statusCode).toBe(200);
     expect(cookie(renovado, COOKIE_REFRESH)).toMatch(/\.t\d+$/);
@@ -330,14 +334,14 @@ describe('T-0076: login do tenant com a temporária', () => {
     const troca = await m.app.inject({ method: 'POST', url: '/v1/auth/senha', headers: bearer(token), cookies: { [COOKIE_REFRESH]: cookie(renovado, COOKIE_REFRESH)! }, payload: { senha_nova: SENHA_NOVA } });
     expect(troca.statusCode).toBe(204);
     expect(m.adm).toMatchObject({ deve_trocar_senha: false, senha_temporaria_hash: null, senha_temporaria_expira_em: null });
-    expect((await login(m, 'am2808', 'adm@exemplo.com', SENHA_NOVA)).statusCode).toBe(200);
-    expect((await login(m, 'am2808', 'adm@exemplo.com', SENHA_DE_TESTE)).statusCode).toBe(401);
+    expect((await login(m, 'adm@exemplo.com', SENHA_NOVA)).statusCode).toBe(200);
+    expect((await login(m, 'adm@exemplo.com', SENHA_DE_TESTE)).statusCode).toBe(401);
   });
 
   it('fora do motivo temporaria (senha provisória comum), a troca sem a senha atual é 400 em senha_atual', async () => {
     const m = await montar();
     m.adm.deve_trocar_senha = true;
-    const r = await login(m, 'am2808', 'adm@exemplo.com', SENHA_DE_TESTE);
+    const r = await login(m, 'adm@exemplo.com', SENHA_DE_TESTE);
     const token = r.json<{ token_acesso: string }>().token_acesso;
     // o bloqueio da provisória: motivo provisoria, sem expira_em
     expect((await m.app.inject({ url: ROTA_TENANT, headers: bearer(token) })).json()).toEqual({ codigo: CODIGO_TROCAR_SENHA, mensagem: expect.any(String), motivo: 'provisoria' });
@@ -349,7 +353,7 @@ describe('T-0076: login do tenant com a temporária', () => {
 
   it('sessão comum (sem troca pendente): a troca sem a senha atual é 400 VALIDACAO em senha_atual', async () => {
     const m = await montar();
-    const token = (await login(m, 'am2808', 'adm@exemplo.com', SENHA_DE_TESTE)).json<{ token_acesso: string }>().token_acesso;
+    const token = (await login(m, 'adm@exemplo.com', SENHA_DE_TESTE)).json<{ token_acesso: string }>().token_acesso;
     const troca = await m.app.inject({ method: 'POST', url: '/v1/auth/senha', headers: bearer(token), payload: { senha_nova: SENHA_NOVA } });
     expect(troca.statusCode).toBe(400);
     expect(troca.json()).toMatchObject({ codigo: 'VALIDACAO', campos: { senha_atual: expect.any(String) } });
@@ -357,19 +361,13 @@ describe('T-0076: login do tenant com a temporária', () => {
 });
 
 describe('T-0076: POST /v1/auth/esqueci (tenant)', () => {
-  it('202 idêntico para conta existente, inexistente, inativa, de empresa suspensa e de empresa inexistente; o argon2 roda em todas', async () => {
+  it('ADR 0021 §4: 202 idêntico, sem empresa, para conta existente, inexistente, inativa e de empresa suspensa; o argon2 roda em todas', async () => {
     const m = await montar();
-    const casos: [string, string][] = [
-      ['AM2808', ' ADM@exemplo.com '],
-      ['AM2808', 'ninguem@exemplo.com'],
-      ['AM2808', 'inativo@exemplo.com'],
-      ['AM1234', 'susp@exemplo.com'],
-      ['SP9999', 'adm@exemplo.com'],
-    ];
+    const casos = [' ADM@exemplo.com ', 'ninguem@exemplo.com', 'inativo@exemplo.com', 'susp@exemplo.com'];
     const respostas = [];
-    for (const [i, [empresa, email]] of casos.entries()) {
+    for (const [i, email] of casos.entries()) {
       hashes.mockClear();
-      const r = await esqueci(m, empresa, email, `198.51.100.${i + 1}`);
+      const r = await esqueci(m, email, `198.51.100.${i + 1}`);
       expect(hashes).toHaveBeenCalledTimes(1);
       respostas.push(r);
     }
@@ -379,7 +377,7 @@ describe('T-0076: POST /v1/auth/esqueci (tenant)', () => {
       expect(r.body).toBe(respostas[0]!.body);
     }
     expect(respostas[0]!.json()).toEqual({ mensagem: MENSAGEM_ESQUECI_NEUTRA });
-    expect(MENSAGEM_ESQUECI_NEUTRA).toBe('Se o e-mail estiver cadastrado nesta empresa, você vai receber uma senha temporária em alguns minutos. Ela vale por 72 horas.');
+    expect(MENSAGEM_ESQUECI_NEUTRA).toBe('Se o e-mail estiver cadastrado, enviamos as instruções.');
     await m.envio.esperar();
     // só a conta existente grava, audita e recebe
     expect(m.envio.enviados.map((e) => e.para)).toEqual(['adm@exemplo.com']);
@@ -389,35 +387,37 @@ describe('T-0076: POST /v1/auth/esqueci (tenant)', () => {
     const temporaria = /Senha temporária: (\S+)/.exec(enviado!.texto)?.[1];
     expect(temporaria).toHaveLength(TAMANHO_SENHA_TEMPORARIA);
     expect(enviado!.assunto).toBe('Sua senha temporária do Macuxi ERP');
-    // T-0111: a mesma mensagem em HTML (modelo do design), com o código da empresa e o e-mail
-    expect(enviado!.html).toContain('>AM2808</td>');
+    // T-0111: a mesma mensagem em HTML (modelo do design), com o e-mail da conta; ADR 0021 §6: sem o código da empresa
+    expect(enviado!.html).toContain('>adm@exemplo.com</td>');
     expect(enviado!.texto).toContain('Vale por 72 horas');
-    // T-0111: o código da empresa (maiúsculo, como no login) e o e-mail da conta vão no e-mail
-    expect(enviado!.texto).toContain('Código da empresa: AM2808');
     expect(enviado!.texto).toContain('E-mail: adm@exemplo.com');
+    for (const parte of [enviado!.texto, enviado!.html]) {
+      expect(parte).not.toContain('Código da empresa');
+      expect(parte).not.toMatch(/AM2808/i);
+    }
     expect(m.adm.senha_temporaria_hash).toMatch(/^\$argon2id\$/);
     expect(await conferirSenha(temporaria!, m.adm.senha_temporaria_hash!)).toBe(true);
     expect(m.adm.senha_temporaria_expira_em!.getTime() - INICIO.getTime()).toBe(H72);
     for (const r of respostas) expect(r.body).not.toContain(temporaria);
     // a temporária entregue entra (200), com a troca obrigatória
-    expect((await login(m, 'am2808', 'adm@exemplo.com', temporaria!)).statusCode).toBe(200);
+    expect((await login(m, 'adm@exemplo.com', temporaria!)).statusCode).toBe(200);
     expect(m.adm.deve_trocar_senha).toBe(true);
   });
 
   it('um pedido novo substitui o anterior: a primeira temporária deixa de valer', async () => {
     const m = await montar();
-    await esqueci(m, 'AM2808', 'adm@exemplo.com');
-    await esqueci(m, 'AM2808', 'adm@exemplo.com');
+    await esqueci(m, 'adm@exemplo.com');
+    await esqueci(m, 'adm@exemplo.com');
     await m.envio.esperar();
     const [primeira, segunda] = m.envio.enviados.map((e) => /Senha temporária: (\S+)/.exec(e.texto)![1]!);
     expect(primeira).not.toBe(segunda);
-    expect((await login(m, 'am2808', 'adm@exemplo.com', primeira!)).statusCode).toBe(401);
-    expect((await login(m, 'am2808', 'adm@exemplo.com', segunda!)).statusCode).toBe(200);
+    expect((await login(m, 'adm@exemplo.com', primeira!)).statusCode).toBe(401);
+    expect((await login(m, 'adm@exemplo.com', segunda!)).statusCode).toBe(200);
   });
 
   it('o envio só sai depois da resposta', async () => {
     const m = await montar();
-    const r = await esqueci(m, 'AM2808', 'adm@exemplo.com');
+    const r = await esqueci(m, 'adm@exemplo.com');
     expect(r.statusCode).toBe(202);
     expect(m.envio.enviados).toHaveLength(0);
     await m.envio.esperar();
@@ -427,10 +427,10 @@ describe('T-0076: POST /v1/auth/esqueci (tenant)', () => {
 
   it('429 por IP (20 a cada 15 min, só anti-spam) antes do banco: MuitasTentativasResposta com detalhes.retry_after_s, e no Retry-After', async () => {
     const m = await montar();
-    for (let i = 0; i < 20; i++) expect((await esqueci(m, 'AM2808', `p${i}@exemplo.com`)).statusCode).toBe(202);
+    for (let i = 0; i < 20; i++) expect((await esqueci(m, `p${i}@exemplo.com`)).statusCode).toBe(202);
     const aberturas = m.banco.aberturas.length;
     hashes.mockClear();
-    const r = await esqueci(m, 'AM2808', 'adm@exemplo.com');
+    const r = await esqueci(m, 'adm@exemplo.com');
     expect(r.statusCode).toBe(429);
     expect(r.json()).toEqual({ codigo: 'MUITAS_TENTATIVAS', mensagem: textoMuitasTentativas(900), detalhes: { retry_after_s: 900 } });
     expect(MuitasTentativasResposta.safeParse(r.json()).success).toBe(true);
@@ -441,25 +441,30 @@ describe('T-0076: POST /v1/auth/esqueci (tenant)', () => {
 
   it('hotfix v0.3.16.1: sem limite por conta: a mesma conta pede de novo, de outro IP, sem 429', async () => {
     const m = await montar();
-    for (let i = 0; i < 6; i++) expect((await esqueci(m, 'AM2808', 'adm@exemplo.com', `198.51.100.${i + 10}`)).statusCode).toBe(202);
+    for (let i = 0; i < 6; i++) expect((await esqueci(m, 'adm@exemplo.com', `198.51.100.${i + 10}`)).statusCode).toBe(202);
   });
 
-  it('corpo inválido é 400 VALIDACAO (CodigoEmpresaLogin fora do código e do slug; e-mail válido)', async () => {
+  it('corpo inválido é 400 VALIDACAO só pelo e-mail; ADR 0021 §6: o campo empresa, qualquer que seja, é ignorado', async () => {
     const m = await montar();
-    // Inválidos também no formato do slug antigo que o CodigoEmpresaLogin aceita (PADRAO_SLUG_EMPRESA, CHECK da 0002):
-    // curto demais, espaço, sublinhado, hífen no início e mais de 40 caracteres.
-    for (const [i, corpo] of [{ empresa: 'A', email: 'adm@exemplo.com' }, { empresa: 'AM 2808', email: 'adm@exemplo.com' }, { empresa: 'loja_exemplo', email: 'adm@exemplo.com' }, { empresa: '-am2808', email: 'adm@exemplo.com' }, { empresa: `A${'M'.repeat(40)}`, email: 'adm@exemplo.com' }, { empresa: 'AM2808', email: 'x' }, { empresa: 'MACUXI', email: 'x' }].entries()) {
+    for (const [i, corpo] of [{ email: 'x' }, { empresa: 'MACUXI', email: 'x' }, {}].entries()) {
       const r = await m.app.inject({ method: 'POST', url: '/v1/auth/esqueci', headers: { 'cf-connecting-ip': `198.51.100.${200 + i}` }, payload: corpo });
       expect(r.statusCode).toBe(400);
       expect(r.json()).toMatchObject({ codigo: 'VALIDACAO' });
     }
+    // empresa errada, de outra empresa, o código reservado ou nem texto: o pedido segue pelo e-mail
+    for (const [i, empresa] of ['A', 'SP9999', 'MACUXI', 42].entries()) {
+      const r = await m.app.inject({ method: 'POST', url: '/v1/auth/esqueci', headers: { 'cf-connecting-ip': `198.51.100.${210 + i}` }, payload: { empresa, email: 'adm@exemplo.com' } });
+      expect(r.statusCode).toBe(202);
+    }
+    await m.envio.esperar();
+    expect(m.envio.enviados.map((e) => e.para)).toEqual(Array(4).fill('adm@exemplo.com'));
   });
 
   it('nenhum e-mail nem temporária em log, nem quando o envio falha', async () => {
     const m = await montar();
     m.envio.falhar = true;
-    await esqueci(m, 'AM2808', 'adm@exemplo.com');
-    await esqueci(m, 'MACUXI', EMAIL_SA, '203.0.113.9');
+    await esqueci(m, 'adm@exemplo.com');
+    await esqueci(m, EMAIL_SA, '203.0.113.9');
     // agendarEnvioEmail: 2 tentativas com 2 s entre elas; a falha final é um `warn` sem dado pessoal.
     await new Promise((r) => setTimeout(r, 2300));
     await m.envio.esperar();
@@ -484,21 +489,20 @@ describe('T-0076: POST /v1/auth/esqueci (tenant)', () => {
     };
     const motivos = (m: Montado) => eventos(m).filter((o) => o.evento === 'esqueci.sem_envio').map((o) => o.motivo);
 
-    it('tenant: empresa inexistente ou suspensa, conta inexistente e conta inativa logam o motivo e nada sai', async () => {
+    it('tenant: empresa suspensa, conta inexistente e conta inativa logam o motivo e nada sai', async () => {
       const m = await montar();
-      await esqueci(m, 'XY9999', 'adm@exemplo.com', IP);
-      await esqueci(m, 'AM1234', 'susp@exemplo.com', '198.51.100.78');
-      await esqueci(m, 'AM2808', 'ninguem@exemplo.com', '198.51.100.79');
-      await esqueci(m, 'AM2808', 'inativo@exemplo.com', '198.51.100.80');
+      await esqueci(m, 'susp@exemplo.com', '198.51.100.78');
+      await esqueci(m, 'ninguem@exemplo.com', '198.51.100.79');
+      await esqueci(m, 'inativo@exemplo.com', '198.51.100.80');
       await m.envio.esperar();
       expect(m.envio.enviados).toEqual([]);
-      expect(motivos(m)).toEqual(['empresa_inexistente_ou_suspensa', 'empresa_inexistente_ou_suspensa', 'conta_inexistente_ou_inativa', 'conta_inexistente_ou_inativa']);
+      expect(motivos(m)).toEqual(['empresa_inexistente_ou_suspensa', 'conta_inexistente_ou_inativa', 'conta_inexistente_ou_inativa']);
       semVazamento(m);
     });
 
-    it('superadmin (MACUXI e /config): e-mail sem conta ou conta inativa loga conta_inexistente_ou_inativa', async () => {
+    it('superadmin (tela única e /config): e-mail sem conta ou conta inativa loga conta_inexistente_ou_inativa', async () => {
       const m = await montar();
-      await esqueci(m, 'MACUXI', 'ninguem@exemplo.com', IP);
+      await esqueci(m, 'ninguem@exemplo.com', IP);
       await esqueciConfig(m, 'antigo@exemplo.com', '198.51.100.81');
       await m.envio.esperar();
       expect(m.envio.enviados).toEqual([]);
@@ -506,23 +510,23 @@ describe('T-0076: POST /v1/auth/esqueci (tenant)', () => {
       semVazamento(m);
     });
 
-    it('e-mail desligado loga email_desligado nas duas rotas; MACUXI sem o portal montado loga plataforma_indisponivel', async () => {
+    it('e-mail desligado loga email_desligado nas duas rotas; superadmin sem o portal montado loga plataforma_indisponivel', async () => {
       const sem = await montar({ semEmail: true });
-      await esqueci(sem, 'AM2808', 'adm@exemplo.com', IP);
-      await esqueci(sem, 'MACUXI', EMAIL_SA, '198.51.100.82');
+      await esqueci(sem, 'adm@exemplo.com', IP);
+      await esqueci(sem, EMAIL_SA, '198.51.100.82');
       await esqueciConfig(sem, EMAIL_SA, '198.51.100.83');
       expect(motivos(sem)).toEqual(['email_desligado', 'email_desligado', 'email_desligado']);
       semVazamento(sem);
       const semPortal = await montar({ semPlataforma: true });
-      expect((await esqueci(semPortal, 'MACUXI', EMAIL_SA, IP)).statusCode).toBe(202);
+      expect((await esqueci(semPortal, EMAIL_SA, IP)).statusCode).toBe(202);
       expect(motivos(semPortal)).toEqual(['plataforma_indisponivel']);
       semVazamento(semPortal);
     });
 
     it('envio aceito: email.enviado com envio_id e nenhum sem_envio; a temporária não aparece em log', async () => {
       const m = await montar();
-      await esqueci(m, 'AM2808', 'adm@exemplo.com', IP);
-      await esqueci(m, 'MACUXI', EMAIL_SA, '198.51.100.84');
+      await esqueci(m, 'adm@exemplo.com', IP);
+      await esqueci(m, EMAIL_SA, '198.51.100.84');
       await m.envio.esperar();
       expect(m.envio.enviados).toHaveLength(2);
       expect(motivos(m)).toEqual([]);
@@ -546,9 +550,9 @@ describe('T-0076: POST /v1/auth/esqueci (tenant)', () => {
     const sem = await montar({ semEmail: true });
     hashes.mockClear();
     const rs = [
-      await esqueci(sem, 'AM2808', 'adm@exemplo.com', '198.51.100.1'),
-      await esqueci(sem, 'AM2808', 'ninguem@exemplo.com', '198.51.100.2'),
-      await esqueci(sem, 'MACUXI', EMAIL_SA, '198.51.100.3'),
+      await esqueci(sem, 'adm@exemplo.com', '198.51.100.1'),
+      await esqueci(sem, 'ninguem@exemplo.com', '198.51.100.2'),
+      await esqueci(sem, EMAIL_SA, '198.51.100.3'),
       await esqueciConfig(sem, EMAIL_SA, '198.51.100.4'),
     ];
     for (const r of rs) {
@@ -569,9 +573,9 @@ describe('T-0076: POST /v1/auth/esqueci (tenant)', () => {
 
   it('e-mail desligado: o 429 por IP vale antes do 202 (e antes do argon2)', async () => {
     const sem = await montar({ semEmail: true });
-    for (let i = 0; i < 20; i++) expect((await esqueci(sem, 'AM2808', `p${i}@exemplo.com`)).statusCode).toBe(202);
+    for (let i = 0; i < 20; i++) expect((await esqueci(sem, `p${i}@exemplo.com`)).statusCode).toBe(202);
     hashes.mockClear();
-    const ip = await esqueci(sem, 'AM2808', 'adm@exemplo.com');
+    const ip = await esqueci(sem, 'adm@exemplo.com');
     expect(ip.statusCode).toBe(429);
     expect(ip.json()).toEqual({ codigo: 'MUITAS_TENTATIVAS', mensagem: textoMuitasTentativas(900), detalhes: { retry_after_s: 900 } });
     expect(hashes).not.toHaveBeenCalled();
@@ -580,10 +584,10 @@ describe('T-0076: POST /v1/auth/esqueci (tenant)', () => {
   });
 });
 
-describe('T-0076: tela única com o código MACUXI', () => {
-  it('login MACUXI (sem diferenciar maiúsculas): 200 com destino config e o cookie do /config, sem o refresh do tenant', async () => {
+describe('T-0076: tela única com o e-mail de superadmin (ADR 0021 §5)', () => {
+  it('login pelo e-mail só de superadmin (sem diferenciar maiúsculas): 200 com destino config e o cookie do /config, sem o refresh do tenant', async () => {
     const m = await montar();
-    const r = await login(m, ' macuxi ', ` ${EMAIL_SA.toUpperCase()} `, SENHA_DE_TESTE);
+    const r = await login(m, ` ${EMAIL_SA.toUpperCase()} `, SENHA_DE_TESTE);
     expect(r.statusCode).toBe(200);
     expect(r.json()).toEqual({ expira_em: expect.any(String), destino: 'config' });
     expect(LoginResposta.parse(r.json())).toEqual(r.json());
@@ -593,14 +597,14 @@ describe('T-0076: tela única com o código MACUXI', () => {
     expect(eu.json()).toMatchObject({ superadmin: { id: SA }, deve_trocar_senha: false });
   });
 
-  it('o 401 é idêntico nos dois lados: tenant, MACUXI com senha errada, MACUXI sem conta, MACUXI inativo', async () => {
+  it('o 401 é idêntico nos dois lados: tenant, superadmin com senha errada, superadmin sem conta, superadmin inativo', async () => {
     const m = await montar();
     const rs = [
-      await login(m, 'AM2808', 'adm@exemplo.com', 'errada-1'),
-      await login(m, 'AM2808', 'ninguem@exemplo.com', 'errada-1'),
-      await login(m, 'MACUXI', EMAIL_SA, 'errada-1'),
-      await login(m, 'MACUXI', 'ninguem@exemplo.com', 'errada-1'),
-      await login(m, 'MACUXI', 'antigo@exemplo.com', SENHA_DE_TESTE),
+      await login(m, 'adm@exemplo.com', 'errada-1'),
+      await login(m, 'ninguem@exemplo.com', 'errada-1'),
+      await login(m, EMAIL_SA, 'errada-1'),
+      await login(m, 'ninguem@exemplo.com', 'errada-1'),
+      await login(m, 'antigo@exemplo.com', SENHA_DE_TESTE),
     ];
     for (const r of rs) {
       expect(r.statusCode).toBe(401);
@@ -610,34 +614,55 @@ describe('T-0076: tela única com o código MACUXI', () => {
 
   it('o limite de login por IP vale nos dois lados: 10 falhas a cada 15 min, somadas; o login certo não conta', async () => {
     const m = await montar();
-    for (let i = 0; i < 12; i++) expect((await login(m, i % 2 ? 'MACUXI' : 'AM2808', i % 2 ? EMAIL_SA : 'adm@exemplo.com', SENHA_DE_TESTE, '192.0.2.1')).statusCode).toBe(200);
-    for (let i = 0; i < 10; i++) expect((await login(m, i % 2 ? 'MACUXI' : 'AM2808', `p${i}@exemplo.com`, 'errada-1', '192.0.2.1')).statusCode).toBe(401);
-    expect((await login(m, 'MACUXI', EMAIL_SA, SENHA_DE_TESTE, '192.0.2.1')).json()).toMatchObject({ codigo: 'MUITAS_TENTATIVAS' });
-    expect((await login(m, 'AM2808', 'adm@exemplo.com', SENHA_DE_TESTE, '192.0.2.1')).statusCode).toBe(429);
-    expect((await login(m, 'AM2808', 'adm@exemplo.com', SENHA_DE_TESTE, '192.0.2.2')).statusCode).toBe(200);
+    for (let i = 0; i < 12; i++) expect((await login(m, i % 2 ? EMAIL_SA : 'adm@exemplo.com', SENHA_DE_TESTE, '192.0.2.1')).statusCode).toBe(200);
+    for (let i = 0; i < 10; i++) expect((await login(m, `p${i}@exemplo.com`, 'errada-1', '192.0.2.1')).statusCode).toBe(401);
+    expect((await login(m, EMAIL_SA, SENHA_DE_TESTE, '192.0.2.1')).json()).toMatchObject({ codigo: 'MUITAS_TENTATIVAS' });
+    expect((await login(m, 'adm@exemplo.com', SENHA_DE_TESTE, '192.0.2.1')).statusCode).toBe(429);
+    expect((await login(m, 'adm@exemplo.com', SENHA_DE_TESTE, '192.0.2.2')).statusCode).toBe(200);
     m.relogio.avancar(15 * 60_000);
-    expect((await login(m, 'MACUXI', EMAIL_SA, SENHA_DE_TESTE, '192.0.2.1')).statusCode).toBe(200);
+    expect((await login(m, EMAIL_SA, SENHA_DE_TESTE, '192.0.2.1')).statusCode).toBe(200);
   });
 
-  it('MACUXI sem o CABECALHO_CSRF_CONFIG (ADR 0018 §5): o mesmo 401 neutro, sem banco e com o argon2; o tenant não exige o cabeçalho', async () => {
+  it('ADR 0021 §7 (opção A): o mesmo e-mail num usuário e no superadmin leva sempre ao BKO; a senha do superadmin é o 401 genérico; o esqueci vai ao usuário', async () => {
+    const m = await montar();
+    m.sa.senha_hash = await gerarHashSenha('Senha-do-superadmin-1', ARGON2_RAPIDO);
+    m.repo.usuarios.push({ ...m.adm, id: '8c9d0e1f-2a3b-4c4d-9e5f-6a7b8c9d0e1f', email: EMAIL_SA });
+    const bko = await login(m, EMAIL_SA, SENHA_DE_TESTE);
+    expect(bko.statusCode).toBe(200);
+    expect(bko.json()).toMatchObject({ destino: 'bko', token_acesso: expect.any(String) });
+    expect(cookie(bko, COOKIE_REFRESH)).toBeDefined();
+    expect(cookie(bko, COOKIE_CONFIG)).toBeUndefined();
+    const doSuperadmin = await login(m, EMAIL_SA, 'Senha-do-superadmin-1');
+    expect(doSuperadmin.statusCode).toBe(401);
+    expect(doSuperadmin.body).toBe(JSON.stringify(NEUTRO_401));
+    expect(cookie(doSuperadmin, COOKIE_CONFIG)).toBeUndefined();
+    expect((await esqueci(m, EMAIL_SA)).statusCode).toBe(202);
+    await m.envio.esperar();
+    // a senha do superadmin nunca é conferida pela tela nesse caso: nenhuma função dele foi chamada
+    expect(m.plataforma.chamadas).toEqual([]);
+    expect(m.envio.enviados.map((e) => e.para)).toEqual([EMAIL_SA]);
+    expect(m.repo.usuarios.find((u) => u.email === EMAIL_SA)!.senha_temporaria_hash).toMatch(/^\$argon2id\$/);
+  });
+
+  it('superadmin sem o CABECALHO_CSRF_CONFIG (ADR 0018 §5): o mesmo 401 neutro, sem banco e com o argon2; o tenant não exige o cabeçalho', async () => {
     const m = await montar();
     hashes.mockClear();
-    const r = await login(m, 'MACUXI', EMAIL_SA, SENHA_DE_TESTE, '203.0.113.2', {});
+    const r = await login(m, EMAIL_SA, SENHA_DE_TESTE, '203.0.113.2', {});
     expect(r.statusCode).toBe(401);
     expect(r.body).toBe(JSON.stringify(NEUTRO_401));
     expect(cookie(r, COOKIE_CONFIG)).toBeUndefined();
     expect(m.plataforma.chamadas).toEqual([]);
     expect(m.sa.falhas_login).toBe(0);
-    const errado = await login(m, 'MACUXI', EMAIL_SA, SENHA_DE_TESTE, '203.0.113.2', { [CABECALHO_CSRF_CONFIG]: '0' });
+    const errado = await login(m, EMAIL_SA, SENHA_DE_TESTE, '203.0.113.2', { [CABECALHO_CSRF_CONFIG]: '0' });
     expect(errado.body).toBe(JSON.stringify(NEUTRO_401));
-    expect((await login(m, 'AM2808', 'adm@exemplo.com', SENHA_DE_TESTE, '203.0.113.2', {})).statusCode).toBe(200);
+    expect((await login(m, 'adm@exemplo.com', SENHA_DE_TESTE, '203.0.113.2', {})).statusCode).toBe(200);
   });
 
-  it('MACUXI com a temporária: 200 LoginResposta config com o cookie; as rotas do portal dão 403 SenhaATrocarResposta (motivo temporaria, expira_em); o segundo uso dá 401; a antiga vale', async () => {
+  it('superadmin com a temporária: 200 LoginResposta config com o cookie; as rotas do portal dão 403 SenhaATrocarResposta (motivo temporaria, expira_em); o segundo uso dá 401; a antiga vale', async () => {
     const m = await montar();
     await comTemporaria(m.sa);
     const fim = m.sa.senha_temporaria_expira_em!.toISOString();
-    const r = await login(m, 'MACUXI', EMAIL_SA, TEMPORARIA);
+    const r = await login(m, EMAIL_SA, TEMPORARIA);
     expect(r.statusCode).toBe(200);
     expect(r.json()).toEqual({ destino: 'config', expira_em: expect.any(String) });
     expect(LoginResposta.parse(r.json())).toEqual(r.json());
@@ -648,19 +673,19 @@ describe('T-0076: tela única com o código MACUXI', () => {
     expect(SenhaATrocarResposta.parse(bloqueada.json())).toEqual(bloqueada.json());
     expect(m.plataforma.chamadas).toContain('superadmin_consumir_temporaria');
     expect(m.sa).toMatchObject({ senha_temporaria_hash: null, senha_temporaria_expira_em: null, deve_trocar_senha: true });
-    const segundo = await login(m, 'MACUXI', EMAIL_SA, TEMPORARIA);
+    const segundo = await login(m, EMAIL_SA, TEMPORARIA);
     expect(segundo.body).toBe(JSON.stringify(NEUTRO_401));
-    expect((await login(m, 'MACUXI', EMAIL_SA, SENHA_DE_TESTE)).statusCode).toBe(200);
+    expect((await login(m, EMAIL_SA, SENHA_DE_TESTE)).statusCode).toBe(200);
   });
 
   it('superadmin: troca com o motivo temporaria sem a senha atual; sessão comum com troca pendente ainda exige a atual', async () => {
     const m = await montar();
     await comTemporaria(m.sa);
-    const r = await login(m, 'MACUXI', EMAIL_SA, TEMPORARIA);
+    const r = await login(m, EMAIL_SA, TEMPORARIA);
     const cfg = { [COOKIE_CONFIG]: cookie(r, COOKIE_CONFIG)! };
     expect((await m.app.inject({ url: '/v1/plataforma/auth/eu', cookies: cfg })).json()).toMatchObject({ deve_trocar_senha: true, motivo_troca: 'temporaria' });
     // a sessão comum (senha antiga) com a troca pendente não tem o motivo
-    const comum = await login(m, 'MACUXI', EMAIL_SA, SENHA_DE_TESTE);
+    const comum = await login(m, EMAIL_SA, SENHA_DE_TESTE);
     const semAtual = await m.app.inject({ method: 'POST', url: '/v1/plataforma/auth/senha', headers: csrf, cookies: { [COOKIE_CONFIG]: cookie(comum, COOKIE_CONFIG)! }, payload: { senha_nova: SENHA_NOVA } });
     expect(semAtual.statusCode).toBe(400);
     expect(semAtual.json()).toMatchObject({ codigo: 'VALIDACAO', campos: { senha_atual: expect.any(String) } });
@@ -670,38 +695,38 @@ describe('T-0076: tela única com o código MACUXI', () => {
     expect(troca.statusCode).toBe(204);
     expect(m.plataforma.chamadas).toContain('superadmin_trocar_senha');
     expect(m.sa.deve_trocar_senha).toBe(false);
-    expect((await login(m, 'MACUXI', EMAIL_SA, SENHA_NOVA)).statusCode).toBe(200);
+    expect((await login(m, EMAIL_SA, SENHA_NOVA)).statusCode).toBe(200);
   });
 
   it('superadmin: temporária vencida e temporária errada contam na trava; corrida perdida = 401 sem sessão', async () => {
     const m = await montar();
     await comTemporaria(m.sa, 60_000);
     m.relogio.avancar(60_000);
-    expect((await login(m, 'MACUXI', EMAIL_SA, TEMPORARIA)).statusCode).toBe(401);
+    expect((await login(m, EMAIL_SA, TEMPORARIA)).statusCode).toBe(401);
     expect(m.sa.falhas_login).toBe(1);
     expect(m.plataforma.chamadas).not.toContain('superadmin_consumir_temporaria');
-    for (let i = 0; i < 4; i++) await login(m, 'MACUXI', EMAIL_SA, 'Temp-errada-9!');
+    for (let i = 0; i < 4; i++) await login(m, EMAIL_SA, 'Temp-errada-9!');
     expect(m.sa.bloqueado_ate).not.toBeNull();
     // RN-CORE-15 (T-0111): travado = 423 CONTA_BLOQUEADA
-    expect((await login(m, 'MACUXI', EMAIL_SA, SENHA_DE_TESTE)).statusCode).toBe(423);
+    expect((await login(m, EMAIL_SA, SENHA_DE_TESTE)).statusCode).toBe(423);
 
     const c = await montar();
     await comTemporaria(c.sa);
     c.plataforma.perderCorrida = true;
-    const r = await login(c, 'MACUXI', EMAIL_SA, TEMPORARIA);
+    const r = await login(c, EMAIL_SA, TEMPORARIA);
     expect(r.body).toBe(JSON.stringify(NEUTRO_401));
     expect(c.plataforma.sessoes).toHaveLength(0);
     expect(c.sa.falhas_login).toBe(0);
   });
 
-  it('esqueci com MACUXI: o mesmo 202, grava pela superadmin_emitir_temporaria (id, hash, 72 h) e envia depois da resposta', async () => {
+  it('esqueci com superadmin: o mesmo 202, grava pela superadmin_emitir_temporaria (id, hash, 72 h) e envia depois da resposta', async () => {
     const m = await montar();
-    const existe = await esqueci(m, 'macuxi', EMAIL_SA);
+    const existe = await esqueci(m, EMAIL_SA);
     expect(m.envio.enviados).toHaveLength(0);
     await m.envio.esperar();
-    const naoExiste = await esqueci(m, 'MACUXI', 'ninguem@exemplo.com', '203.0.113.8');
-    const inativo = await esqueci(m, 'MACUXI', 'antigo@exemplo.com', '203.0.113.9');
-    const tenant = await esqueci(m, 'AM2808', 'ninguem@exemplo.com', '203.0.113.10');
+    const naoExiste = await esqueci(m, 'ninguem@exemplo.com', '203.0.113.8');
+    const inativo = await esqueci(m, 'antigo@exemplo.com', '203.0.113.9');
+    const tenant = await esqueci(m, 'ninguem@exemplo.com', '203.0.113.10');
     for (const r of [existe, naoExiste, inativo]) {
       expect(r.statusCode).toBe(202);
       expect(r.body).toBe(tenant.body);
@@ -711,14 +736,14 @@ describe('T-0076: tela única com o código MACUXI', () => {
     expect(m.plataforma.chamadas.filter((f) => f === 'superadmin_emitir_temporaria')).toHaveLength(1);
     expect(m.sa.senha_temporaria_expira_em!.getTime() - INICIO.getTime()).toBe(H72);
     const temporaria = /Senha temporária: (\S+)/.exec(m.envio.enviados[0]!.texto)![1]!;
-    expect((await login(m, 'MACUXI', EMAIL_SA, temporaria)).statusCode).toBe(200);
+    expect((await login(m, EMAIL_SA, temporaria)).statusCode).toBe(200);
     expect(m.sa.deve_trocar_senha).toBe(true);
   });
 
-  it('hotfix v0.3.16.1: MACUXI pela tela única e pelo /config, sem limite por conta: o 4º pedido também é 202', async () => {
+  it('hotfix v0.3.16.1: superadmin pela tela única e pelo /config, sem limite por conta: o 4º pedido também é 202', async () => {
     const m = await montar();
-    expect((await esqueci(m, 'MACUXI', EMAIL_SA, '198.51.100.1')).statusCode).toBe(202);
-    expect((await esqueci(m, 'MACUXI', EMAIL_SA, '198.51.100.2')).statusCode).toBe(202);
+    expect((await esqueci(m, EMAIL_SA, '198.51.100.1')).statusCode).toBe(202);
+    expect((await esqueci(m, EMAIL_SA, '198.51.100.2')).statusCode).toBe(202);
     expect((await esqueciConfig(m, EMAIL_SA, '198.51.100.3')).statusCode).toBe(202);
     expect((await esqueciConfig(m, ` ${EMAIL_SA.toUpperCase()}`, '198.51.100.4')).statusCode).toBe(202);
   });
@@ -752,22 +777,22 @@ describe('hotfix: a temporária entra com a conta travada e zera a trava', () =>
     await comTemporaria(m.adm);
     travar(m.adm);
     const preso = ip();
-    for (let i = 0; i < 10; i++) await login(m, 'am2808', `outro-${i}@exemplo.com`, 'errada', preso);
-    const atual = await login(m, 'am2808', 'adm@exemplo.com', SENHA_DE_TESTE, preso);
+    for (let i = 0; i < 10; i++) await login(m, `outro-${i}@exemplo.com`, 'errada', preso);
+    const atual = await login(m, 'adm@exemplo.com', SENHA_DE_TESTE, preso);
     expect(atual.statusCode).toBe(429);
     expect(MuitasTentativasResposta.safeParse(atual.json()).success).toBe(true);
-    expect((await login(m, 'am2808', 'adm@exemplo.com', 'Temp-errada-9!', preso)).statusCode).toBe(429);
+    expect((await login(m, 'adm@exemplo.com', 'Temp-errada-9!', preso)).statusCode).toBe(429);
     expect(m.adm.falhas_login).toBe(5); // a recusa do limite não soma falha na conta
-    const r = await login(m, 'am2808', 'adm@exemplo.com', TEMPORARIA, preso);
+    const r = await login(m, 'adm@exemplo.com', TEMPORARIA, preso);
     expect(r.statusCode).toBe(200);
     expect(r.json()).toMatchObject({ destino: 'bko', desbloqueou: true });
     expect(m.adm).toMatchObject({ falhas_login: 0, bloqueado_ate: null, senha_temporaria_hash: null });
     await comTemporaria(m.adm);
     const livre = ip();
-    for (let i = 0; i < 9; i++) await login(m, 'am2808', `mais-${i}@exemplo.com`, 'errada', livre);
-    expect((await login(m, 'am2808', 'adm@exemplo.com', TEMPORARIA, livre)).statusCode).toBe(200);
-    expect((await login(m, 'am2808', 'ainda@exemplo.com', 'errada', livre)).statusCode).toBe(401); // a 10ª falha: a temporária certa não contou
-    expect((await login(m, 'am2808', 'ainda@exemplo.com', 'errada', livre)).statusCode).toBe(429);
+    for (let i = 0; i < 9; i++) await login(m, `mais-${i}@exemplo.com`, 'errada', livre);
+    expect((await login(m, 'adm@exemplo.com', TEMPORARIA, livre)).statusCode).toBe(200);
+    expect((await login(m, 'ainda@exemplo.com', 'errada', livre)).statusCode).toBe(401); // a 10ª falha: a temporária certa não contou
+    expect((await login(m, 'ainda@exemplo.com', 'errada', livre)).statusCode).toBe(429);
   });
 
   it('tenant travado com a temporária vigente: 200 bko com a troca de motivo temporaria; a trava e a temporária zeram', async () => {
@@ -775,7 +800,7 @@ describe('hotfix: a temporária entra com a conta travada e zera a trava', () =>
     await comTemporaria(m.adm);
     travar(m.adm);
     const fim = m.adm.senha_temporaria_expira_em!.toISOString();
-    const r = await login(m, 'am2808', 'adm@exemplo.com', TEMPORARIA, ip());
+    const r = await login(m, 'adm@exemplo.com', TEMPORARIA, ip());
     expect(r.statusCode).toBe(200);
     expect(LoginResposta.parse(r.json())).toMatchObject({ destino: 'bko' });
     expect(m.adm).toMatchObject({ falhas_login: 0, bloqueado_ate: null, senha_temporaria_hash: null, senha_temporaria_expira_em: null, deve_trocar_senha: true });
@@ -786,14 +811,14 @@ describe('hotfix: a temporária entra com a conta travada e zera a trava', () =>
   it('RN-CORE-15: tenant travado: a senha atual certa, a temporária errada, a vencida e a conta sem temporária dão o mesmo 423, sem somar falha nem estender a trava', async () => {
     const m = await montar();
     const ate = travar(m.adm);
-    const semTemporaria = await login(m, 'am2808', 'adm@exemplo.com', TEMPORARIA, ip());
+    const semTemporaria = await login(m, 'adm@exemplo.com', TEMPORARIA, ip());
     expect(semTemporaria.statusCode).toBe(423);
     expect(ContaBloqueadaResposta.parse(semTemporaria.json())).toEqual(semTemporaria.json());
     await comTemporaria(m.adm, 60_000);
-    const atual = await login(m, 'am2808', 'adm@exemplo.com', SENHA_DE_TESTE, ip());
-    const errada = await login(m, 'am2808', 'adm@exemplo.com', 'Temp-errada-9!', ip());
+    const atual = await login(m, 'adm@exemplo.com', SENHA_DE_TESTE, ip());
+    const errada = await login(m, 'adm@exemplo.com', 'Temp-errada-9!', ip());
     m.relogio.avancar(60_000);
-    const vencida = await login(m, 'am2808', 'adm@exemplo.com', TEMPORARIA, ip());
+    const vencida = await login(m, 'adm@exemplo.com', TEMPORARIA, ip());
     for (const r of [atual, errada, vencida]) {
       expect(r.statusCode).toBe(423);
       expect(r.body).toBe(semTemporaria.body);
@@ -808,7 +833,7 @@ describe('hotfix: a temporária entra com a conta travada e zera a trava', () =>
     await comTemporaria(m.sa);
     travar(m.sa);
     const fim = m.sa.senha_temporaria_expira_em!.toISOString();
-    const r = await login(m, 'MACUXI', EMAIL_SA, TEMPORARIA, ip());
+    const r = await login(m, EMAIL_SA, TEMPORARIA, ip());
     expect(r.statusCode).toBe(200);
     expect(r.json()).toEqual({ destino: 'config', expira_em: expect.any(String), desbloqueou: true });
     expect(m.sa).toMatchObject({ falhas_login: 0, bloqueado_ate: null, senha_temporaria_hash: null, senha_temporaria_expira_em: null, deve_trocar_senha: true });
@@ -819,12 +844,12 @@ describe('hotfix: a temporária entra com a conta travada e zera a trava', () =>
   it('RN-CORE-15: superadmin travado: a senha atual certa, a temporária errada, a vencida e a conta sem temporária dão o mesmo 423 CONTA_BLOQUEADA, sem somar falha nem estender a trava', async () => {
     const m = await montar();
     const ate = travar(m.sa);
-    const semTemporaria = await login(m, 'MACUXI', EMAIL_SA, TEMPORARIA, ip());
+    const semTemporaria = await login(m, EMAIL_SA, TEMPORARIA, ip());
     await comTemporaria(m.sa, 60_000);
-    const atual = await login(m, 'MACUXI', EMAIL_SA, SENHA_DE_TESTE, ip());
-    const errada = await login(m, 'MACUXI', EMAIL_SA, 'Temp-errada-9!', ip());
+    const atual = await login(m, EMAIL_SA, SENHA_DE_TESTE, ip());
+    const errada = await login(m, EMAIL_SA, 'Temp-errada-9!', ip());
     m.relogio.avancar(60_000);
-    const vencida = await login(m, 'MACUXI', EMAIL_SA, TEMPORARIA, ip());
+    const vencida = await login(m, EMAIL_SA, TEMPORARIA, ip());
     expect(ContaBloqueadaResposta.parse(semTemporaria.json())).toEqual(semTemporaria.json());
     for (const r of [semTemporaria, atual, errada, vencida]) {
       expect(r.statusCode).toBe(423);

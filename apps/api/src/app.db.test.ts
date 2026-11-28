@@ -38,8 +38,9 @@ describe.skipIf(!PG_DISPONIVEL)('API no PostgreSQL (papel macuxierp_app)', () =>
     await b?.remover();
   });
 
-  const entrar = (senha = SENHA_DE_TESTE, empresa = 'am0001') =>
-    app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa, email: 'ADM@loja-um.teste', senha } });
+  // ADR 0021: só e-mail e senha; `empresa` (quando o teste manda) é ignorado
+  const entrar = (senha = SENHA_DE_TESTE, extra: Record<string, unknown> = {}) =>
+    app.inject({ method: 'POST', url: '/v1/auth/login', payload: { ...extra, email: 'ADM@loja-um.teste', senha } });
   const refreshDe = (r: { cookies: { name: string; value: string }[] }) => r.cookies.find((c) => c.name === COOKIE_REFRESH)!.value;
   const comRefresh = (url: string, refresh: string) => app.inject({ method: 'POST', url, cookies: { [COOKIE_REFRESH]: refresh } });
 
@@ -164,20 +165,27 @@ describe.skipIf(!PG_DISPONIVEL)('API no PostgreSQL (papel macuxierp_app)', () =>
     }
   });
 
-  it('senha errada conta a falha no banco; slug de outro tenant ou inexistente dá o mesmo 401', async () => {
+  it('senha errada conta a falha no banco; ADR 0021 §6: a empresa de outro tenant ou inexistente no corpo é ignorada', async () => {
     expect((await entrar('errada')).statusCode).toBe(401);
     const { rows } = await b.admin.query('SELECT falhas_login FROM plataforma.usuario WHERE id = $1', [usuario]);
     expect(rows).toEqual([{ falhas_login: 1 }]);
-    for (const empresa of ['am0002', 'am9999']) expect((await entrar(SENHA_DE_TESTE, empresa)).statusCode).toBe(401);
+    for (const empresa of ['am0002', 'am9999']) {
+      const r = await entrar(SENHA_DE_TESTE, { empresa });
+      expect(r.statusCode).toBe(200);
+      expect(refreshDe(r).startsWith(`${tenant}.`)).toBe(true);
+    }
     // o login certo zera a contagem
     expect((await entrar()).statusCode).toBe(200);
     expect((await b.admin.query('SELECT falhas_login FROM plataforma.usuario WHERE id = $1', [usuario])).rows).toEqual([{ falhas_login: 0 }]);
   });
 
-  it('tenant suspenso não entra', async () => {
+  it('tenant suspenso não entra (ADR 0021 §3): senha errada = 401; senha certa = 403 EMPRESA_SUSPENSA sem sessão', async () => {
     await b.admin.query("UPDATE plataforma.tenant SET situacao = 'suspenso' WHERE id = $1", [tenant]);
     try {
-      expect((await entrar()).statusCode).toBe(401);
+      expect((await entrar('errada')).statusCode).toBe(401);
+      const certa = await entrar();
+      expect([certa.statusCode, certa.json().codigo]).toEqual([403, 'EMPRESA_SUSPENSA']);
+      expect(certa.cookies).toEqual([]);
     } finally {
       await b.admin.query("UPDATE plataforma.tenant SET situacao = 'ativo' WHERE id = $1", [tenant]);
     }

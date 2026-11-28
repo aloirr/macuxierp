@@ -1,14 +1,17 @@
 /**
- * Contrato do login único (RN-CORE-12, T-0076, ADR 0018): uma tela só, com Empresa, E-mail e Senha, para o usuário do
- * tenant e o superadmin. A apps/api, o modulo-core (`resolverDestinoLogin`) e a apps/web importam a mesma fonte (regra 3).
- * - `POST /v1/auth/login` (`CAMINHO_LOGIN`, `LoginEntrada`): com `empresa` = `CODIGO_SUPERADMIN_LOGIN` a API autentica o
- *   superadmin e abre a sessão do `/config` (cookie `COOKIE_CONFIG`, token fora do corpo); com outro código, o usuário do
- *   tenant (cookie `macuxierp_refresh` e `token_acesso` no corpo, como antes). `destinoDoCodigo` decide.
- * 401 neutro, 429 e a saída do `/config/entrar`: ADR 0018. Sem Node: serve à apps/web.
+ * Contrato do login único (RN-CORE-12, T-0076, ADR 0018; e-mail único no sistema desde a T-0133, ADR 0021): uma tela só,
+ * com E-mail e Senha, para o usuário do tenant e o superadmin. A apps/api, o modulo-core e a apps/web importam a mesma
+ * fonte (regra 3).
+ * - `POST /v1/auth/login` (`CAMINHO_LOGIN`, `LoginEntrada`): a API acha a conta pelo e-mail
+ *   (`plataforma.conta_por_email`, 0079). Usuário de empresa = sessão do BKO (cookie `macuxierp_refresh` e
+ *   `token_acesso` no corpo); só superadmin com o e-mail = sessão do `/config` (cookie `COOKIE_CONFIG`, token fora do
+ *   corpo). O mesmo e-mail nos dois leva sempre ao BKO (ADR 0021 §7, opção A).
+ * - Sem código da empresa: o campo `empresa` fica opcional e IGNORADO na v0.3.30 (ADR 0021 §6) e sai na versão seguinte.
+ * 401 neutro (`MENSAGEM_LOGIN_INVALIDO`), 403 `EMPRESA_SUSPENSA`, 429 e a saída do `/config/entrar`: ADR 0018 e 0021.
+ * Sem Node: serve à apps/web.
  */
 import { z } from 'zod';
 import {
-  CODIGO_SUPERADMIN_LOGIN,
   EmailUsuario,
   Instante,
   PADRAO_SLUG_EMPRESA,
@@ -20,16 +23,16 @@ import { SenhaInformada } from './senha';
 export const CAMINHO_LOGIN = '/v1/auth/login';
 
 /**
- * Código digitado no campo "empresa" do login e do "esqueci": qualquer slug no formato do CHECK de
- * `plataforma.tenant.slug` (0002, `PADRAO_SLUG_EMPRESA`), sem diferenciar maiúsculas. Cobre o código da empresa
- * (RN-CORE-11: UF + 4 dígitos), o slug antigo das empresas criadas antes da T-0053 e `CODIGO_SUPERADMIN_LOGIN`.
- * Aparado e em maiúsculas; a API compara com o slug em minúsculas.
+ * @deprecated Transição da v0.3.30 (ADR 0021 §6): o login e o "esqueci" não pedem mais a empresa, e a API ignora o
+ * campo. Fica só porque a apps/web ainda tem o campo (RD-2408, RD-2410, RD-2415); sai com ele. Formato do slug da 0002
+ * (`PADRAO_SLUG_EMPRESA`), aparado e em maiúsculas.
  */
 export const CodigoEmpresaLogin = z
   .string()
   .trim()
   .toUpperCase()
   .refine((c) => PADRAO_SLUG_EMPRESA.test(c.toLowerCase()), 'Código da empresa inválido, ex.: AM2808');
+/** @deprecated Ver `CodigoEmpresaLogin`. */
 export type CodigoEmpresaLogin = z.infer<typeof CodigoEmpresaLogin>;
 
 /** Para onde a sessão aberta leva: o BKO da empresa ou o portal `/config` do superadmin. */
@@ -37,14 +40,12 @@ export const DESTINOS_LOGIN = ['bko', 'config'] as const;
 export type DestinoLogin = (typeof DESTINOS_LOGIN)[number];
 export const DestinoLogin = z.enum(DESTINOS_LOGIN);
 
-/** Destino do código já normalizado por `CodigoEmpresaLogin` (RN-CORE-12). Função pura: o core e a API usam a mesma. */
-export function destinoDoCodigo(codigo: CodigoEmpresaLogin): DestinoLogin {
-  return codigo === CODIGO_SUPERADMIN_LOGIN ? 'config' : 'bko';
-}
-
-/** Corpo do `POST /v1/auth/login`. A senha nunca vai para log nem auditoria. */
+/**
+ * Corpo do `POST /v1/auth/login`. A senha nunca vai para log nem auditoria. `empresa`: opcional e ignorado (ADR 0021 §6;
+ * qualquer valor passa e não muda nada); a API só conta, em log, quantos pedidos ainda o mandam.
+ */
 export const LoginEntrada = z.object({
-  empresa: CodigoEmpresaLogin,
+  empresa: z.unknown().optional(),
   email: EmailUsuario,
   senha: SenhaInformada,
 });

@@ -1,7 +1,7 @@
 /**
  * Limites de tentativa em memória do processo (uma API por VM, ADR 0003), em janela fixa por chave:
  * - login do superadmin por IP (ADR 0012 §6): `LIMITE_LOGIN_IP_PADRAO`;
- * - login da tela única (`POST /v1/auth/login`, tenant e MACUXI, T-0076) e o `/config/entrar`: o mesmo
+ * - login da tela única (`POST /v1/auth/login`, tenant e superadmin, T-0076) e o `/config/entrar`: o mesmo
  *   `LIMITE_LOGIN_IP_PADRAO`, contando só as falhas (401 e 423) dos dois lados juntos. Com o IP no limite, só a senha
  *   temporária válida entra (hotfix v0.3.16.1): o limite nunca impede a recuperação;
  * - "Esqueci a senha" (T-0076): `LIMITES_ESQUECI_SENHA` do SDK, só por IP (anti-spam), conferido antes do banco.
@@ -20,9 +20,6 @@ export interface LimitesEsqueci {
 export const novosLimitesEsqueci = (): LimitesEsqueci => ({
   ip: new LimitePorChave(LIMITES_ESQUECI_SENHA.por_ip.maximo, LIMITES_ESQUECI_SENHA.por_ip.janela_s * 1000),
 });
-
-/** "Empresa" do superadmin na chave da conta (o MACUXI da tela única e o pedido do `/config`). */
-export const EMPRESA_PLATAFORMA = 'plataforma';
 
 export interface ResultadoLimite {
   permitido: boolean;
@@ -77,7 +74,7 @@ export class LimitePorChave {
  * Trava em memória da conta que NÃO existe (RN-CORE-15, T-0111; decisão R-20261126-175321), com o mesmo `maxFalhas` do
  * bloqueio do banco da conta que existe e, como ele, SEM PRAZO (hotfix v0.3.16.1), para o 423 sair igual nos dois casos
  * (anti-enumeração). A conta que existe segue só o banco (`falhas_login`, `bloqueado_ate`). A chave é a
- * `chaveEmpresaEmail` (SHA-256): o e-mail em claro nunca fica no Map. Uma por processo (uma API por VM, ADR 0003); acima
+ * `chaveEmail` (SHA-256; por e-mail desde a ADR 0021 §4): o e-mail em claro nunca fica no Map. Uma por processo (uma API por VM, ADR 0003); acima
  * de `TETO_TRAVA_MEMORIA` chaves, a mais antiga sai (o Map não cresce sem limite).
  */
 export const TETO_TRAVA_MEMORIA = 100_000;
@@ -100,7 +97,10 @@ export class TravaContaMemoria {
   }
 }
 
-/** Chave do limite por empresa + e-mail: SHA-256 da empresa e do e-mail normalizados (trim e minúsculas). */
-export function chaveEmpresaEmail(empresa: string, email: string): string {
-  return sha256Hex(`${empresa.trim().toLowerCase()}\u0000${email.trim().toLowerCase()}`);
+/**
+ * Chave da trava por conta (ADR 0021 §4): SHA-256 do e-mail normalizado (trim e minúsculas), no lugar da antiga empresa +
+ * e-mail. O e-mail é único no sistema todo, então a chave é a mesma pela tela de login e pelo `/config/entrar`.
+ */
+export function chaveEmail(email: string): string {
+  return sha256Hex(`conta\u0000${email.trim().toLowerCase()}`);
 }
