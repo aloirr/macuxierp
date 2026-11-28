@@ -20,11 +20,25 @@ function registrar(modulo: ModuloId, p: PaginaBase, extra: { ocultaNoMenu?: bool
   return { modulo, menu: p.menu, titulo: p.titulo, rota: p.rota, ...(p.ver ? { ver: p.ver } : {}), ...(p.aviso ? { aviso: p.aviso } : {}), ...(p.ocultaNoMenu !== undefined ? { ocultaNoMenu: p.ocultaNoMenu } : {}), ...extra };
 }
 
+/**
+ * Decisão do PO (v0.3.28): página sem tela pronta não aparece no menu (nenhum item cai em "Disponível em breve"). O shell oculta aqui, sem mexer nos
+ * manifestos; o item some quando todas as páginas dele estão ocultas, e o item "Empresa" abre no "Ambiente fiscal" (a primeira página visível).
+ * Para voltar ao menu, tire a rota da lista no dia em que a tela entrar.
+ */
+export const ROTAS_SEM_TELA: ReadonlySet<string> = new Set([
+  '/cadastros/estoque', '/cadastros/condicoes-pagamento', '/cadastros/equipe', '/cadastros/oficiais', // cadastros: sem descritor de lista no shell
+  '/core/empresa', '/core/empresa/certificado', '/core/empresa/exportacao', // core: o "Ambiente fiscal" fica
+  '/fiscal/regras-fiscais', // fiscal: o módulo ainda não declara páginas
+]);
+const semTela = (p: PaginaBase) => ROTAS_SEM_TELA.has(p.rota);
+
 export const PAGINAS_REGISTRADAS: readonly PaginaRegistrada[] = [
-  ...PAGINAS_CORE.map((p) => registrar('core', p)),
+  ...PAGINAS_CORE.map((p) => registrar('core', p, semTela(p) ? { ocultaNoMenu: true } : {})),
   // Usuário novo (T-0087): formulário fora do menu, aberto pelo botão "Novo usuário" da lista (só quem gerencia usuários).
   registrar('core', { menu: 'Usuários e perfis', titulo: 'Novo usuário', rota: ROTA_USUARIO_NOVO, ver: 'core.usuario.gerir' }, { ocultaNoMenu: true }),
-  ...PAGINAS.map((p) => registrar('cadastros', p)),
+  ...PAGINAS.map((p) => registrar('cadastros', p, semTela(p) ? { ocultaNoMenu: true } : {})),
+  // Regras fiscais: o módulo fiscal ainda não declara páginas; o item sai do menu até a tela existir.
+  registrar('fiscal', { menu: 'Regras fiscais', titulo: 'Regras fiscais', rota: '/fiscal/regras-fiscais' }, { ocultaNoMenu: true }),
   // Clientes, Produtos, Filiais e Tabelas de preço (v0.3.28): novo e edição ligados; as demais telas de edição do cadastros entram com a T-0123 (v0.3.29).
   ...PAGINAS_EDICAO.filter((p) => ['Clientes', 'Produtos', 'Filiais', 'Tabelas de preço'].includes(p.menu)).map((p) => registrar('cadastros', p)),
   // Carga de cadastros (T-0058): saiu do BKO; é feita na aba Cargas do /config (superadmin). A API /v1/cadastros/cargas continua.

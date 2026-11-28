@@ -36,16 +36,17 @@ describe('montarMenu (RN-CORE-02, RD-11)', () => {
     const m = montarMenu([{ id: 'cadastros', menus: ['Equipe e carteira', 'Filiais'] }], MANIFESTOS, 'administrador', paginas);
     expect(m[0]?.itens.map((i) => i.href)).toEqual(['/cadastros/equipe', '/cadastros/filiais']);
   });
-  it('a rota aninhada de uma página resolve para o rótulo do menu (/core/empresa/certificado -> Empresa)', () => {
+  it('a rota aninhada de uma página resolve para o rótulo do menu (/core/empresa/ambiente-fiscal -> Empresa); as sem tela ficam fora (v0.3.28)', () => {
     const m = montarMenu(EU_FALSO.modulos, MANIFESTOS, 'administrador');
-    expect(resolverPagina(m, '/core/empresa/certificado', 'administrador')?.rotulo).toBe('Empresa');
-    expect(resolverPagina(m, '/core/empresa/certificado', 'administrador')?.pagina?.titulo).toBeDefined();
-    expect(resolverPagina(m, '/core/empresa', 'administrador')?.rotulo).toBe('Empresa');
+    expect(resolverPagina(m, '/core/empresa/ambiente-fiscal', 'administrador')?.rotulo).toBe('Empresa');
+    expect(resolverPagina(m, '/core/empresa/ambiente-fiscal', 'administrador')?.pagina?.titulo).toBeDefined();
+    expect(resolverPagina(m, '/core/empresa', 'administrador')).toBeUndefined();
+    expect(resolverPagina(m, '/core/empresa/certificado', 'administrador')).toBeUndefined();
     expect(resolverPagina(m, '/core/inexistente', 'administrador')).toBeUndefined();
   });
   it('resolverPagina devolve undefined para o que não está no menu e o rótulo para módulo sem páginas', () => {
     // Fiscal ainda não declara páginas: a rota vem do rótulo do manifesto (o faturamento já declara as dele, T-0021).
-    const m = montarMenu([...EU_FALSO.modulos, { id: 'fiscal', menus: ['Regras fiscais'] }], MANIFESTOS, 'administrador');
+    const m = montarMenu([...EU_FALSO.modulos, { id: 'fiscal', menus: ['Regras fiscais'] }], MANIFESTOS, 'administrador', []);
     const rotulo = m.find((g) => g.modulo === 'fiscal')!.itens[0]!;
     expect(resolverPagina(m, rotulo.href, 'administrador')).toEqual({ rotulo: rotulo.rotulo });
     expect(resolverPagina(m, '/fiscal/outra-coisa', 'administrador')).toBeUndefined();
@@ -96,7 +97,7 @@ describe('o menu do analista de implantação (RN-CORE-09)', () => {
   it('o analista vê as consultas e não vê o core', () => {
     const m = montarMenu(EU_FALSO.modulos, MANIFESTOS, 'analista_implantacao');
     const rotulos = m.find((g) => g.modulo === 'cadastros')?.itens.map((i) => i.rotulo) ?? [];
-    expect(rotulos).toEqual(expect.arrayContaining(['Clientes', 'Produtos', 'Tabelas de preço', 'Estoque', 'Filiais']));
+    expect(rotulos).toEqual(expect.arrayContaining(['Clientes', 'Produtos', 'Tabelas de preço', 'Filiais']));
     expect(m.some((g) => g.modulo === 'core')).toBe(false);
   });
 });
