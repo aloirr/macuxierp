@@ -45,7 +45,7 @@ describe('aba Dados (T-0058, T-0086)', () => {
   it('sai da tela: Zerar dados, lista de cargas antiga e "Cargas" no título', () => {
     const h = aba();
     expect(h).not.toContain('>Dados<');
-    expect(h).toContain('>Ações<');
+    expect(h).toContain('aria-label="Ações de '); // o gatilho da linha, com ou sem a seta ▾
     expect(h).not.toContain('Zerar');
     expect(h).not.toContain('lista-cargas');
     expect(h).not.toContain('>Cargas<');

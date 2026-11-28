@@ -140,6 +140,7 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 /* Lista de Empresas (124 A, RD-2363): h1 com a contagem nas colunas 1 a 8 e a busca única nas 9 a 12; até 767 px, uma embaixo da outra. */
 .titulo-lista { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 8px 16px; align-items: center; margin: 0 0 12px; }
 .titulo-lista h1 { grid-column: span 8; margin: 0; }
+.link-nome { font-weight: var(--mx-peso-titulo); } /* o nome-link da linha em negrito, como o nome nas outras tabelas */
 .titulo-lista .contagem { font-size: var(--mx-tamanho-texto); font-weight: var(--mx-peso-normal); color: var(--mx-cor-texto-secundario); }
 .titulo-lista .busca-lista { grid-column: span 4; margin: 0; }
 @media (max-width: 767px) { .titulo-lista h1, .titulo-lista .busca-lista { grid-column: 1 / -1; } }

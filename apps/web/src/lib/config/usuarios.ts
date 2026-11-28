@@ -1,6 +1,6 @@
 import { ROTULOS_ACAO_USUARIO, ROTULOS_SITUACAO_USUARIO, ROTULO_ULTIMO_ADMIN, type AcaoUsuario, type UsuarioConfig } from '@macuxierp/core/contracts';
-import { semAcento } from '@/lib/texto-busca';
-import { tomAmarelo } from '@/lib/usuarios-textos';
+import { semAcento } from '../texto-busca';
+import { tomAmarelo } from '../usuarios-textos';
 import { TOM_SITUACAO_USUARIO } from '@macuxierp/core/web';
 import { ROTULOS_PERFIL, formatarDataHora, type Perfil } from '@macuxierp/platform-sdk';
 

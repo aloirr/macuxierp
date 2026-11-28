@@ -4,7 +4,7 @@
  * colunas, filtros, rótulos, validação e o aviso da senha provisória (RN-CORE-10) vêm de `@macuxierp/core/web` e `contracts`; a API revalida
  * perfil, tenant e licença (RN-CORE-02, RN-CORE-09). Sem dado pessoal em log. A senha provisória só passa pela resposta da escrita.
  */
-import { AVISO_USUARIO, tomAmarelo } from '@/lib/usuarios-textos';
+import { AVISO_USUARIO, tomAmarelo } from '../usuarios-textos';
 import {
   AVISO_SENHA_PROVISORIA, COLUNAS_USUARIOS, PAGINAS_CORE, ROTULO_MODULO, TOM_SITUACAO_USUARIO, linhaAuditoria, linhaLicenca, linhaUsuario, opcoesDePerfil, paginaAuditoria, paginaLicencas, paginaUsuarios, quadroEmpresaFiscal,
 } from '@macuxierp/core/web';

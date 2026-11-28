@@ -46,12 +46,15 @@ describe('Ficha da Receita editável na aba Empresa (RN-CORE-16, v0.3.24)', () =
     expect(h).not.toContain('>Descartar<');
     expect(h).toContain('Consultada em 24/11/2026 12:00');
   });
-  it('MC-2: Endereço e Na Receita fecham as 12 colunas, sem buraco (CEP 2 + Logradouro 8 + Número 2; Complemento 6 + Bairro 2 + IBGE 2 + UF 2; os 6 de Na Receita em 2)', () => {
+  it('MC-2 e MC-7: Endereço fecha as 12 (CEP 2 + Logradouro 8 + Número 2; Complemento 6 + Bairro 2 + IBGE 2 + UF 2); Na Receita: Situação, Data, Abertura e Porte em 2 e a Natureza em 4, e o Regime em 2', () => {
     const h = render();
     const classe = (c: string) => new RegExp(`<div class="campo([^"]*)"><label for="ficha-${c}"`).exec(h)?.[1] ?? null;
     expect(classe('logradouro')).toBe(' campo-oito');
     expect(classe('complemento')).toBe('');
-    for (const c of ['cep', 'numero', 'bairro', 'municipio_ibge', 'uf', 'situacao_cadastral', 'situacao_cadastral_data', 'data_abertura', 'natureza_juridica', 'porte', 'regime_receita']) expect(classe(c)).toBe(' campo-curto');
+    for (const c of ['cep', 'numero', 'bairro', 'municipio_ibge', 'uf', 'situacao_cadastral', 'situacao_cadastral_data', 'data_abertura', 'porte', 'regime_receita']) expect(classe(c)).toBe(' campo-curto');
+    expect(classe('natureza_juridica')).toBe(' campo-medio');
+    expect(h.indexOf('ficha-porte')).toBeLessThan(h.indexOf('ficha-natureza_juridica'));
+    expect(h.indexOf('ficha-natureza_juridica')).toBeLessThan(h.indexOf('ficha-regime_receita'));
   });
   it('RD-2373: sem o placeholder "Vazio mantém o salvo" e sem as dicas de quantidade; "Só números ou ISENTO." fica; a data mostra o formato no placeholder', () => {
     const h = render();

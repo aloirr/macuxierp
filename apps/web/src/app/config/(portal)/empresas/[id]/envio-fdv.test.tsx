@@ -56,7 +56,7 @@ describe('v0.3.24: aba Dados, seção "ERP → Força de vendas" (a tabela saiu 
     const h = render();
     const n = linhasCadastros(dados(), 'America/Manaus').length;
     expect(h.match(/aria-haspopup="menu"/g)).toHaveLength(n);
-    expect(h.match(/>Ações<\/button>/g)).toHaveLength(n);
+    expect(h.match(/aria-label="Ações de /g)).toHaveLength(n); // o gatilho, com ou sem a seta ▾
     for (const x of ['Produtos', 'Clientes', 'Estoque']) expect(h).toContain(`aria-label="Ações de ${x}"`);
     expect(h).not.toMatch(/>Zerar<|>Desligar<|>Ligar<|min-width:\s*480px/); // Zerar é perigo no menu, nunca solto na linha (marca, botao-acoes)
     expect(h.slice(h.indexOf('<table'), h.indexOf('</table>'))).not.toContain('botao-perigo-contorno'); // o vermelho é só do Zerar pedidos, na barra
