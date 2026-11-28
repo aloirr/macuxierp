@@ -129,7 +129,13 @@ describe('ambiente e contador nos diálogos (RN-FAT-04)', () => {
   });
   it('depois de "O que fazer:" o texto começa em minúscula; o xMotivo não muda', () => {
     const v = vistaDaNota(nota('rejeitada', { c_stat: 539, x_motivo: 'Duplicidade de NF-e', acao_sugerida: 'Consulte a chave e reenvie', autorizada_em: null }), 'faturista', 'America/Manaus', AGORA);
-    expect(v.pendencias[0]?.texto).toContain('539: Duplicidade de NF-e. O que fazer: consulte a chave e reenvie.');
+    expect(v.pendencias[0]?.texto).toBe('539: Duplicidade de NF-e. O que fazer: consulte a chave e reenvie.');
+  });
+  it('a pendência não repete o selo (RD-2391): sem cStat, o motivo abre em maiúscula; guarda pendente diz o que acontece', () => {
+    const sem = vistaDaNota(nota('rejeitada', { c_stat: null, x_motivo: 'falha no schema', acao_sugerida: null, autorizada_em: null }), 'faturista', 'America/Manaus', AGORA);
+    expect(sem.pendencias[0]?.texto).toBe('Falha no schema. O que fazer: confira os dados e reenvie.');
+    const guarda = vistaDaNota(nota('autorizada_guarda_pendente'), 'faturista', 'America/Manaus', AGORA);
+    expect(guarda.pendencias[0]?.texto).toBe('Salvando o arquivo da nota. Aguarde.');
   });
   it('a coluna "#" dos itens é estreita e numérica', () => {
     const v = vistaDaNota(nota('autorizada'), 'administrador', 'America/Manaus', AGORA);

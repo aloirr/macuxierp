@@ -273,10 +273,12 @@ export function vistaDaNota(n: NotaDetalhe, perfil: Perfil, fuso: string, agora:
   const quando = hora(fuso);
   const pendencias: DetalheVista['pendencias'][number][] = [];
   if (n.status === 'rejeitada') {
-    const codigo = n.c_stat === null ? '' : `${n.c_stat}: `;
-    pendencias.push({ texto: `Rejeitada pela SEFAZ. ${codigo}${semPonto(n.x_motivo ?? 'sem mensagem')}. O que fazer: ${minuscula(semPonto(n.acao_sugerida ?? 'confira os dados e reenvie'))}.`, bloqueante: true, codigoRn: 'RN-FAT-07' });
+    // RD-2391 (regra 125 B): o selo já diz "Rejeitada"; a pendência não repete o status nem começa por rótulo.
+    const motivo = semPonto(n.x_motivo ?? 'sem mensagem');
+    const inicio = n.c_stat === null ? motivo.charAt(0).toUpperCase() + motivo.slice(1) : `${n.c_stat}: ${motivo}`;
+    pendencias.push({ texto: `${inicio}. O que fazer: ${minuscula(semPonto(n.acao_sugerida ?? 'confira os dados e reenvie'))}.`, bloqueante: true, codigoRn: 'RN-FAT-07' });
   }
-  if (n.status === 'autorizada_guarda_pendente') pendencias.push({ texto: 'Autorizada pela SEFAZ. Aguarde alguns instantes para seguir.', bloqueante: true, codigoRn: 'RN-FAT-03' });
+  if (n.status === 'autorizada_guarda_pendente') pendencias.push({ texto: 'Salvando o arquivo da nota. Aguarde.', bloqueante: true, codigoRn: 'RN-FAT-03' });
 
   return {
     titulo: `Nota ${sigla}`,
