@@ -1,6 +1,7 @@
 import { PAGINAS, PAGINAS_EDICAO } from '@macuxierp/cadastros/web';
 import { PAGINAS_CORE } from '@macuxierp/core/web';
 import { PAGINAS_FATURAMENTO } from '@macuxierp/faturamento/web';
+import { PAGINAS_FISCAL } from '@macuxierp/fiscal/web';
 import { PAGINAS_INTEGRACAO_FDV } from '@macuxierp/integracao-fdv/web';
 import { PAGINAS_PEDIDO } from '@macuxierp/pedido/web';
 import { ROTA_BANDEIRA } from './telas/bandeira';
@@ -29,7 +30,6 @@ function registrar(modulo: ModuloId, p: PaginaBase, extra: { ocultaNoMenu?: bool
 export const ROTAS_SEM_TELA: ReadonlySet<string> = new Set([
   '/cadastros/condicoes-pagamento', '/cadastros/equipe', // cadastros: sem descritor de lista no shell (Estoque e Tabelas oficiais entraram na T-0123, lote A)
   '/core/empresa', '/core/empresa/certificado', '/core/empresa/exportacao', // core: o "Ambiente fiscal" fica
-  '/fiscal/regras-fiscais', // fiscal: o módulo ainda não declara páginas
 ]);
 const semTela = (p: PaginaBase) => ROTAS_SEM_TELA.has(p.rota);
 
@@ -40,8 +40,8 @@ export const PAGINAS_REGISTRADAS: readonly PaginaRegistrada[] = [
   ...PAGINAS.filter((p) => !ROTAS_DO_ADAPTADOR.has(p.rota)).map((p) => registrar('cadastros', p, semTela(p) ? { ocultaNoMenu: true } : {})),
   // Estoque e Tabelas oficiais (T-0123, lote A): só leitura; o adaptador em lib/telas/cadastros-outros declara as páginas (Oficiais tem 4 seções).
   ...PAGINAS_CADASTROS_OUTROS.map((p) => registrar('cadastros', p)),
-  // Regras fiscais: o módulo fiscal ainda não declara páginas; o item sai do menu até a tela existir.
-  registrar('fiscal', { menu: 'Regras fiscais', titulo: 'Regras fiscais', rota: '/fiscal/regras-fiscais' }, { ocultaNoMenu: true }),
+  // Regras fiscais (T-0127): lista, catálogo base, nova e detalhe vêm do módulo (`ocultaNoMenu` em nova e detalhe).
+  ...PAGINAS_FISCAL.map((p) => registrar('fiscal', p)),
   // Clientes, Produtos, Filiais e Tabelas de preço (v0.3.28): novo e edição ligados; as demais telas de edição do cadastros entram com a T-0123 (v0.3.29).
   ...PAGINAS_EDICAO.filter((p) => ['Clientes', 'Produtos', 'Filiais', 'Tabelas de preço'].includes(p.menu)).map((p) => registrar('cadastros', p)),
   // Carga de cadastros (T-0058): saiu do BKO; é feita na aba Cargas do /config (superadmin). A API /v1/cadastros/cargas continua.
