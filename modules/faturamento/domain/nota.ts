@@ -36,6 +36,9 @@ const ICMS_COM_ST = new Set(['10', '201', '202', '203']);
  * (RN-FAT-01): CST 40/41/50 e CSOSN 101/102/103/300/400 não emitem vBC/vICMS; vST e FCP-ST só em CST 10 e CSOSN 201/202/203.
  * IBS/CBS/IS do lote 3 do fiscal (`ibs_cbs`: vIBS e `g_cbs.v_cbs`; `is.v_is`); os grupos `ibs` e `cbs` do @1 são obsoletos e só servem de reserva.
  */
+/** calc_ipi só vale com `regra_aplicada.ipi = true` (RN-FIS-05); é a fonte do grupo IPI do XML e do vIPI da nota. */
+export const ipiPorRegra = (r: ItemResultado): ImpostoCalculado | undefined => (r.regra_aplicada?.ipi === true ? r.calc_ipi : undefined);
+
 export function valoresFiscais(r: ItemResultado): {
   vBC: number; vICMS: number; vBCST: number; vST: number; vFCP: number; vFCPST: number; vIPI: number; vPIS: number; vCOFINS: number; vIBS: number; vCBS: number; vIS: number;
 } {
@@ -49,7 +52,7 @@ export function valoresFiscais(r: ItemResultado): {
     vST: comSt ? (r.icms.v_icms_st ?? 0) : 0,
     vFCP: comValor ? (r.icms.v_fcp ?? 0) : 0,
     vFCPST: comSt ? (r.icms.v_fcp_st ?? 0) : 0,
-    vIPI: r.ipi?.v_ipi ?? 0,
+    vIPI: ipiPorRegra(r)?.v_valor ?? r.ipi?.v_ipi ?? 0,
     vPIS: pisCofinsComValor(r.pis?.cst) ? (r.pis?.v_valor ?? 0) : 0,
     vCOFINS: pisCofinsComValor(r.cofins?.cst) ? (r.cofins?.v_valor ?? 0) : 0,
     vIBS: r.ibs_cbs?.v_ibs ?? (r.ibs?.v_ibs_uf ?? 0) + (r.ibs?.v_ibs_mun ?? 0),

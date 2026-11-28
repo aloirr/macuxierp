@@ -63,4 +63,7 @@
 2026-11-27 — v0.3.28 — tela de Clientes ligada no BKO (lista, novo, edição por PATCH) e h1 a 4 px da saudação (MC-0216)
 2026-11-28 — T-0134 — lista de Empresas: coluna Macuxi FDV, Ações ▾ (suspender/reativar, redefinir senha), busca, CNAE sem duplicata, Nova empresa/Criar/Salvar
 2026-11-28 — T-0135 — selos de Integrações (4 situações), selo da licença com o vocabulário do core, temFdv sem cast, um botão por linha, coluna Cadastro, marca ERP → Macuxi FDV, Nova empresa à esquerda
+2026-11-28 — T-0126 — Editar pedido no shell: PUT com If-Match, itens preenchidos, 412/409/422 com Recarregar, Editar no detalhe e na linha da lista; 3 testes de rota ajustados
 2026-11-28 — v0.3.32 itens web — e2e config-usuarios com o texto do contrato e sem corpo no log; Salvar/Criar sem repetir o h1 (RD-2429); CNAE principal uma vez (RD-2425); frase única sem chave no ERP→FDV (RD-2423)
+2026-11-28 — T-0129 — Formulário só leitura quando paginaEditavel é falso (campos em texto, selo, só Voltar) e 403 da API com a mensagem da rota
+2026-11-28 — v0.3.32 apps-3 core telas — T-0125: Empresa renderiza a fichaEmpresa() do core com o Ambiente fiscal como bloco (oculto no menu); colunasSe do cadastros lido de forma tolerante; exportação segue sem tela

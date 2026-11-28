@@ -11,6 +11,7 @@ import {
   type CampoContato,
   type CnaeDescrito,
   type FichaReceitaPlana,
+  type FilialConfig,
   type FichaReceitaPlanaMascarada,
   type MotivoBloqueioCnpj,
   type UsuarioConfigEditar,
@@ -269,6 +270,15 @@ export class RepositorioPlataformaSql implements RepositorioPlataforma {
   // Usuários da empresa (0078, RN-CORE-01 e RN-CORE-17): o banco revalida a sessão do superadmin, trava e audita.
   listarUsuarios(tx: Transacao, id: string): Promise<ItemUsuarioBanco[]> {
     return usuario<ItemUsuarioBanco[]>(tx, 'SELECT plataforma.empresa_usuarios_listar($1::uuid) u', [id]);
+  }
+
+  // Filiais da empresa (0086, T-0130): P0002 (empresa inexistente) = 404; MXS01 segue para o mapa da apps/api (401).
+  async listarFiliais(tx: Transacao, id: string): Promise<FilialConfig[]> {
+    try {
+      return (await primeiraLinha<{ f: FilialConfig[] }>(tx, 'SELECT plataforma.empresa_filiais_listar($1::uuid) f', [id])).f;
+    } catch (e) {
+      throw sqlstate(e) === 'P0002' ? erros.naoEncontrado('Empresa') : e;
+    }
   }
 
   criarUsuario(tx: Transacao, p: { id: string; email: string; nome: string; perfil: string; senha_hash: string; filial_ids: readonly string[]; request_id: string }): Promise<ItemUsuarioBanco> {

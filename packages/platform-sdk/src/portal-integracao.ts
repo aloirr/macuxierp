@@ -318,4 +318,6 @@ export const CAMINHOS_INTEGRACAO_FDV_PLATAFORMA = Object.freeze({
   monitor: '/empresas/:id/integracao-fdv/monitor',
   reprocessar: '/empresas/:id/integracao-fdv/entidades/:entidade/reprocessar',
   log: '/empresas/:id/integracao-fdv/entidades/:entidade/log',
+  /** T-0131 (RN-INF-13): a ligação ERP → Macuxi FDV no /config, pela `integracao_fdv.portal_ligacoes` (0088); resposta `LigacoesResposta`. */
+  ligacoes: '/empresas/:id/integracao-fdv/ligacoes',
 });

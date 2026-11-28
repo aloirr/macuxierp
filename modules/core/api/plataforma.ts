@@ -53,6 +53,8 @@ import {
   UsuarioConfigCriar,
   UsuarioConfigEditar,
   ROTAS_USUARIOS_CONFIG,
+  type FilialConfig,
+  type ListaFiliaisConfig,
   type ListaUsuariosConfig,
   type UsuarioConfig,
   type UsuarioConfigComSenha,
@@ -122,6 +124,8 @@ export interface RepositorioPlataforma {
    * Erros já em HTTP: P0002 = 404, MXU01 = 422 (RN-CORE-01), 23505 = 409 (e-mail em uso), 23514 = 422.
    */
   listarUsuarios(tx: Transacao, id: string): Promise<ItemUsuarioBanco[]>;
+  /** `empresa_filiais_listar` (0086, T-0130): as filiais não excluídas ({id, nome, padrao}), a padrão primeiro; sem CNPJ nem endereço. P0002 = 404. */
+  listarFiliais(tx: Transacao, id: string): Promise<FilialConfig[]>;
   criarUsuario(tx: Transacao, p: { id: string; email: string; nome: string; perfil: string; senha_hash: string; filial_ids: readonly string[]; request_id: string }): Promise<ItemUsuarioBanco>;
   editarUsuario(tx: Transacao, p: { id: string; usuario: string; patch: UsuarioConfigEditar; request_id: string }): Promise<ItemUsuarioBanco>;
   redefinirSenhaUsuario(tx: Transacao, p: { id: string; usuario: string; senha_hash: string; request_id: string }): Promise<ItemUsuarioBanco>;
@@ -483,6 +487,16 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
       acao: 'plataforma.usuario.ver',
       async executar(c, { params }) {
         const lista: ListaUsuariosConfig = { itens: (await repo.listarUsuarios(c.tx, idDoParam(params))).map(linhaUsuarioConfig) };
+        return semCache(lista);
+      },
+    }),
+    // Filiais da empresa para o campo "Filiais" do cadastro de usuário (0086, T-0130): só id, nome e se é a padrão.
+    definirRotaPlataforma({
+      metodo: ROTAS_USUARIOS_CONFIG.filiais.metodo,
+      caminho: semPrefixoPortal(ROTAS_USUARIOS_CONFIG.filiais),
+      acao: 'plataforma.usuario.ver',
+      async executar(c, { params }) {
+        const lista: ListaFiliaisConfig = { itens: await repo.listarFiliais(c.tx, idDoParam(params)) };
         return semCache(lista);
       },
     }),

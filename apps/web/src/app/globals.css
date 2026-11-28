@@ -442,6 +442,10 @@ button.link { background: none; border: 0; padding: 0; color: inherit; font: inh
 .cartao-ficha > .titulo-cartao { font-size: var(--mx-tamanho-pequeno); font-weight: var(--mx-peso-titulo); color: var(--mx-cor-rotulo-destaque); text-transform: uppercase; letter-spacing: 0.04em; margin: 0; }
 .cartao-ficha > .bloco, .cartao-ficha .bloco > h2 { margin: 0; }
 .cartao-ficha .bloco > h2 { border: 0; padding: 0; font-size: var(--mx-tamanho-pequeno); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 12px; }
+.bloco-leitura { display: grid; gap: 12px; }
+.bloco-leitura dl { margin: 0; }
+.bloco-leitura dt { font-weight: var(--mx-peso-rotulo-campo); font-size: var(--mx-tamanho-micro); margin-bottom: 4px; }
+.bloco-leitura dd { margin: 0; overflow-wrap: anywhere; }
 @media (min-width: 1101px) {
   .formulario > .cartao-3 { grid-column: span 3; }
   .formulario > .cartao-4 { grid-column: span 4; }
