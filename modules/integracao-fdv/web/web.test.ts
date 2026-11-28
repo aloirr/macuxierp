@@ -1,10 +1,10 @@
 import { paraCsv } from '@macuxierp/platform-sdk/listas';
 import { describe, expect, it } from 'vitest';
-import { ENTIDADES_HUB_F2, MonitorResposta } from '../contracts';
+import { ENTIDADES_HUB_F2, LoteEnvioResumo, MonitorResposta } from '../contracts';
 import { manifest } from '../manifest';
 import { criarClienteIntegracaoFdv, ErroIntegracaoFdv, MENSAGEM_ERRO_GENERICA } from './cliente';
 import { colunasDeErros, linhasDeConflitos, linhasDeErros, linhasDoMonitor, resumoDoSinal } from './monitor';
-import { PAGINAS_INTEGRACAO_FDV, paginaLotes } from './paginas';
+import { PAGINAS_INTEGRACAO_FDV, colunasDeLotes, paginaLotes, paginaLotesNoFuso } from './paginas';
 
 const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const base = (o: Partial<MonitorResposta> = {}): MonitorResposta => ({
@@ -33,6 +33,26 @@ describe('páginas do BKO do Integração FDV (RF-INF-04)', () => {
     expect(new Set(PAGINAS_INTEGRACAO_FDV.map((p) => p.rota)).size).toBe(PAGINAS_INTEGRACAO_FDV.length);
     expect(PAGINAS_INTEGRACAO_FDV.find((p) => p.id === 'monitor')).toMatchObject({ rota: '/integracao-fdv/integracao-fdv', ver: 'integracao-fdv.ver' });
     expect(PAGINAS_INTEGRACAO_FDV.find((p) => p.id === 'lotes')?.ocultaNoMenu).toBe(true);
+  });
+  it('MC-0201: as colunas de lotes declaram o tipo (data, status) e a hora sai no fuso do tenant, sem "(UTC)" no título', () => {
+    const lote = { estado: 'concluido', enviado_em: '2026-11-26T12:30:00.000Z', concluido_em: null } as unknown as LoteEnvioResumo;
+    const cols = colunasDeLotes('America/Manaus');
+    const por = (id: string) => cols.find((c) => c.id === id)!;
+    expect(por('estado')).toMatchObject({ titulo: 'Situação', tipo: 'status' });
+    expect(por('estado').selos?.(lote)).toEqual([{ texto: 'Concluído', tom: 'ok' }]);
+    expect(por('enviado_em')).toMatchObject({ titulo: 'Enviado em', tipo: 'data' });
+    expect(por('concluido_em')).toMatchObject({ titulo: 'Concluído em', tipo: 'data' });
+    expect(cols.map((c) => c.titulo).join('|')).not.toContain('UTC');
+    expect(por('enviado_em').valor(lote)).toBe('26/11/2026 08:30');
+    expect(por('concluido_em').valor(lote)).toBe('');
+    expect(por('registros').tipo).toBe('numero');
+    expect(por('estado').selos?.({ ...lote, estado: 'concluido_com_erros' } as LoteEnvioResumo)).toEqual([{ texto: 'Concluído com erros', tom: 'aviso' }]);
+  });
+  it('MC-0201: o descritor paginaLotes não pré-formata a data (o shell recebe o ISO e formata no fuso do tenant)', () => {
+    const lote = { enviado_em: '2026-11-26T12:30:00.000Z', concluido_em: null } as unknown as LoteEnvioResumo;
+    const col = (id: string) => paginaLotes.colunas.find((c) => c.id === id)!;
+    expect(col('enviado_em').valor(lote)).toBe('2026-11-26T12:30:00.000Z');
+    expect(paginaLotesNoFuso('America/Manaus').colunas.find((c) => c.id === 'enviado_em')!.valor(lote)).toBe('26/11/2026 08:30');
   });
   it('a lista de lotes usa o descritor do SDK: filtros na URL, paginação, CSV e API do módulo', () => {
     expect(paginaLotes.api).toBe('/v1/integracao-fdv/lotes');

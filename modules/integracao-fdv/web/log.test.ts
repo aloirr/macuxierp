@@ -82,6 +82,11 @@ describe('Recebidos do FDV no Log (RN-INF-09; T-0110)', () => {
     expect(TITULO_SECAO_RECEBIDOS_LOG).toBe('Recebidos do FDV');
     expect(TEXTO_VAZIO_RECEBIDOS_LOG).toMatch(/Nenhum/);
   });
+  it('MC-0201: Situação é status (com tom do selo), Recebido em é data e Revisão é número', () => {
+    const tipos = Object.fromEntries(colunasDeRecebidosLog.map((c) => [c.id, c.tipo]));
+    expect(tipos).toMatchObject({ situacao: 'status', recebidoEm: 'data', revisao: 'numero' });
+    expect(linhasDeRecebidosLog([rec(), recusado]).map((l) => l.situacaoTom)).toEqual(['ok', 'erro']);
+  });
   it('RN-INF-09: a data sai no fuso do tenant, o vendedor ausente vira traço e o documento é o mascarado', () => {
     const [a, b] = linhasDeRecebidosLog([rec(), recusado], 'America/Manaus');
     expect(a).toMatchObject({ situacao: 'Aceito', documento: '11.222.333/****-**', vendedor: 'V-1', motivo: '—', retorno: 'Voltou ao FDV' });
