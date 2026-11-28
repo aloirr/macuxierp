@@ -122,7 +122,7 @@ export function SecaoEnvioFdv({ empresaId, dados, fuso, barra }: { empresaId: st
     </>
   );
 
-  const colunas: ColunaTabela<LinhaCadastroFdv>[] = [...colunasStatusFdv<LinhaCadastroFdv>({ falhaSobreNome: true, envioSobreNome: true }), { id: 'acoes', titulo: 'Ações', celula: acoesDaLinha }];
+  const colunas: ColunaTabela<LinhaCadastroFdv>[] = [...colunasStatusFdv<LinhaCadastroFdv>({ falhaSobreNome: true, envioSobreNome: true, semColunaFalha: true }), { id: 'acoes', titulo: 'Ações', celula: acoesDaLinha }];
 
   return (
     <div className="envio-fdv">

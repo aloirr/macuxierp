@@ -52,8 +52,8 @@ export function linhaBaseFdv(c: CadastroFdvBase, fuso: string, acao: (a: AcaoSug
  * `falhaSobreNome`: no BKO e no /config, em tela estreita (CSS) a falha sobe para uma linha sob o nome e a coluna Falha some.
  * `envioSobreNome` (/config, #840): o último envio também sobe para sob o nome e a coluna dele some.
  */
-export function colunasStatusFdv<T extends LinhaBaseFdv>(opcoes: { falhaSobreNome?: boolean; envioSobreNome?: boolean } = {}): ColunaTabela<T>[] {
-  return [
+export function colunasStatusFdv<T extends LinhaBaseFdv>(opcoes: { falhaSobreNome?: boolean; envioSobreNome?: boolean; semColunaFalha?: boolean } = {}): ColunaTabela<T>[] {
+  const colunas: ColunaTabela<T>[] = [
     {
       id: 'rotulo',
       titulo: 'Cadastro',
@@ -65,6 +65,10 @@ export function colunasStatusFdv<T extends LinhaBaseFdv>(opcoes: { falhaSobreNom
     },
     { id: 'situacao', titulo: 'Situação', tipo: 'status', celula: (l) => createElement('span', { className: l.ligada ? 'selo selo-ativo' : 'selo selo-inativo' }, l.ligada ? 'Ligado' : 'Desligado') },
     { id: 'ultimoEnvio', titulo: 'Último envio', tipo: 'data', celula: (l) => l.ultimoEnvio },
+  ];
+  // T-0131: o /config não repete o erro na tabela da ligação (ele fica em "Envios ao Macuxi FDV"); o BKO mantém a coluna
+  return opcoes.semColunaFalha ? colunas : [
+    ...colunas,
     {
       id: 'falha',
       titulo: 'Com erro',

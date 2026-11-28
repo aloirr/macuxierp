@@ -261,13 +261,15 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
   .tabela-fdv-bko th:nth-child(4), .tabela-fdv-bko td:nth-child(4) { display: none; }
   .tabela-fdv-bko .falha-sob-nome { display: block; font-size: 13px; color: var(--mx-cor-grafite); font-weight: normal; }
 }
+/* T-0131: no /config a tabela da ligação não tem coluna de erro; o motivo da falha de um cadastro fica sempre sob o nome. */
+.tabela-fdv-config .falha-sob-nome { display: block; font-size: var(--mx-tamanho-micro); color: var(--mx-cor-grafite); font-weight: var(--mx-peso-normal); margin-top: 2px; }
 /* /config, abas Dados e ERP → Força de vendas em 390 (#840): nada cortado. A tabela cabe na largura (sem min-width), o último envio,
    a última carga e a falha sobem para sob o nome (as colunas deles somem) e a ação principal fica sobre o "Ações". */
 .envio-sob-nome, .carga-sob-nome { display: none; }
 @media (max-width: 640px) {
   .tabela-fdv-config table { min-width: 0; }
-  .tabela-fdv-config th:nth-child(3), .tabela-fdv-config td:nth-child(3), .tabela-fdv-config th:nth-child(4), .tabela-fdv-config td:nth-child(4) { display: none; }
-  .tabela-fdv-config th:nth-child(5), .tabela-fdv-config td:nth-child(5) { min-width: 0; }
+  .tabela-fdv-config th:nth-child(3), .tabela-fdv-config td:nth-child(3) { display: none; }
+  .tabela-fdv-config th:nth-child(4), .tabela-fdv-config td:nth-child(4) { min-width: 0; }
   .tabela-fdv-config th, .tabela-fdv-config td { padding: 6px 4px !important; }
   .tabela-fdv-config .envio-sob-nome, .tabela-dados .carga-sob-nome { display: block; font-size: var(--mx-tamanho-micro); color: var(--mx-cor-texto-secundario); font-weight: var(--mx-peso-normal); margin-top: 2px; }
   .tabela-fdv-config .falha-sob-nome { display: block; font-size: var(--mx-tamanho-micro); color: var(--mx-cor-grafite); font-weight: var(--mx-peso-normal); margin-top: 2px; }

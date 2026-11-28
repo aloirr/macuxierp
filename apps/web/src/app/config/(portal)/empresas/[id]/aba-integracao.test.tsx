@@ -42,6 +42,10 @@ describe('Config v4: aba Integrações como a simulação aprovada 445e459', () 
     expect(h.indexOf('Cadastros recebidos')).toBeLessThan(h.indexOf('id="h-ligacao-saida"'));
     expect(h.indexOf('Cadastros enviados')).toBeGreaterThan(h.indexOf('id="h-ligacao-saida"'));
     expect(h.indexOf('id="h-envios-recentes"')).toBeGreaterThan(h.indexOf('Cadastros enviados'));
+    // T-0131 (PO): a tabela dos cadastros enviados não tem coluna de erro (ela contradizia o selo do envio); o erro fica em "Envios ao Macuxi FDV"
+    const enviados = h.slice(h.indexOf('Cadastros enviados'), h.indexOf('</table>', h.indexOf('Cadastros enviados')));
+    expect(enviados).not.toMatch(/>(Com erro|Falha)</);
+    expect(enviados).toContain('>Último envio<');
     for (const fora of ['Monitor', 'Conexão com o Macuxi FDV', 'Integração via API', 'cabeca-ligacoes', 'form-lote', 'campo-com-botao']) expect(h).not.toContain(fora);
   });
   it('um único Atualizar, na barra do bloco Envios do sistema do cliente ao ERP (regra 12), com "Atualizado às" ao lado e o retorno logo abaixo', () => {
