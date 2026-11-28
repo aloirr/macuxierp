@@ -235,7 +235,7 @@ describe('T-0132 (63 A): ST e IPI no retorno faturado', () => {
     expect(c.itens_faturados?.[0]).not.toHaveProperty('v_icms_st_cents');
     expect(c.nota).not.toHaveProperty('v_ipi_cents');
   });
-  it('RN-INT-IDEM: o hash ignora ocorrido_em, repete com o mesmo evento e difere com e sem os campos (sem colisão)', () => {
+  it('RN-INF-03: o hash ignora ocorrido_em, repete com o mesmo evento e difere com e sem os campos (sem colisão)', () => {
     const a = fat([com(1, 360, 500)]);
     const b = { ...fat([com(1, 360, 500)]), ocorrido_em: '2026-11-22T00:00:00.000Z' };
     expect(corpoCanonicoDoRetorno(a)).toBe(corpoCanonicoDoRetorno(b));

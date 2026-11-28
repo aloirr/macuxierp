@@ -11,6 +11,7 @@ import type { EntidadeChaveErp } from '../contracts';
 import { U, admSql, dubleLogAlertas } from './apoio-conector-teste';
 import type { ClienteHubPedidos, RecebedorPedidoFdv, ResolvedorChaveErp, RespostaRetorno } from './portas';
 import { buscarPedidosPendentes, MAX_TENTATIVAS } from './recebimento-pedidos';
+import { PedidoFaturadoV1 } from '@macuxierp/pedido/contracts';
 import { criarConsumidorRetornoPedido, enviarRetornosPendentes } from './retorno-pedidos';
 
 const relogio: Relogio = { agora: () => new Date('2026-11-21T18:00:00Z') };
@@ -339,9 +340,17 @@ describe.skipIf(!PG_DISPONIVEL)('pedidos do FDV no PostgreSQL real', () => {
     it('T-0132 (63 A): bandeira desligada grava o corpo sem ST e IPI; ligada grava com eles; o reenvio não duplica e o corpo com e sem os campos não colide', async () => {
       const produtoErp = U();
       await espelharProduto('P-STIPI', produtoErp);
-      const campos = { regra_aplicada: { st: true, ipi: true }, calc_st: { v_bc: 6000, p_aliq: 180000, v_valor: 360 }, calc_ipi: { v_bc: 5000, p_aliq: 50000, v_valor: 500 } };
-      const fat = (uuid: string, comDados: boolean) =>
-        evento(A, 'pedido.pedido.faturado@1', uuid, { status: 'faturado', ambiente: 'producao', nota: { ...NOTA, ...(comDados ? { calc_st: { v_bc: 6000, v_valor: 360 }, calc_ipi: { v_bc: 5000, v_valor: 500 } } : {}) }, itens_faturados: [{ sequencia: 1, produto_id: produtoErp, quantidade: 20_000, valor_centavos: 5000, ...(comDados ? campos : {}) }] });
+      // Evento montado pelo contrato REAL do pedido (PedidoFaturadoV1, aditivo da T-0132): se o contrato mudar, o parse quebra aqui.
+      const itemCom = { regra_aplicada: { st: true, ipi: true }, calc_st: { v_bc: 6000, p_aliq: 180000, v_valor: 360 }, calc_ipi: { v_bc: 5000, p_aliq: 50000, v_valor: 500 } };
+      const fat = (uuid: string, comDados: boolean) => {
+        const real = PedidoFaturadoV1.parse({
+          pedido_id: U(), numero: 42, origem: 'fdv', pedido_uuid: uuid, status: 'faturado', status_anterior: 'aprovado', filial_id: U(), cliente_id: U(), vendedor_id: null, total_centavos: 5000,
+          ambiente: 'producao',
+          nota: { ...NOTA, id: U(), ...(comDados ? { calc_st: { v_bc: 6000, v_valor: 360 }, calc_ipi: { v_bc: 5000, v_valor: 500 } } : {}) },
+          itens_faturados: [{ sequencia: 1, produto_id: produtoErp, quantidade: 20_000, valor_centavos: 5000, ...(comDados ? itemCom : {}) }],
+        });
+        return evento(A, 'pedido.pedido.faturado@1', uuid, real);
+      };
       const corpoDe = async (uuid: string) => (await adm(`SELECT corpo FROM integracao_fdv.retorno_enviado WHERE tenant_id = $1 AND pedido_uuid = $2 AND status = 'faturado_total'`, [A, uuid])).map((l) => l.corpo);
       const ligado = criarConsumidorRetornoPedido({ log: d.log, relogio, bandeiraStIpi: () => true });
 
